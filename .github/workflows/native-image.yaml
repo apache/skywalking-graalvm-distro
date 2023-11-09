@@ -18,7 +18,8 @@ name: GraalVM Community Edition build
 on:
   pull_request:
   push:
-    main
+    branches:
+      - main
 
 concurrency:
   group: skywalking-graalvm-${{ github.event.pull_request.number || github.ref }}
