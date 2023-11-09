@@ -27,9 +27,14 @@
         <version>9.7.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>graal</artifactId>
-    <packaging>pom</packaging>
+    <artifactId>log-analyzer-graal-native</artifactId>
 
-
+    <dependencies>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>log-analyzer</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
 
 </project>

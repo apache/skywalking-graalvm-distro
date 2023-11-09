@@ -18,6 +18,7 @@ name: GraalVM Community Edition build
 on:
   pull_request:
   push:
+    main
 
 concurrency:
   group: skywalking-graalvm-${{ github.event.pull_request.number || github.ref }}
@@ -50,7 +51,7 @@ jobs:
           path: graal/dist
       - name: Build and save docker images
         run: |
-          make -f graal/Makefile docker.oap || make -f graal/Makefile docker.oap
+          make docker.oap || make docker.oap
           docker save -o docker-images-skywalking-oap.tar skywalking/oap:latest
       - name: Upload docker images
         uses: actions/upload-artifact@v3
@@ -91,7 +92,7 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
       - name: Prepare test services
         shell: bash
-        run: ./mvnw -B -q -f test/e2e-v2/java-test-service/pom.xml clean package
+        run: ./mvnw -B -q -f skywalking/test/e2e-v2/java-test-service/pom.xml clean package
       - name: Set env var
         run: |
           echo "${{ matrix.test.env }}"  >> $GITHUB_ENV

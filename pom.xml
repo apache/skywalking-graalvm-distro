@@ -33,7 +33,16 @@
 
     <modules>
         <module>skywalking</module>
-        <module>graal</module>
+        <module>graal-server-starter</module>
+        <module>server-core-graal-native</module>
+        <module>meter-analyzer-graal-native</module>
+        <module>oal-rt-graal-native</module>
+        <module>library-util-graal-native</module>
+        <module>skywalking-on-graal-compiling-plugin</module>
+        <module>apache-skywalking-native-apm</module>
+        <module>log-analyzer-graal-native</module>
+        <module>envoy-metrics-receiver-plugin-graal-native</module>
+        <module>graal-package-IT</module>
     </modules>
 
     <packaging>pom</packaging>
@@ -114,6 +123,41 @@
             <scope>provided</scope>
         </dependency>
     </dependencies>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>apm-network</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>oap-server-bom</artifactId>
+                <version>${project.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-util</artifactId>
+                <scope>provided</scope>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-core</artifactId>
+                <scope>provided</scope>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>meter-analyzer</artifactId>
+                <scope>provided</scope>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <pluginManagement>
