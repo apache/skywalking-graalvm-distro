@@ -71,7 +71,7 @@ jobs:
       matrix:
         test:
           - name: GraalVM Native Image Agent Test
-            config: skywalking/test/e2e-v2/cases/go/e2e.yaml
+            config: test/e2e-v2/cases/go/e2e.yaml
     steps:
       - uses: actions/checkout@v3
         with:
@@ -93,7 +93,7 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
       - name: Prepare test services
         shell: bash
-        run: ./mvnw -B -q -f skywalking/test/e2e-v2/java-test-service/pom.xml clean package
+        run: ./mvnw -B -q -f test/e2e-v2/java-test-service/pom.xml clean package
       - name: Set env var
         run: |
           echo "${{ matrix.test.env }}"  >> $GITHUB_ENV
