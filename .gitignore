@@ -1,0 +1,30 @@
+/build/
+target/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+*~
+packages/
+**/dependency-reduced-pom.xml
+**/dist/
+/docker/snapshot/*.gz
+.mvn/wrapper/*.jar
+OALLexer.tokens
+.factorypath
+.vscode
+.checkstyle
+.externalToolBuilders
+oap-server/oal-grammar/**/gen/
+MQELexer.tokens
+oap-server/mqe-grammar/**/gen/
+PromQLLexer.tokens
+oap-server/server-query-plugin/promql-plugin/gen/
+LogQLLexer.tokens
+oap-server/server-query-plugin/logql-plugin/gen/
+
+# This serves as a template but will ONLY be updated when building a source release tar,
+# so we don't track future updates of this file.
+oap-server/server-starter/src/main/resources/version.properties
