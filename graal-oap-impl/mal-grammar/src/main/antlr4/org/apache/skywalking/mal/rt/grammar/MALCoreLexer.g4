@@ -1,6 +1,5 @@
 lexer grammar MALCoreLexer;
 
-// 特殊符号
 DOT: '.';
 STAR: '*';
 SLASH: '/';
@@ -26,7 +25,6 @@ EQUAL_EQUAL: '==';
 NOT_EQUAL: '!=';
 ARROW: '->';
 
-// 关键字
 IF: 'if';
 RETURN: 'return';
 LE: 'le';
@@ -34,7 +32,6 @@ BY: 'by';
 ELSE_IF: 'else if';
 ELSE: 'else';
 
-// 原有的词法符号
 LAYER : 'Layer.' LAYER_TYPE ;
 LAYER_TYPE : 'HTTP' | 'MYSQL';
 DETECTPOINT : 'CLIENT' | 'SERVER' ;
@@ -51,5 +48,5 @@ WS : [ \t\r\n]+ -> skip ;
 
 mode CLOSURE;
 OPEN_CURLY : '{' -> pushMode(CLOSURE);
-CLOSE_CURLY : '}' -> popMode; // 遇到 '}' 时返回到默认模式
-CLOSURE_CONTENT : ~[{}]+ ; // 匹配除了 '}' 之外的任何字符
+CLOSE_CURLY : '}' -> popMode;
+CLOSURE_CONTENT : ~[{}]+ ;
