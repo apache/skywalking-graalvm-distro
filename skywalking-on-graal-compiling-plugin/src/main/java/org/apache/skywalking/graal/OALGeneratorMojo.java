@@ -30,7 +30,6 @@ import org.apache.maven.project.MavenProject;
 import org.apache.skywalking.oal.rt.util.OALClassGenerator;
 import org.apache.skywalking.oap.server.core.oal.rt.OALCompileException;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
@@ -56,7 +55,6 @@ public class OALGeneratorMojo extends AbstractMojo {
         }
     }
 
-    @NotNull
     private static String getGeneratedFilePath(String targetDirectory) {
         return targetDirectory + File.separator + "classes" +
                 File.separator + "org" + File.separator + "apache" +
