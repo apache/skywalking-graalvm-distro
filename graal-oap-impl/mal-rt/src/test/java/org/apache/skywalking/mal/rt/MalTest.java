@@ -49,24 +49,6 @@ import static com.google.common.collect.ImmutableMap.of;
 
 class MalTest {
 
-    @Test
-    void test() {
-        ImmutableMap<String, SampleFamily> input = ImmutableMap.of(
-                "http_success_request", SampleFamilyBuilder.newBuilder(
-                        Sample.builder().labels(of("idc", "t1")).value(50).build(),
-                        Sample.builder().labels(of("idc", "t3", "region", "cn", "svc", "catalog")).value(51).name("http_success_request").build(),
-                        Sample.builder().labels(of("idc", "t3", "region", "cn", "svc", "product")).value(51).name("http_success_request").build(),
-                        Sample.builder().labels(of("idc", "t1", "region", "us", "svc", "product")).value(50).name("http_success_request").build(),
-                        Sample.builder().labels(of("idc", "t1", "region", "us", "instance", "10.0.0.1")).value(100).name("http_success_request").build(),
-                        Sample.builder().labels(of("idc", "t3", "region", "cn", "instance", "10.0.0.1")).value(3).name("http_success_request").build()
-                ).build(),
-                "test", SampleFamilyBuilder.newBuilder(
-                        Sample.builder().name("test").labels(ImmutableMap.of("region","cn")).value(1).build()).build()
-        );
-
-
-    }
-
     public static Collection<Object[]> data() {
         return Arrays.asList(new Object[][] {
                 {
@@ -82,7 +64,7 @@ class MalTest {
 
         NamingControl namingControl = new NamingControl(100, 100, 100, new EndpointNameGrouping());
         MeterEntity.setNamingControl(namingControl);
-        MALCoreLexer malLexer = new MALCoreLexer(CharStreams.fromString("(http_success_request.sum(['region']) + test.sum(['region']) * 100 ).service(['region'], Layer.MYSQL)"));
+        MALCoreLexer malLexer = new MALCoreLexer(CharStreams.fromString(mal));
         CommonTokenStream tokens = new CommonTokenStream(malLexer);
         MALCoreParser malParser = new MALCoreParser(tokens);
         MALCoreParser.MalExpressionContext malExpressionContext = malParser.malExpression();
