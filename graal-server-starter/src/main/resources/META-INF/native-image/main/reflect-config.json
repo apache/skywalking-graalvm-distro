@@ -18,24 +18,6 @@
   "name":"[J"
 },
 {
-  "name":"[Lcom.fasterxml.jackson.databind.deser.Deserializers;"
-},
-{
-  "name":"[Lcom.fasterxml.jackson.databind.deser.KeyDeserializers;"
-},
-{
-  "name":"[Lcom.fasterxml.jackson.databind.deser.ValueInstantiators;"
-},
-{
-  "name":"[Lcom.fasterxml.jackson.databind.ser.BeanSerializerModifier;"
-},
-{
-  "name":"[Lcom.fasterxml.jackson.databind.ser.Serializers;"
-},
-{
-  "name":"[Lcom.fasterxml.jackson.databind.type.TypeModifier;"
-},
-{
   "name":"[Lcom.linecorp.armeria.common.StringMultimap$Entry;"
 },
 {
@@ -76,25 +58,6 @@
 },
 {
   "name":"[Z"
-},
-{
-  "name":"com.fasterxml.jackson.annotation.JsonIgnoreProperties"
-},
-{
-  "name":"com.fasterxml.jackson.core.JsonParser"
-},
-{
-  "name":"com.fasterxml.jackson.databind.JsonNode"
-},
-{
-  "name":"com.fasterxml.jackson.databind.ObjectMapper"
-},
-{
-  "name":"com.fasterxml.jackson.databind.ext.Java7SupportImpl",
-  "methods":[{"name":"<init>","parameterTypes":[] }]
-},
-{
-  "name":"com.fasterxml.jackson.dataformat.yaml.YAMLFactory"
 },
 {
   "name":"com.google.common.util.concurrent.AbstractFuture",

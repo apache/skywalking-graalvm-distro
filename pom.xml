@@ -34,15 +34,11 @@
     <modules>
         <module>skywalking</module>
         <module>graal-server-starter</module>
-        <module>server-core-graal-native</module>
-        <module>meter-analyzer-graal-native</module>
-        <module>oal-rt-graal-native</module>
-        <module>library-util-graal-native</module>
         <module>skywalking-on-graal-compiling-plugin</module>
         <module>apache-skywalking-native-apm</module>
-        <module>log-analyzer-graal-native</module>
-        <module>envoy-metrics-receiver-plugin-graal-native</module>
         <module>graal-package-IT</module>
+        <module>oap-native-overwrite</module>
+        <module>graal-oap-impl</module>
     </modules>
 
     <packaging>pom</packaging>
@@ -85,6 +81,8 @@
         <mockito-core.version>4.11.0</mockito-core.version>
         <lombok.version>1.18.22</lombok.version>
 
+        <antlr.version>4.11.1</antlr.version>
+
         <!-- core lib dependency -->
         <grpc.version>1.53.0</grpc.version>
         <netty.version>4.1.100.Final</netty.version>
@@ -121,6 +119,12 @@
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

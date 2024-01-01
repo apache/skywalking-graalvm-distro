@@ -14,8 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG BASE_IMAGE='eclipse-temurin:11-jre'
-
 ARG SKYWALKING_CLI_VERSION
 
 FROM apache/skywalking-cli:$SKYWALKING_CLI_VERSION as cli
