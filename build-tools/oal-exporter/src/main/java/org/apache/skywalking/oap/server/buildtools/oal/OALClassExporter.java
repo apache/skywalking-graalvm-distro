@@ -17,8 +17,12 @@
 
 package org.apache.skywalking.oap.server.buildtools.oal;
 
+import com.google.common.collect.ImmutableSet;
+import com.google.common.reflect.ClassPath;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,12 +35,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.aop.server.receiver.mesh.MeshOALDefine;
 import org.apache.skywalking.oal.v2.OALEngineV2;
 import org.apache.skywalking.oal.v2.generator.OALClassGeneratorV2;
+import org.apache.skywalking.oap.server.core.analysis.Disable;
 import org.apache.skywalking.oap.server.core.analysis.DisableRegister;
+import org.apache.skywalking.oap.server.core.analysis.ISourceDecorator;
+import org.apache.skywalking.oap.server.core.analysis.MultipleDisable;
+import org.apache.skywalking.oap.server.core.analysis.SourceDispatcher;
 import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
 import org.apache.skywalking.oap.server.core.oal.rt.CoreOALDefine;
 import org.apache.skywalking.oap.server.core.oal.rt.DisableOALDefine;
 import org.apache.skywalking.oap.server.core.oal.rt.OALDefine;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
+import org.apache.skywalking.oap.server.core.source.ScopeDeclaration;
 import org.apache.skywalking.oap.server.core.storage.StorageBuilderFactory;
 import org.apache.skywalking.oap.server.fetcher.cilium.CiliumOALDefine;
 import org.apache.skywalking.oap.server.receiver.browser.provider.BrowserOALDefine;
@@ -47,13 +56,11 @@ import org.apache.skywalking.oap.server.receiver.jvm.provider.JVMOALDefine;
 
 /**
  * Build-time tool that runs the OAL engine for all 9 OALDefine configurations,
- * exports generated .class files (metrics, builders, dispatchers), and writes
- * manifest files listing all generated class names.
+ * exports generated .class files and manifest files, and scans the classpath for
+ * hardcoded annotated classes and interface implementations used at runtime.
  *
  * OAL script files are loaded from the skywalking submodule directly via
  * additionalClasspathElements in the exec-maven-plugin configuration.
- *
- * Uses the existing SW_OAL_ENGINE_DEBUG export mechanism in OALClassGeneratorV2.
  */
 @Slf4j
 public class OALClassExporter {
@@ -129,8 +136,31 @@ public class OALClassExporter {
         writeManifest(metaInf.resolve("oal-dispatcher-classes.txt"), dispatcherClasses);
         writeManifest(metaInf.resolve("oal-disabled-sources.txt"), disabledSources);
 
-        log.info("OAL Class Exporter: done - {} metrics, {} dispatchers, {} disabled sources",
+        log.info("OAL Class Exporter: {} metrics, {} dispatchers, {} disabled sources",
             metricsClasses.size(), dispatcherClasses.size(), disabledSources.size());
+
+        // ---- Annotation & interface scanning for hardcoded classes ----
+        Path annotationScanDir = metaInf.resolve("annotation-scan");
+        Files.createDirectories(annotationScanDir);
+
+        ImmutableSet<ClassPath.ClassInfo> allClasses = ClassPath
+            .from(OALClassExporter.class.getClassLoader())
+            .getTopLevelClassesRecursive("org.apache.skywalking");
+
+        writeManifest(annotationScanDir.resolve("ScopeDeclaration.txt"),
+            scanAnnotation(allClasses, ScopeDeclaration.class));
+        writeManifest(annotationScanDir.resolve("Stream.txt"),
+            scanAnnotation(allClasses, org.apache.skywalking.oap.server.core.analysis.Stream.class));
+        writeManifest(annotationScanDir.resolve("Disable.txt"),
+            scanAnnotation(allClasses, Disable.class));
+        writeManifest(annotationScanDir.resolve("MultipleDisable.txt"),
+            scanAnnotation(allClasses, MultipleDisable.class));
+        writeManifest(annotationScanDir.resolve("SourceDispatcher.txt"),
+            scanInterface(allClasses, SourceDispatcher.class));
+        writeManifest(annotationScanDir.resolve("ISourceDecorator.txt"),
+            scanInterface(allClasses, ISourceDecorator.class));
+
+        log.info("OAL Class Exporter: done");
     }
 
     /**
@@ -192,6 +222,53 @@ public class OALClassExporter {
         Set<String> disabledSet = (Set<String>) field.get(DisableRegister.INSTANCE);
         List<String> result = new ArrayList<>(disabledSet);
         Collections.sort(result);
+        return result;
+    }
+
+    /**
+     * Scan for classes annotated with the given annotation type.
+     */
+    private static List<String> scanAnnotation(
+        ImmutableSet<ClassPath.ClassInfo> allClasses,
+        Class<? extends Annotation> annotationType) {
+
+        List<String> result = new ArrayList<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            try {
+                Class<?> aClass = classInfo.load();
+                if (aClass.isAnnotationPresent(annotationType)) {
+                    result.add(aClass.getName());
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+                // Some classes may fail to load due to missing optional dependencies
+            }
+        }
+        Collections.sort(result);
+        log.info("Scanned @{}: {} classes", annotationType.getSimpleName(), result.size());
+        return result;
+    }
+
+    /**
+     * Scan for concrete classes implementing the given interface.
+     */
+    private static List<String> scanInterface(
+        ImmutableSet<ClassPath.ClassInfo> allClasses, Class<?> interfaceType) {
+
+        List<String> result = new ArrayList<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            try {
+                Class<?> aClass = classInfo.load();
+                if (!aClass.isInterface()
+                    && !Modifier.isAbstract(aClass.getModifiers())
+                    && interfaceType.isAssignableFrom(aClass)) {
+                    result.add(aClass.getName());
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+                // Some classes may fail to load due to missing optional dependencies
+            }
+        }
+        Collections.sort(result);
+        log.info("Scanned {}: {} classes", interfaceType.getSimpleName(), result.size());
         return result;
     }
 

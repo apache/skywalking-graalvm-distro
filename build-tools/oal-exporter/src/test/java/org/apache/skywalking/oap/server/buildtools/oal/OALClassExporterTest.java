@@ -126,5 +126,31 @@ class OALClassExporterTest {
         // Verify disabled sources manifest exists (may be empty when all disable() calls are commented out)
         Path disabledManifest = tempDir.resolve("META-INF/oal-disabled-sources.txt");
         assertTrue(Files.exists(disabledManifest), "disabled sources manifest should exist");
+
+        // Verify annotation scan manifests
+        Path annotationScanDir = tempDir.resolve("META-INF/annotation-scan");
+        assertTrue(Files.isDirectory(annotationScanDir), "annotation-scan directory should exist");
+
+        assertManifestNotEmpty(annotationScanDir, "ScopeDeclaration.txt");
+        assertManifestNotEmpty(annotationScanDir, "Stream.txt");
+        assertManifestNotEmpty(annotationScanDir, "SourceDispatcher.txt");
+        assertManifestNotEmpty(annotationScanDir, "ISourceDecorator.txt");
+
+        // Disable/MultipleDisable manifests exist but may be empty (no classes use these annotations currently)
+        assertTrue(
+            Files.exists(annotationScanDir.resolve("Disable.txt")),
+            "Disable manifest should exist"
+        );
+        assertTrue(
+            Files.exists(annotationScanDir.resolve("MultipleDisable.txt")),
+            "MultipleDisable manifest should exist"
+        );
+    }
+
+    private void assertManifestNotEmpty(Path dir, String fileName) throws Exception {
+        Path manifest = dir.resolve(fileName);
+        assertTrue(Files.exists(manifest), fileName + " should exist");
+        List<String> lines = Files.readAllLines(manifest);
+        assertFalse(lines.isEmpty(), fileName + " should not be empty");
     }
 }
