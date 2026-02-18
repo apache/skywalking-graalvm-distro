@@ -1,0 +1,407 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one or more
+  ~ contributor license agreements.  See the NOTICE file distributed with
+  ~ this work for additional information regarding copyright ownership.
+  ~ The ASF licenses this file to You under the Apache License, Version 2.0
+  ~ (the "License"); you may not use this file except in compliance with
+  ~ the License.  You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.apache.skywalking</groupId>
+    <artifactId>skywalking-graalvm-distro</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>SkyWalking GraalVM Distro</name>
+    <description>GraalVM native-image distribution of Apache SkyWalking OAP server</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>25</maven.compiler.release>
+        <!-- Injected by Makefile from skywalking submodule's <revision> property.
+             Do not hardcode — always build via `make`. -->
+        <skywalking.version>10.4.0-SNAPSHOT</skywalking.version>
+        <graalvm.version>25.0.0</graalvm.version>
+        <lombok.version>1.18.40</lombok.version>
+        <maven-checkstyle-plugin.version>3.1.0</maven-checkstyle-plugin.version>
+        <checkstyle.version>6.18</checkstyle.version>
+        <checkstyle.fails.on.error>true</checkstyle.fails.on.error>
+        <junit.version>5.9.2</junit.version>
+    </properties>
+
+    <modules>
+        <module>build-tools</module>
+        <module>oap-graalvm-server</module>
+        <module>oap-graalvm-native</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Storage: BanyanDB -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>storage-banyandb-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Cluster: Standalone -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>cluster-standalone-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <!-- Cluster: Kubernetes -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>cluster-kubernetes-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Configuration: Kubernetes -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>configuration-k8s-configmap</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Core -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-core</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-module</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-util</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>oal-rt</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>mqe-rt</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Analyzers -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>agent-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>meter-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>log-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>event-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Receivers -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-sharing-server-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-trace-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-management-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-jvm-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-mesh-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-meter-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-browser-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-log-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-event-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-profile-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-clr-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-ebpf-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-async-profiler-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-pprof-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-telegraf-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-zabbix-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>zipkin-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>envoy-metrics-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>otel-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>configuration-discovery-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>aws-firehose-receiver</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Fetchers -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>kafka-fetcher-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>cilium-fetcher-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Query -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>query-graphql-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>promql-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>logql-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>zipkin-query-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>status-query-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Alarm -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-alarm-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Telemetry -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>telemetry-prometheus</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Exporter -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>exporter</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Health Checker -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-health-checker</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- AI Pipeline -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>ai-pipeline</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- GraalVM SDK -->
+            <dependency>
+                <groupId>org.graalvm.sdk</groupId>
+                <artifactId>nativeimage</artifactId>
+                <version>${graalvm.version}</version>
+            </dependency>
+
+            <!-- Server Starter (for ApplicationConfigLoader) -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-starter</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
+            <!-- Distro internal modules -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>oap-graalvm-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Lombok -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- Test -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${maven-checkstyle-plugin.version}</version>
+                <configuration>
+                    <configLocation>${maven.multiModuleProjectDirectory}/apm-checkstyle/checkStyle.xml</configLocation>
+                    <encoding>UTF-8</encoding>
+                    <consoleOutput>true</consoleOutput>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                    <failOnViolation>${checkstyle.fails.on.error}</failOnViolation>
+                    <sourceDirectories>
+                        <sourceDirectory>${project.build.sourceDirectory}</sourceDirectory>
+                        <sourceDirectory>${project.build.testSourceDirectory}</sourceDirectory>
+                    </sourceDirectories>
+                    <resourceIncludes>
+                        **/*.properties,
+                        **/*.sh,
+                        **/*.bat,
+                        **/*.yml,
+                        **/*.yaml,
+                        **/*.xml
+                    </resourceIncludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>validate</id>
+                        <phase>process-sources</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
