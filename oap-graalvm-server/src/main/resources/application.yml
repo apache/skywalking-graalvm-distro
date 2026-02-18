@@ -1,0 +1,395 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# =============================================================================
+# SkyWalking GraalVM Distro — application.yml
+#
+# Fixed provider selection:
+#   cluster     -> kubernetes
+#   storage     -> banyandb
+#   configuration -> k8s-configmap
+#   telemetry   -> prometheus
+#   query       -> graphql
+# =============================================================================
+
+cluster:
+  selector: ${SW_CLUSTER:standalone}
+  standalone:
+  kubernetes:
+    namespace: ${SW_CLUSTER_K8S_NAMESPACE:default}
+    labelSelector: ${SW_CLUSTER_K8S_LABEL:app=collector,release=skywalking}
+    uidEnvName: ${SW_CLUSTER_K8S_UID:SKYWALKING_COLLECTOR_UID}
+
+core:
+  selector: ${SW_CORE:default}
+  default:
+    role: ${SW_CORE_ROLE:Mixed} # Mixed/Receiver/Aggregator
+    restHost: ${SW_CORE_REST_HOST:0.0.0.0}
+    restPort: ${SW_CORE_REST_PORT:12800}
+    restContextPath: ${SW_CORE_REST_CONTEXT_PATH:/}
+    restIdleTimeOut: ${SW_CORE_REST_IDLE_TIMEOUT:30000}
+    restAcceptQueueSize: ${SW_CORE_REST_QUEUE_SIZE:0}
+    httpMaxRequestHeaderSize: ${SW_CORE_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    gRPCHost: ${SW_CORE_GRPC_HOST:0.0.0.0}
+    gRPCPort: ${SW_CORE_GRPC_PORT:11800}
+    maxConcurrentCallsPerConnection: ${SW_CORE_GRPC_MAX_CONCURRENT_CALL:0}
+    maxMessageSize: ${SW_CORE_GRPC_MAX_MESSAGE_SIZE:52428800} #50MB
+    gRPCThreadPoolSize: ${SW_CORE_GRPC_THREAD_POOL_SIZE:-1}
+    gRPCSslEnabled: ${SW_CORE_GRPC_SSL_ENABLED:false}
+    gRPCSslKeyPath: ${SW_CORE_GRPC_SSL_KEY_PATH:""}
+    gRPCSslCertChainPath: ${SW_CORE_GRPC_SSL_CERT_CHAIN_PATH:""}
+    gRPCSslTrustedCAPath: ${SW_CORE_GRPC_SSL_TRUSTED_CA_PATH:""}
+    downsampling:
+      - Hour
+      - Day
+    enableDataKeeperExecutor: ${SW_CORE_ENABLE_DATA_KEEPER_EXECUTOR:true}
+    dataKeeperExecutePeriod: ${SW_CORE_DATA_KEEPER_EXECUTE_PERIOD:5}
+    recordDataTTL: ${SW_CORE_RECORD_DATA_TTL:3}
+    metricsDataTTL: ${SW_CORE_METRICS_DATA_TTL:7}
+    l1FlushPeriod: ${SW_CORE_L1_AGGREGATION_FLUSH_PERIOD:500}
+    storageSessionTimeout: ${SW_CORE_STORAGE_SESSION_TIMEOUT:70000}
+    persistentPeriod: ${SW_CORE_PERSISTENT_PERIOD:25}
+    topNReportPeriod: ${SW_CORE_TOPN_REPORT_PERIOD:10}
+    activeExtraModelColumns: ${SW_CORE_ACTIVE_EXTRA_MODEL_COLUMNS:false}
+    serviceNameMaxLength: ${SW_SERVICE_NAME_MAX_LENGTH:70}
+    serviceCacheRefreshInterval: ${SW_SERVICE_CACHE_REFRESH_INTERVAL:10}
+    instanceNameMaxLength: ${SW_INSTANCE_NAME_MAX_LENGTH:70}
+    endpointNameMaxLength: ${SW_ENDPOINT_NAME_MAX_LENGTH:150}
+    searchableTracesTags: ${SW_SEARCHABLE_TAG_KEYS:http.method,http.status_code,rpc.status_code,db.type,db.instance,mq.queue,mq.topic,mq.broker}
+    searchableLogsTags: ${SW_SEARCHABLE_LOGS_TAG_KEYS:level,http.status_code}
+    searchableAlarmTags: ${SW_SEARCHABLE_ALARM_TAG_KEYS:level}
+    autocompleteTagKeysQueryMaxSize: ${SW_AUTOCOMPLETE_TAG_KEYS_QUERY_MAX_SIZE:100}
+    autocompleteTagValuesQueryMaxSize: ${SW_AUTOCOMPLETE_TAG_VALUES_QUERY_MAX_SIZE:100}
+    prepareThreads: ${SW_CORE_PREPARE_THREADS:2}
+    enableEndpointNameGroupingByOpenapi: ${SW_CORE_ENABLE_ENDPOINT_NAME_GROUPING_BY_OPENAPI:true}
+    syncPeriodHttpUriRecognitionPattern: ${SW_CORE_SYNC_PERIOD_HTTP_URI_RECOGNITION_PATTERN:10}
+    trainingPeriodHttpUriRecognitionPattern: ${SW_CORE_TRAINING_PERIOD_HTTP_URI_RECOGNITION_PATTERN:60}
+    maxHttpUrisNumberPerService: ${SW_CORE_MAX_HTTP_URIS_NUMBER_PER_SVR:3000}
+    enableHierarchy: ${SW_CORE_ENABLE_HIERARCHY:true}
+    maxHeapMemoryUsagePercent: ${SW_CORE_MAX_HEAP_MEMORY_USAGE_PERCENT:96}
+    maxDirectMemoryUsage: ${SW_CORE_MAX_DIRECT_MEMORY_USAGE:-1}
+
+storage:
+  selector: ${SW_STORAGE:banyandb}
+  banyandb:
+
+agent-analyzer:
+  selector: ${SW_AGENT_ANALYZER:default}
+  default:
+    traceSamplingPolicySettingsFile: ${SW_TRACE_SAMPLING_POLICY_SETTINGS_FILE:trace-sampling-policy-settings.yml}
+    slowDBAccessThreshold: ${SW_SLOW_DB_THRESHOLD:default:200,mongodb:100}
+    forceSampleErrorSegment: ${SW_FORCE_SAMPLE_ERROR_SEGMENT:true}
+    segmentStatusAnalysisStrategy: ${SW_SEGMENT_STATUS_ANALYSIS_STRATEGY:FROM_SPAN_STATUS}
+    noUpstreamRealAddressAgents: ${SW_NO_UPSTREAM_REAL_ADDRESS:6000,9000}
+    meterAnalyzerActiveFiles: ${SW_METER_ANALYZER_ACTIVE_FILES:datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime}
+    slowCacheReadThreshold: ${SW_SLOW_CACHE_SLOW_READ_THRESHOLD:default:20,redis:10}
+    slowCacheWriteThreshold: ${SW_SLOW_CACHE_SLOW_WRITE_THRESHOLD:default:20,redis:10}
+
+log-analyzer:
+  selector: ${SW_LOG_ANALYZER:default}
+  default:
+    lalFiles: ${SW_LOG_LAL_FILES:envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,default}
+    malFiles: ${SW_LOG_MAL_FILES:"nginx"}
+
+event-analyzer:
+  selector: ${SW_EVENT_ANALYZER:default}
+  default:
+
+receiver-sharing-server:
+  selector: ${SW_RECEIVER_SHARING_SERVER:default}
+  default:
+    restHost: ${SW_RECEIVER_SHARING_REST_HOST:0.0.0.0}
+    restPort: ${SW_RECEIVER_SHARING_REST_PORT:0}
+    restContextPath: ${SW_RECEIVER_SHARING_REST_CONTEXT_PATH:/}
+    restIdleTimeOut: ${SW_RECEIVER_SHARING_REST_IDLE_TIMEOUT:30000}
+    restAcceptQueueSize: ${SW_RECEIVER_SHARING_REST_QUEUE_SIZE:0}
+    httpMaxRequestHeaderSize: ${SW_RECEIVER_SHARING_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    gRPCHost: ${SW_RECEIVER_GRPC_HOST:0.0.0.0}
+    gRPCPort: ${SW_RECEIVER_GRPC_PORT:0}
+    maxConcurrentCallsPerConnection: ${SW_RECEIVER_GRPC_MAX_CONCURRENT_CALL:0}
+    maxMessageSize: ${SW_RECEIVER_GRPC_MAX_MESSAGE_SIZE:52428800} #50MB
+    gRPCThreadPoolSize: ${SW_RECEIVER_GRPC_THREAD_POOL_SIZE:0}
+    gRPCSslEnabled: ${SW_RECEIVER_GRPC_SSL_ENABLED:false}
+    gRPCSslKeyPath: ${SW_RECEIVER_GRPC_SSL_KEY_PATH:""}
+    gRPCSslCertChainPath: ${SW_RECEIVER_GRPC_SSL_CERT_CHAIN_PATH:""}
+    gRPCSslTrustedCAsPath: ${SW_RECEIVER_GRPC_SSL_TRUSTED_CAS_PATH:""}
+    authentication: ${SW_AUTHENTICATION:""}
+
+receiver-register:
+  selector: ${SW_RECEIVER_REGISTER:default}
+  default:
+
+receiver-trace:
+  selector: ${SW_RECEIVER_TRACE:default}
+  default:
+
+receiver-jvm:
+  selector: ${SW_RECEIVER_JVM:default}
+  default:
+
+receiver-clr:
+  selector: ${SW_RECEIVER_CLR:default}
+  default:
+
+receiver-profile:
+  selector: ${SW_RECEIVER_PROFILE:default}
+  default:
+
+receiver-async-profiler:
+  selector: ${SW_RECEIVER_ASYNC_PROFILER:default}
+  default:
+    jfrMaxSize: ${SW_RECEIVER_ASYNC_PROFILER_JFR_MAX_SIZE:31457280}
+    memoryParserEnabled: ${SW_RECEIVER_ASYNC_PROFILER_MEMORY_PARSER_ENABLED:true}
+
+receiver-pprof:
+  selector: ${SW_RECEIVER_PPROF:default}
+  default:
+    pprofMaxSize: ${SW_RECEIVER_PPROF_MAX_SIZE:31457280}
+    memoryParserEnabled: ${SW_RECEIVER_PPROF_MEMORY_PARSER_ENABLED:true}
+
+receiver-zabbix:
+  selector: ${SW_RECEIVER_ZABBIX:-}
+  default:
+    port: ${SW_RECEIVER_ZABBIX_PORT:10051}
+    host: ${SW_RECEIVER_ZABBIX_HOST:0.0.0.0}
+    activeFiles: ${SW_RECEIVER_ZABBIX_ACTIVE_FILES:agent}
+
+service-mesh:
+  selector: ${SW_SERVICE_MESH:default}
+  default:
+
+envoy-metric:
+  selector: ${SW_ENVOY_METRIC:default}
+  default:
+    acceptMetricsService: ${SW_ENVOY_METRIC_SERVICE:true}
+    enabledEnvoyMetricsRules: ${SW_ENVOY_METRIC_ENABLED_RULES:"envoy,envoy-svc-relation"}
+    alsHTTPAnalysis: ${SW_ENVOY_METRIC_ALS_HTTP_ANALYSIS:""}
+    alsTCPAnalysis: ${SW_ENVOY_METRIC_ALS_TCP_ANALYSIS:""}
+    k8sServiceNameRule: ${K8S_SERVICE_NAME_RULE:"${pod.metadata.labels.(service.istio.io/canonical-name)}.${pod.metadata.namespace}"}
+    istioServiceNameRule: ${ISTIO_SERVICE_NAME_RULE:"${serviceEntry.metadata.name}.${serviceEntry.metadata.namespace}"}
+    istioServiceEntryIgnoredNamespaces: ${SW_ISTIO_SERVICE_ENTRY_IGNORED_NAMESPACES:""}
+    gRPCHost: ${SW_ALS_GRPC_HOST:0.0.0.0}
+    gRPCPort: ${SW_ALS_GRPC_PORT:0}
+    maxConcurrentCallsPerConnection: ${SW_ALS_GRPC_MAX_CONCURRENT_CALL:0}
+    maxMessageSize: ${SW_ALS_GRPC_MAX_MESSAGE_SIZE:0}
+    gRPCThreadPoolSize: ${SW_ALS_GRPC_THREAD_POOL_SIZE:0}
+    gRPCSslEnabled: ${SW_ALS_GRPC_SSL_ENABLED:false}
+    gRPCSslKeyPath: ${SW_ALS_GRPC_SSL_KEY_PATH:""}
+    gRPCSslCertChainPath: ${SW_ALS_GRPC_SSL_CERT_CHAIN_PATH:""}
+    gRPCSslTrustedCAsPath: ${SW_ALS_GRPC_SSL_TRUSTED_CAS_PATH:""}
+
+kafka-fetcher:
+  selector: ${SW_KAFKA_FETCHER:-}
+  default:
+    bootstrapServers: ${SW_KAFKA_FETCHER_SERVERS:localhost:9092}
+    namespace: ${SW_NAMESPACE:""}
+    partitions: ${SW_KAFKA_FETCHER_PARTITIONS:3}
+    replicationFactor: ${SW_KAFKA_FETCHER_PARTITIONS_FACTOR:2}
+    enableNativeProtoLog: ${SW_KAFKA_FETCHER_ENABLE_NATIVE_PROTO_LOG:true}
+    enableNativeJsonLog: ${SW_KAFKA_FETCHER_ENABLE_NATIVE_JSON_LOG:true}
+    consumers: ${SW_KAFKA_FETCHER_CONSUMERS:1}
+    kafkaHandlerThreadPoolSize: ${SW_KAFKA_HANDLER_THREAD_POOL_SIZE:-1}
+    kafkaHandlerThreadPoolQueueSize: ${SW_KAFKA_HANDLER_THREAD_POOL_QUEUE_SIZE:-1}
+
+cilium-fetcher:
+  selector: ${SW_CILIUM_FETCHER:-}
+  default:
+    peerHost: ${SW_CILIUM_FETCHER_PEER_HOST:hubble-peer.kube-system.svc.cluster.local}
+    peerPort: ${SW_CILIUM_FETCHER_PEER_PORT:80}
+    fetchFailureRetrySecond: ${SW_CILIUM_FETCHER_FETCH_FAILURE_RETRY_SECOND:10}
+    sslConnection: ${SW_CILIUM_FETCHER_SSL_CONNECTION:false}
+    sslPrivateKeyFile: ${SW_CILIUM_FETCHER_PRIVATE_KEY_FILE_PATH:}
+    sslCertChainFile: ${SW_CILIUM_FETCHER_CERT_CHAIN_FILE_PATH:}
+    sslCaFile: ${SW_CILIUM_FETCHER_CA_FILE_PATH:}
+    convertClientAsServerTraffic: ${SW_CILIUM_FETCHER_CONVERT_CLIENT_AS_SERVER_TRAFFIC:true}
+
+receiver-meter:
+  selector: ${SW_RECEIVER_METER:default}
+  default:
+
+receiver-otel:
+  selector: ${SW_OTEL_RECEIVER:default}
+  default:
+    enabledHandlers: ${SW_OTEL_RECEIVER_ENABLED_HANDLERS:"otlp-metrics,otlp-logs"}
+    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,banyandb/*"}
+
+receiver-zipkin:
+  selector: ${SW_RECEIVER_ZIPKIN:-}
+  default:
+    searchableTracesTags: ${SW_ZIPKIN_SEARCHABLE_TAG_KEYS:http.method}
+    sampleRate: ${SW_ZIPKIN_SAMPLE_RATE:10000}
+    maxSpansPerSecond: ${SW_ZIPKIN_MAX_SPANS_PER_SECOND:0}
+    enableHttpCollector: ${SW_ZIPKIN_HTTP_COLLECTOR_ENABLED:true}
+    restHost: ${SW_RECEIVER_ZIPKIN_REST_HOST:0.0.0.0}
+    restPort: ${SW_RECEIVER_ZIPKIN_REST_PORT:9411}
+    restContextPath: ${SW_RECEIVER_ZIPKIN_REST_CONTEXT_PATH:/}
+    restIdleTimeOut: ${SW_RECEIVER_ZIPKIN_REST_IDLE_TIMEOUT:30000}
+    restAcceptQueueSize: ${SW_RECEIVER_ZIPKIN_REST_QUEUE_SIZE:0}
+    enableKafkaCollector: ${SW_ZIPKIN_KAFKA_COLLECTOR_ENABLED:false}
+    kafkaBootstrapServers: ${SW_ZIPKIN_KAFKA_SERVERS:localhost:9092}
+    kafkaGroupId: ${SW_ZIPKIN_KAFKA_GROUP_ID:zipkin}
+    kafkaTopic: ${SW_ZIPKIN_KAFKA_TOPIC:zipkin}
+    kafkaConsumerConfig: ${SW_ZIPKIN_KAFKA_CONSUMER_CONFIG:"{\"auto.offset.reset\":\"earliest\",\"enable.auto.commit\":true}"}
+    kafkaConsumers: ${SW_ZIPKIN_KAFKA_CONSUMERS:1}
+    kafkaHandlerThreadPoolSize: ${SW_ZIPKIN_KAFKA_HANDLER_THREAD_POOL_SIZE:-1}
+    kafkaHandlerThreadPoolQueueSize: ${SW_ZIPKIN_KAFKA_HANDLER_THREAD_POOL_QUEUE_SIZE:-1}
+
+receiver-browser:
+  selector: ${SW_RECEIVER_BROWSER:default}
+  default:
+    sampleRate: ${SW_RECEIVER_BROWSER_SAMPLE_RATE:10000}
+
+receiver-log:
+  selector: ${SW_RECEIVER_LOG:default}
+  default:
+
+query:
+  selector: ${SW_QUERY:graphql}
+  graphql:
+    enableLogTestTool: ${SW_QUERY_GRAPHQL_ENABLE_LOG_TEST_TOOL:false}
+    maxQueryComplexity: ${SW_QUERY_MAX_QUERY_COMPLEXITY:3000}
+    enableUpdateUITemplate: ${SW_ENABLE_UPDATE_UI_TEMPLATE:false}
+    enableOnDemandPodLog: ${SW_ENABLE_ON_DEMAND_POD_LOG:false}
+
+query-zipkin:
+  selector: ${SW_QUERY_ZIPKIN:-}
+  default:
+    restHost: ${SW_QUERY_ZIPKIN_REST_HOST:0.0.0.0}
+    restPort: ${SW_QUERY_ZIPKIN_REST_PORT:9412}
+    restContextPath: ${SW_QUERY_ZIPKIN_REST_CONTEXT_PATH:/zipkin}
+    restIdleTimeOut: ${SW_QUERY_ZIPKIN_REST_IDLE_TIMEOUT:30000}
+    restAcceptQueueSize: ${SW_QUERY_ZIPKIN_REST_QUEUE_SIZE:0}
+    lookback: ${SW_QUERY_ZIPKIN_LOOKBACK:86400000}
+    namesMaxAge: ${SW_QUERY_ZIPKIN_NAMES_MAX_AGE:300}
+    uiQueryLimit: ${SW_QUERY_ZIPKIN_UI_QUERY_LIMIT:10}
+    uiDefaultLookback: ${SW_QUERY_ZIPKIN_UI_DEFAULT_LOOKBACK:900000}
+
+promql:
+  selector: ${SW_PROMQL:default}
+  default:
+    restHost: ${SW_PROMQL_REST_HOST:0.0.0.0}
+    restPort: ${SW_PROMQL_REST_PORT:9090}
+    restContextPath: ${SW_PROMQL_REST_CONTEXT_PATH:/}
+    restIdleTimeOut: ${SW_PROMQL_REST_IDLE_TIMEOUT:30000}
+    restAcceptQueueSize: ${SW_PROMQL_REST_QUEUE_SIZE:0}
+    buildInfoVersion: ${SW_PROMQL_BUILD_INFO_VERSION:"2.45.0"}
+    buildInfoRevision: ${SW_PROMQL_BUILD_INFO_REVISION:""}
+    buildInfoBranch: ${SW_PROMQL_BUILD_INFO_BRANCH:""}
+    buildInfoBuildUser: ${SW_PROMQL_BUILD_INFO_BUILD_USER:""}
+    buildInfoBuildDate: ${SW_PROMQL_BUILD_INFO_BUILD_DATE:""}
+    buildInfoGoVersion: ${SW_PROMQL_BUILD_INFO_GO_VERSION:""}
+
+logql:
+  selector: ${SW_LOGQL:default}
+  default:
+    restHost: ${SW_LOGQL_REST_HOST:0.0.0.0}
+    restPort: ${SW_LOGQL_REST_PORT:3100}
+    restContextPath: ${SW_LOGQL_REST_CONTEXT_PATH:/}
+    restIdleTimeOut: ${SW_LOGQL_REST_IDLE_TIMEOUT:30000}
+    restAcceptQueueSize: ${SW_LOGQL_REST_QUEUE_SIZE:0}
+
+alarm:
+  selector: ${SW_ALARM:default}
+  default:
+
+telemetry:
+  selector: ${SW_TELEMETRY:prometheus}
+  prometheus:
+    host: ${SW_TELEMETRY_PROMETHEUS_HOST:0.0.0.0}
+    port: ${SW_TELEMETRY_PROMETHEUS_PORT:1234}
+    sslEnabled: ${SW_TELEMETRY_PROMETHEUS_SSL_ENABLED:false}
+    sslKeyPath: ${SW_TELEMETRY_PROMETHEUS_SSL_KEY_PATH:""}
+    sslCertChainPath: ${SW_TELEMETRY_PROMETHEUS_SSL_CERT_CHAIN_PATH:""}
+
+configuration:
+  selector: ${SW_CONFIGURATION:k8s-configmap}
+  k8s-configmap:
+    period: ${SW_CONFIG_CONFIGMAP_PERIOD:60}
+    namespace: ${SW_CLUSTER_K8S_NAMESPACE:default}
+    labelSelector: ${SW_CLUSTER_K8S_LABEL:app=collector,release=skywalking}
+
+exporter:
+  selector: ${SW_EXPORTER:-}
+  default:
+    enableGRPCMetrics: ${SW_EXPORTER_ENABLE_GRPC_METRICS:false}
+    gRPCTargetHost: ${SW_EXPORTER_GRPC_HOST:127.0.0.1}
+    gRPCTargetPort: ${SW_EXPORTER_GRPC_PORT:9870}
+    enableKafkaTrace: ${SW_EXPORTER_ENABLE_KAFKA_TRACE:false}
+    enableKafkaLog: ${SW_EXPORTER_ENABLE_KAFKA_LOG:false}
+    kafkaBootstrapServers: ${SW_EXPORTER_KAFKA_SERVERS:localhost:9092}
+    kafkaProducerConfig: ${SW_EXPORTER_KAFKA_PRODUCER_CONFIG:""}
+    kafkaTopicTrace: ${SW_EXPORTER_KAFKA_TOPIC_TRACE:skywalking-export-trace}
+    kafkaTopicLog: ${SW_EXPORTER_KAFKA_TOPIC_LOG:skywalking-export-log}
+    exportErrorStatusTraceOnly: ${SW_EXPORTER_KAFKA_TRACE_FILTER_ERROR:false}
+
+health-checker:
+  selector: ${SW_HEALTH_CHECKER:default}
+  default:
+    checkIntervalSeconds: ${SW_HEALTH_CHECKER_INTERVAL_SECONDS:30}
+
+status-query:
+  selector: ${SW_STATUS_QUERY:default}
+  default:
+    keywords4MaskingSecretsOfConfig: ${SW_DEBUGGING_QUERY_KEYWORDS_FOR_MASKING_SECRETS:user,password,token,accessKey,secretKey,authentication}
+
+configuration-discovery:
+  selector: ${SW_CONFIGURATION_DISCOVERY:default}
+  default:
+    disableMessageDigest: ${SW_DISABLE_MESSAGE_DIGEST:false}
+
+receiver-event:
+  selector: ${SW_RECEIVER_EVENT:default}
+  default:
+
+receiver-ebpf:
+  selector: ${SW_RECEIVER_EBPF:default}
+  default:
+    continuousPolicyCacheTimeout: ${SW_CONTINUOUS_POLICY_CACHE_TIMEOUT:60}
+    gRPCHost: ${SW_EBPF_GRPC_HOST:0.0.0.0}
+    gRPCPort: ${SW_EBPF_GRPC_PORT:0}
+    maxConcurrentCallsPerConnection: ${SW_EBPF_GRPC_MAX_CONCURRENT_CALL:0}
+    maxMessageSize: ${SW_EBPF_ALS_GRPC_MAX_MESSAGE_SIZE:0}
+    gRPCThreadPoolSize: ${SW_EBPF_GRPC_THREAD_POOL_SIZE:0}
+    gRPCSslEnabled: ${SW_EBPF_GRPC_SSL_ENABLED:false}
+    gRPCSslKeyPath: ${SW_EBPF_GRPC_SSL_KEY_PATH:""}
+    gRPCSslCertChainPath: ${SW_EBPF_GRPC_SSL_CERT_CHAIN_PATH:""}
+    gRPCSslTrustedCAsPath: ${SW_EBPF_GRPC_SSL_TRUSTED_CAS_PATH:""}
+
+receiver-telegraf:
+  selector: ${SW_RECEIVER_TELEGRAF:default}
+  default:
+    activeFiles: ${SW_RECEIVER_TELEGRAF_ACTIVE_FILES:vm}
+
+aws-firehose:
+  selector: ${SW_RECEIVER_AWS_FIREHOSE:default}
+  default:
+    host: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_HOST:0.0.0.0}
+    port: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_PORT:12801}
+    contextPath: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_CONTEXT_PATH:/}
+    idleTimeOut: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_IDLE_TIME_OUT:30000}
+    acceptQueueSize: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_ACCEPT_QUEUE_SIZE:0}
+    maxRequestHeaderSize: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    firehoseAccessKey: ${SW_RECEIVER_AWS_FIREHOSE_ACCESS_KEY:}
+    enableTLS: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_ENABLE_TLS:false}
+    tlsKeyPath: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_TLS_KEY_PATH:}
+    tlsCertChainPath: ${SW_RECEIVER_AWS_FIREHOSE_HTTP_TLS_CERT_CHAIN_PATH:}
+
+ai-pipeline:
+  selector: ${SW_AI_PIPELINE:default}
+  default:
+    uriRecognitionServerAddr: ${SW_AI_PIPELINE_URI_RECOGNITION_SERVER_ADDR:}
+    uriRecognitionServerPort: ${SW_AI_PIPELINE_URI_RECOGNITION_SERVER_PORT:17128}
+    baselineServerAddr: ${SW_API_PIPELINE_BASELINE_SERVICE_HOST:}
+    baselineServerPort: ${SW_API_PIPELINE_BASELINE_SERVICE_PORT:18080}

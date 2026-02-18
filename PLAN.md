@@ -82,7 +82,7 @@ Run classpath scanning during build-time pre-compilation. Verify all metrics/log
 ### Approach (this repo)
 1. **New module manager**: Directly constructs chosen `ModuleDefine`/`ModuleProvider` — no SPI
 2. **Simplified config file**: Only knobs for selected providers
-3. **Config loading**: Register known `ModuleConfig` classes for GraalVM reflection. Existing `copyProperties` works in native image with field registration.
+3. **Config loading**: **No reflection.** At build time, read `application.yml` + scan `ModuleConfig` subclass fields → generate Java code that directly sets config fields (e.g. `config.restPort = 12800;`). Eliminates `Field.setAccessible`/`field.set` and the need for `reflect-config.json` for config classes.
 
 ---
 
@@ -90,7 +90,7 @@ Run classpath scanning during build-time pre-compilation. Verify all metrics/log
 
 | Risk | Mitigation |
 |------|------------|
-| **Reflection** (annotations, OAL enricher) | Captured during pre-compilation; `reflect-config.json` |
+| **Reflection** (annotations, OAL enricher — not config loading) | Captured during pre-compilation; `reflect-config.json`. Config loading uses generated code, no reflection. |
 | **gRPC 1.70.0 / Netty 4.2.9** | GraalVM reachability metadata repo, Netty substitutions |
 | **Resource loading** (`ResourceUtils`, config files) | `resource-config.json` via tracing agent |
 | **Log4j2** | GraalVM metadata, disable JNDI |
