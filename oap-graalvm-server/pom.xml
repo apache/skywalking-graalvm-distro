@@ -241,10 +241,25 @@
             <artifactId>server-starter</artifactId>
         </dependency>
 
+        <!-- Pre-compiled OAL classes + annotation manifests from build-time export -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>oal-exporter</artifactId>
+            <version>${project.version}</version>
+            <classifier>generated</classifier>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>
