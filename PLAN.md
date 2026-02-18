@@ -37,40 +37,54 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 
 ---
 
-## Challenge 1: OAL Runtime Class Generation (Javassist)
+## Challenge 1: OAL Runtime Class Generation (Javassist) — SOLVED
 
 ### What Happens
 OAL V2 generates metrics/builder/dispatcher classes at startup via Javassist (`ClassPool.makeClass()` → `CtClass.toClass()`). Already has `writeGeneratedFile()` for debug export.
 
 ### Approach (this repo)
-All `.oal` scripts are known. Run OAL engine at build time, export `.class` files, load them directly in native-image mode.
+All `.oal` scripts are known. Run OAL engine at build time, export `.class` files, load them directly at runtime from manifests. See [OAL-IMMIGRATION.md](OAL-IMMIGRATION.md) for details.
+
+### What Was Built
+- `OALClassExporter` processes all 9 OAL defines, exports ~620 metrics classes, ~620 builder classes, ~45 dispatchers
+- 3 manifest files: `oal-metrics-classes.txt`, `oal-dispatcher-classes.txt`, `oal-disabled-sources.txt`
+- Same-FQCN replacement `OALEngineLoaderService` loads pre-compiled classes from manifests instead of running Javassist
 
 ### Upstream Changes Needed
-- Potentially expose build-time class export as a stable API (currently debug-only)
+- None. Build-time class export works via existing debug API (`setOpenEngineDebug(true)` + `setGeneratedFilePath()`)
 
 ---
 
-## Challenge 2: MAL and LAL (Groovy)
+## Challenge 2: MAL and LAL (Groovy + Javassist)
 
 ### What Happens
-MAL uses `GroovyShell` + `Binding` for meter rules. LAL uses `GroovyShell` + `DelegatingScript` + `Closure` + AST customizers.
+- MAL uses `GroovyShell` + `DelegatingScript` for meter rule expressions (~1188 rules). Also, `MeterSystem.create()` uses Javassist to dynamically generate one meter subclass per metric rule.
+- LAL uses `GroovyShell` + `@CompileStatic` + `LALPrecompiledExtension` for log analysis scripts (10 rules).
 
 ### Approach (this repo)
-Groovy static compilation (`@CompileStatic`). Pre-compile all MAL/LAL rule files at build time, export `.class` files.
+Run full MAL/LAL initialization at build time via `build-tools/mal-compiler`. Export Javassist-generated `.class` files + compiled Groovy script bytecode. At runtime, load from manifests. See [MAL-IMMIGRATION.md](MAL-IMMIGRATION.md) for details.
+
+### Key finding: MAL cannot use @CompileStatic
+MAL expressions rely on `propertyMissing()` for sample name resolution and `ExpandoMetaClass` on `Number` for arithmetic operators — fundamentally dynamic Groovy features. Pre-compilation uses standard dynamic Groovy (same `CompilerConfiguration` as upstream). LAL already uses `@CompileStatic`.
 
 ### Risks
-- `@CompileStatic` may not cover all dynamic features (track and work around)
-- May need DSL adjustments (upstream PRs)
+- Dynamic Groovy MOP may not work in GraalVM native image (Phase 3 concern)
+- If `ExpandoMetaClass` fails in native image: fallback to upstream DSL changes
 
 ---
 
-## Challenge 3: Classpath Scanning (Guava ClassPath)
+## Challenge 3: Classpath Scanning (Guava ClassPath) — PARTIALLY SOLVED
 
 ### What Happens
 `ClassPath.from()` used in `SourceReceiverImpl.scan()`, `AnnotationScan`, `MeterSystem`, `DefaultMetricsFunctionRegistry`, `FilterMatchers`, `MetricsHolder`.
 
-### Approach (this repo)
-Run classpath scanning during build-time pre-compilation. Verify all metrics/log-processing classes are discovered. Export scan results as static class index. Native-image mode loads from index.
+### What Was Solved
+`AnnotationScan` and `SourceReceiverImpl` replaced with same-FQCN classes that read from build-time manifests. 6 annotation/interface manifests under `META-INF/annotation-scan/`: `ScopeDeclaration`, `Stream`, `Disable`, `MultipleDisable`, `SourceDispatcher`, `ISourceDecorator`.
+
+`DefaultMetricsFunctionRegistry`, `FilterMatchers`, `MetricsHolder` — these only run inside the OAL engine at build time, not at runtime. Automatically solved.
+
+### What Remains
+`MeterSystem` uses Guava `ClassPath.from()` to scan for meter function classes at runtime. This needs a manifest or build-time scan as part of MAL immigration.
 
 ---
 
@@ -83,6 +97,12 @@ Run classpath scanning during build-time pre-compilation. Verify all metrics/log
 1. **New module manager**: Directly constructs chosen `ModuleDefine`/`ModuleProvider` — no SPI
 2. **Simplified config file**: Only knobs for selected providers
 3. **Config loading**: **No reflection.** At build time, read `application.yml` + scan `ModuleConfig` subclass fields → generate Java code that directly sets config fields (e.g. `config.restPort = 12800;`). Eliminates `Field.setAccessible`/`field.set` and the need for `reflect-config.json` for config classes.
+
+### What Was Built (Phase 1)
+- `FixedModuleManager` — direct module/provider construction, no SPI
+- `ModuleWiringBridge` — wires all selected modules/providers
+- `GraalVMOAPServerStartUp` — entry point
+- `application.yml` — simplified config for selected providers
 
 ---
 
@@ -102,19 +122,26 @@ Run classpath scanning during build-time pre-compilation. Verify all metrics/log
 
 ## Proposed Phases
 
-### Phase 1: Build System Setup
-- [ ] Set up Maven + Makefile in this repo
-- [ ] Build skywalking submodule as a dependency
+### Phase 1: Build System Setup — COMPLETE
+- [x] Set up Maven + Makefile in this repo
+- [x] Build skywalking submodule as a dependency
 - [ ] Set up GraalVM JDK 25 in CI
-- [ ] Create a JVM-mode starter with fixed module wiring (validate approach before native-image)
-- [ ] Simplified config file for selected modules
+- [x] Create a JVM-mode starter with fixed module wiring (`FixedModuleManager` + `ModuleWiringBridge` + `GraalVMOAPServerStartUp`)
+- [x] Simplified config file for selected modules (`application.yml`)
 
-### Phase 2: Build-Time Pre-Compilation & Verification
-- [ ] Makefile/Maven step: run OAL engine → export `.class` files
-- [ ] Makefile/Maven step: static-compile MAL Groovy scripts → export `.class` files
-- [ ] Makefile/Maven step: static-compile LAL Groovy scripts → export `.class` files
-- [ ] Makefile/Maven step: run classpath scanning → export class index
-- [ ] Verify all metrics/log-processing classes are correctly discovered
+### Phase 2: Build-Time Pre-Compilation & Verification — IN PROGRESS
+
+**OAL immigration — COMPLETE:**
+- [x] OAL engine → export `.class` files (`OALClassExporter`, 9 defines, ~620 metrics, ~45 dispatchers)
+- [x] Classpath scanning → export class index (6 annotation/interface manifests in `oal-exporter`)
+- [x] Runtime registration from manifests (3 same-FQCN replacement classes: `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`)
+- [x] Verification tests (`OALClassExporterTest` — 3 tests, `PrecompiledRegistrationTest` — 12 tests)
+
+**Remaining:**
+- [ ] MAL Groovy pre-compilation (`build-tools/mal-compiler` skeleton exists)
+- [ ] LAL Groovy pre-compilation (can be part of mal-compiler)
+- [ ] `MeterSystem` classpath scan: uses Guava scanning for meter function classes — needs manifest or build-time scan (part of MAL immigration)
+- [ ] Config generator (`build-tools/config-generator` skeleton exists) — eliminate `Field.setAccessible` reflection in config loading
 - [ ] Package everything into native-image classpath
 
 ### Phase 3: Native Image Build
@@ -122,6 +149,7 @@ Run classpath scanning during build-time pre-compilation. Verify all metrics/log
 - [ ] Run tracing agent to capture reflection/resource/JNI metadata
 - [ ] Configure gRPC/Netty/Protobuf for native image
 - [ ] GraalVM Feature class for SkyWalking-specific registrations
+- [ ] `reflect-config.json` for OAL-generated classes (`Class.forName()` calls)
 - [ ] Get OAP server booting as native image with BanyanDB
 
 ### Phase 4: Harden & Test
@@ -135,6 +163,6 @@ Run classpath scanning during build-time pre-compilation. Verify all metrics/log
 ---
 
 ## Upstream Changes Tracker
-- [ ] OAL engine: stable build-time class export API
-- [ ] MAL/LAL: DSL adjustments for Groovy static compilation (if needed)
+- [x] OAL engine: build-time class export works via existing debug API (no upstream change needed)
+- [ ] MAL/LAL: Groovy static compilation / DSL adjustments (not started)
 - [ ] Other findings during implementation
