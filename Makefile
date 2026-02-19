@@ -33,7 +33,7 @@ init-submodules:
 # Build the skywalking submodule and install artifacts to local Maven repo
 # flatten-maven-plugin resolves ${revision} in installed POMs so external projects can depend on them
 build-skywalking: init-submodules
-	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true
+	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dgpg.skip=true
 
 # Compile only (no tests)
 compile:
