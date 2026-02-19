@@ -35,9 +35,12 @@ init-submodules:
 build-skywalking: init-submodules
 	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dgpg.skip=true
 
-# Compile only (no tests)
+# Compile + install to local repo (no tests).
+# Install is needed because the precompiler produces a classified JAR (precompiler-*-generated.jar)
+# at the package phase. Subsequent standalone goals (javadoc:javadoc, test) resolve this artifact
+# from the local Maven repo, so it must be installed first.
 compile:
-	$(MVN) clean compile -DskipTests $(MVN_ARGS)
+	$(MVN) clean install -DskipTests $(MVN_ARGS)
 
 # Run tests (includes compile)
 test:
@@ -47,9 +50,9 @@ test:
 javadoc:
 	$(MVN) javadoc:javadoc -DskipTests $(MVN_ARGS)
 
-# Build the distro modules (compile + test + package + assembly)
+# Build the distro modules (package + assembly, no tests)
 build-distro:
-	$(MVN) clean package $(MVN_ARGS)
+	$(MVN) clean package -DskipTests $(MVN_ARGS)
 
 # Show the distribution directory
 dist: build-distro

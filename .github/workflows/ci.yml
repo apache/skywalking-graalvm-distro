@@ -56,7 +56,7 @@ jobs:
       - name: Build SkyWalking submodule
         run: make build-skywalking
 
-      - name: Style check + Compile
+      - name: Style check + Compile + Install
         run: make compile
 
       - name: Javadoc
