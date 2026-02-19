@@ -32,6 +32,30 @@
     <description>SkyWalking OAP server with fixed module wiring for GraalVM (JVM mode)</description>
 
     <dependencies>
+        <!--
+          == Same-FQCN Override ==
+          This module contains 7 classes that share the exact fully-qualified class name
+          with classes in upstream dependencies (server-core, meter-analyzer, log-analyzer).
+          These replacement classes load pre-compiled OAL/MAL/LAL assets from build-time
+          manifests instead of using runtime code generation (Javassist, Groovy, Guava ClassPath).
+
+          WHY IT WORKS NOW (compile + test):
+          Maven places this module's compiled classes (target/classes/) on the classpath
+          BEFORE all dependency JARs. Java's classloader uses first-found-wins, so our
+          replacement classes shadow the upstream originals during compilation and testing.
+
+          WHAT WE WILL DO FOR FINAL PACKAGING (Phase 3):
+          The oap-graalvm-native module will use maven-shade-plugin to produce an uber JAR
+          with explicit <filters> that exclude the 7 upstream classes from their origin
+          artifacts. This eliminates duplicate FQCNs entirely, making the conflict resolution
+          explicit and safe for GraalVM native-image. See DISTRO-POLICY.md Challenge 5.
+
+          Shadowed classes:
+            server-core    -> OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem
+            meter-analyzer -> DSL (MAL), FilterExpression
+            log-analyzer   -> DSL (LAL)
+        -->
+
         <!-- Core -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
@@ -293,6 +317,9 @@
                     <argLine>
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+                        --add-opens java.base/java.util=ALL-UNNAMED
+                        --add-opens java.base/java.lang.invoke=ALL-UNNAMED
+                        -Dnet.bytebuddy.experimental=true
                     </argLine>
                 </configuration>
             </plugin>

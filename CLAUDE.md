@@ -4,13 +4,13 @@
 - `skywalking/` — Git submodule of `apache/skywalking.git`. **Do not modify directly.** All SkyWalking source changes go through upstream PRs.
 - `build-tools/precompiler/` — Build-time precompiler: runs OAL + MAL + LAL engines at Maven compile time, exports `.class` files and manifests into `precompiler-*-generated.jar`.
 - `oap-graalvm-server/` — GraalVM-ready OAP server module with same-FQCN replacement classes and comprehensive test suites.
-- `PLAN.md` — Current build plan (draft/temporary, subject to change).
+- `DISTRO-POLICY.md` — Current build plan (draft/temporary, subject to change).
 - Root-level Maven + Makefile — Orchestrates building on top of the submodule.
 
 ## Key Principles
 1. **Minimize upstream changes.** SkyWalking is a submodule. Changes to it require separate upstream PRs and syncing back.
 2. **Build-time class export.** All runtime code generation (OAL via Javassist, MAL/LAL via Groovy) runs at build time. Export `.class` files into native-image classpath.
-3. **Fixed module wiring.** Module/provider selection is hardcoded in this distro — no SPI discovery. See PLAN.md for the full module table.
+3. **Fixed module wiring.** Module/provider selection is hardcoded in this distro — no SPI discovery. See DISTRO-POLICY.md for the full module table.
 4. **JDK 25.** Already compiles and runs.
 
 ## Technical Notes
@@ -21,12 +21,11 @@
 - **Classpath scanning**: Guava `ClassPath.from()` used in multiple places. Run at build-time pre-compilation as verification gate, export static class index.
 - **Config loading**: `YamlConfigLoaderUtils.copyProperties()` uses `Field.setAccessible()` + `field.set()`. Register known `ModuleConfig` classes for GraalVM reflection.
 
-## MAL Test Suite
-71 MAL YAML files are covered by comparison tests (1281 test assertions). Each test runs every metric expression through two independent paths:
-- **Path A**: Fresh GroovyShell compilation (runtime behavior)
-- **Path B**: Pre-compiled class from build-time JAR
+## Test Suites
+- **MAL**: 71 YAML files covered by 73 test classes (1,281 assertions). See `oap-graalvm-server/src/test/CLAUDE.md` for test generation instructions and `oap-graalvm-server/src/test/MAL-COVERAGE.md` for coverage tracking.
+- **LAL**: 8 YAML files covered by 5 test classes (19 assertions). See [LAL-IMMIGRATION.md](LAL-IMMIGRATION.md) for details.
 
-Both paths must produce identical results. See `oap-graalvm-server/src/test/CLAUDE.md` for test generation instructions and `oap-graalvm-server/src/test/MAL-COVERAGE.md` for detailed coverage tracking.
+Both suites use dual-path comparison: Path A (fresh GroovyShell compilation) vs Path B (pre-compiled class from build-time JAR). Both paths must produce identical results.
 
 ## Build Commands
 ```bash
@@ -42,6 +41,6 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal mvn -pl oap-graalvm-se
 
 ## Selected Modules
 - **Storage**: BanyanDB
-- **Cluster**: Kubernetes
+- **Cluster**: Standalone, Kubernetes
 - **Configuration**: Kubernetes
-- **Receivers/Query/Analyzers/Alarm/Telemetry/Other**: Full feature set (see PLAN.md for details)
+- **Receivers/Query/Analyzers/Alarm/Telemetry/Other**: Full feature set (see DISTRO-POLICY.md for details)

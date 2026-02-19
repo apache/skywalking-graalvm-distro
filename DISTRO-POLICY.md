@@ -1,4 +1,4 @@
-# SkyWalking GraalVM Distro - Build Plan
+# SkyWalking GraalVM Distro - Distribution Policy
 
 ## Goal
 Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 25.
@@ -14,7 +14,7 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 |----------|--------|----------|
 | **Core** | CoreModule | default |
 | **Storage** | StorageModule | BanyanDB |
-| **Cluster** | ClusterModule | Kubernetes |
+| **Cluster** | ClusterModule | Standalone, Kubernetes |
 | **Configuration** | ConfigurationModule | Kubernetes |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
 | **Analyzers** | AnalyzerModule, LogAnalyzerModule, EventAnalyzerModule | default providers |
@@ -43,7 +43,9 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 OAL V2 generates metrics/builder/dispatcher classes at startup via Javassist (`ClassPool.makeClass()` → `CtClass.toClass()`). Already has `writeGeneratedFile()` for debug export.
 
 ### Approach (this repo)
-All `.oal` scripts are known. Run OAL engine at build time, export `.class` files, load them directly at runtime from manifests. See [OAL-IMMIGRATION.md](OAL-IMMIGRATION.md) for details.
+All `.oal` scripts are known. Run OAL engine at build time, export `.class` files, load them directly at runtime from manifests.
+
+**Details**: [OAL-IMMIGRATION.md](OAL-IMMIGRATION.md)
 
 ### What Was Built
 - `OALClassExporter` processes all 9 OAL defines, exports ~620 metrics classes, ~620 builder classes, ~45 dispatchers
@@ -63,6 +65,8 @@ All `.oal` scripts are known. Run OAL engine at build time, export `.class` file
 
 ### Approach (this repo)
 Run full MAL/LAL initialization at build time via `build-tools/precompiler` (unified tool). Export Javassist-generated `.class` files + compiled Groovy script bytecode. At runtime, load from manifests.
+
+**Details**: [MAL-IMMIGRATION.md](MAL-IMMIGRATION.md) | [LAL-IMMIGRATION.md](LAL-IMMIGRATION.md)
 
 ### What Was Built
 - **Unified precompiler** (`build-tools/precompiler`): Replaced separate `oal-exporter` and `mal-compiler` modules. Compiles all 71 MAL YAML rule files (meter-analyzer-config, otel-rules, log-mal-rules, envoy-metrics-rules, telegraf-rules, zabbix-rules) producing 1209 meter classes and 1250 Groovy scripts.
@@ -110,7 +114,74 @@ MAL expressions rely on `propertyMissing()` for sample name resolution and `Expa
 
 ---
 
-## Challenge 5: Additional GraalVM Risks
+## Challenge 5: Same-FQCN Packaging for Distribution
+
+### Problem
+
+The same-FQCN replacement technique works during Maven compilation and testing because Maven places `target/classes/` (the module's own compiled source) on the classpath **before** all dependency JARs. Java's classloader uses first-found-wins, so our replacement classes shadow the upstream originals.
+
+However, this implicit ordering does **not** carry over to distribution packaging:
+
+- **Uber JAR** (maven-shade-plugin): When merging all JARs into one, duplicate FQCN class files collide. Only one copy survives, and the winner depends on dependency processing order — not guaranteed to be ours.
+- **Classpath mode** (separate JARs): `java -cp jar1:jar2:jar3` or `native-image -cp jar1:jar2:jar3` uses first-found-wins based on `-cp` ordering. Requires explicit ordering that is fragile and easy to break.
+- **GraalVM native-image**: Uses the same classpath resolution as JVM. Duplicate FQCNs on the classpath may produce warnings or unpredictable behavior.
+
+### 7 Same-FQCN Replacement Classes
+
+| Replacement Class | Upstream Artifact | Purpose |
+|---|---|---|
+| `OALEngineLoaderService` | `server-core` | Load OAL classes from manifests instead of Javassist |
+| `AnnotationScan` | `server-core` | Read annotation manifests instead of Guava ClassPath |
+| `SourceReceiverImpl` | `server-core` | Read dispatcher/decorator manifests instead of Guava ClassPath |
+| `MeterSystem` | `server-core` | Read MeterFunction manifest + pre-generated meter classes |
+| `DSL` (MAL) | `meter-analyzer` | Load pre-compiled MAL Groovy scripts from manifest |
+| `FilterExpression` | `meter-analyzer` | Load pre-compiled filter closures from manifest |
+| `DSL` (LAL) | `log-analyzer` | Load pre-compiled LAL scripts via SHA-256 hash lookup |
+
+### Approach: Uber JAR with Explicit Shade Filters
+
+The `oap-graalvm-native` module will use `maven-shade-plugin` to produce a single uber JAR with explicit filters that exclude the 7 upstream classes. This makes conflict resolution explicit and auditable.
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-shade-plugin</artifactId>
+    <configuration>
+        <filters>
+            <filter>
+                <artifact>org.apache.skywalking:server-core</artifact>
+                <excludes>
+                    <exclude>org/apache/skywalking/oap/server/core/oal/rt/OALEngineLoaderService.class</exclude>
+                    <exclude>org/apache/skywalking/oap/server/core/annotation/AnnotationScan.class</exclude>
+                    <exclude>org/apache/skywalking/oap/server/core/source/SourceReceiverImpl.class</exclude>
+                    <exclude>org/apache/skywalking/oap/server/core/analysis/meter/MeterSystem.class</exclude>
+                </excludes>
+            </filter>
+            <filter>
+                <artifact>org.apache.skywalking:meter-analyzer</artifact>
+                <excludes>
+                    <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/DSL.class</exclude>
+                    <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/FilterExpression.class</exclude>
+                </excludes>
+            </filter>
+            <filter>
+                <artifact>org.apache.skywalking:log-analyzer</artifact>
+                <excludes>
+                    <exclude>org/apache/skywalking/oap/log/analyzer/dsl/DSL.class</exclude>
+                </excludes>
+            </filter>
+        </filters>
+    </configuration>
+</plugin>
+```
+
+The resulting uber JAR contains exactly one copy of each class — no duplicates, no ordering ambiguity. This JAR is then fed to `native-image` for AOT compilation.
+
+**Important**: When new same-FQCN replacement classes are added, the shade filter list must be updated to match. This list should be kept in sync with the table above.
+
+---
+
+## Challenge 6: Additional GraalVM Risks
 
 | Risk | Mitigation |
 |------|------------|
@@ -150,12 +221,17 @@ MAL expressions rely on `propertyMissing()` for sample name resolution and `Expa
 - [x] SHA-256 staleness detection for submodule YAML drift
 - [x] `MeterSystem` classpath scan eliminated via manifest
 
+**LAL immigration — COMPLETE:**
+- [x] LAL Groovy pre-compilation: 8 YAML files → 10 rules → 6 unique pre-compiled classes (`@CompileStatic`)
+- [x] Same-FQCN replacement: `DSL.java` (LAL) loads pre-compiled scripts via SHA-256 hash lookup
+- [x] Comparison test suite: 5 test classes, 19 assertions (all 8 YAML files, 100% branch coverage)
+
 **Remaining:**
-- [ ] LAL Groovy pre-compilation (LAL `DSL.java` replacement exists but runtime behavior not yet tested — LAL is lower priority since it has only 10 rules)
 - [ ] Config generator (`build-tools/config-generator` skeleton exists) — eliminate `Field.setAccessible` reflection in config loading
 - [ ] Package everything into native-image classpath
 
 ### Phase 3: Native Image Build
+- [ ] Uber JAR packaging via `maven-shade-plugin` in `oap-graalvm-native` with explicit shade filters for same-FQCN classes (see Challenge 5)
 - [ ] `native-image-maven-plugin` configuration
 - [ ] Run tracing agent to capture reflection/resource/JNI metadata
 - [ ] Configure gRPC/Netty/Protobuf for native image
