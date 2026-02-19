@@ -36,9 +36,8 @@ build-skywalking: init-submodules
 	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dgpg.skip=true
 
 # Compile + install to local repo (no tests).
-# Install is needed because the precompiler produces a classified JAR (precompiler-*-generated.jar)
-# at the package phase. Subsequent standalone goals (javadoc:javadoc, test) resolve this artifact
-# from the local Maven repo, so it must be installed first.
+# Install is needed so standalone goals like javadoc:javadoc (which don't trigger the reactor
+# lifecycle) can resolve the precompiler-*-generated.jar from the local Maven repo.
 compile:
 	$(MVN) clean install -DskipTests $(MVN_ARGS)
 

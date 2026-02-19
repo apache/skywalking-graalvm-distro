@@ -138,7 +138,10 @@
                 </configuration>
             </plugin>
 
-            <!-- Package generated classes into a classified JAR -->
+            <!-- Package generated classes into a classified JAR.
+                 Bound to process-classes (after exec-maven-plugin generates the classes)
+                 so the artifact is attached to the reactor early enough for downstream
+                 modules that depend on it during any lifecycle phase (including test). -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -146,7 +149,7 @@
                 <executions>
                     <execution>
                         <id>generated-classes-jar</id>
-                        <phase>package</phase>
+                        <phase>process-classes</phase>
                         <goals>
                             <goal>jar</goal>
                         </goals>
