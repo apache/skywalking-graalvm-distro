@@ -19,7 +19,7 @@ SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*
 MVN := ./mvnw
 MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
 
-.PHONY: all clean build init-submodules build-skywalking build-distro info
+.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info
 
 all: build
 
@@ -35,9 +35,27 @@ init-submodules:
 build-skywalking: init-submodules
 	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true
 
-# Build the distro modules
+# Compile only (no tests)
+compile:
+	$(MVN) clean compile -DskipTests $(MVN_ARGS)
+
+# Run tests (includes compile)
+test:
+	$(MVN) clean test $(MVN_ARGS)
+
+# Generate javadoc (validates javadoc correctness)
+javadoc:
+	$(MVN) javadoc:javadoc -DskipTests $(MVN_ARGS)
+
+# Build the distro modules (compile + test + package + assembly)
 build-distro:
 	$(MVN) clean package $(MVN_ARGS)
+
+# Show the distribution directory
+dist: build-distro
+	@echo "Distribution created at:"
+	@echo "  oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/"
+	@echo "  oap-graalvm-server/target/oap-graalvm-jvm-distro.tar.gz"
 
 # Full build: skywalking first, then distro
 build: build-skywalking build-distro

@@ -323,6 +323,64 @@
                     </argLine>
                 </configuration>
             </plugin>
+            <!-- Generate VERSION file with pom version + git commit ID -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>generate-version-file</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <exec executable="git" outputproperty="git.commit.id" failonerror="false">
+                                    <arg value="rev-parse"/>
+                                    <arg value="--short"/>
+                                    <arg value="HEAD"/>
+                                </exec>
+                                <exec executable="git" outputproperty="git.commit.id.full" failonerror="false">
+                                    <arg value="rev-parse"/>
+                                    <arg value="HEAD"/>
+                                </exec>
+                                <tstamp>
+                                    <format property="build.timestamp" pattern="yyyy-MM-dd'T'HH:mm:ssZ"/>
+                                </tstamp>
+                                <echo file="${project.build.directory}/VERSION">version=${project.version}
+git.commit.id=${git.commit.id.full}
+git.commit.id.short=${git.commit.id}
+build.time=${build.timestamp}
+</echo>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Assemble distribution folder: bin/ + config/ + libs/ + VERSION -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.7.1</version>
+                <configuration>
+                    <finalName>oap-graalvm-jvm-distro</finalName>
+                    <appendAssemblyId>false</appendAssemblyId>
+                    <descriptors>
+                        <descriptor>src/main/assembly/distribution.xml</descriptor>
+                    </descriptors>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>create-dist</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>
