@@ -42,5 +42,6 @@ header:
     - 'NOTICE'
     - '.gitmodules'
     - '.gitignore'
+    - 'codeStyle.xml'
 
   comment: on-failure
