@@ -10,7 +10,7 @@ OAL engine generates metrics, builder, and dispatcher classes at runtime via Jav
 
 ## Step 1: Build-Time OAL Class Export Tool — DONE
 
-**Module**: `build-tools/oal-exporter`
+**Module**: `build-tools/precompiler` (originally `build-tools/oal-exporter`, merged into unified precompiler)
 
 **Created**: `OALClassExporter.java` — main class that:
 
