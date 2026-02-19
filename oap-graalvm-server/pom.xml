@@ -241,10 +241,10 @@
             <artifactId>server-starter</artifactId>
         </dependency>
 
-        <!-- Pre-compiled OAL classes + annotation manifests from build-time export -->
+        <!-- Pre-compiled classes + manifests from build-time precompiler -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>oal-exporter</artifactId>
+            <artifactId>precompiler</artifactId>
             <version>${project.version}</version>
             <classifier>generated</classifier>
         </dependency>
@@ -261,5 +261,41 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.11.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>5.11.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.powermock</groupId>
+            <artifactId>powermock-reflect</artifactId>
+            <version>2.0.9</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <additionalClasspathElements>
+                        <additionalClasspathElement>${project.basedir}/../skywalking/oap-server/server-starter/src/main/resources</additionalClasspathElement>
+                    </additionalClasspathElements>
+                    <argLine>
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+                    </argLine>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
