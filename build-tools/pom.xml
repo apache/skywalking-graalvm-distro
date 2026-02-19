@@ -33,8 +33,7 @@
     <description>Build-time tooling for class export, compilation, and code generation</description>
 
     <modules>
-        <module>oal-exporter</module>
-        <module>mal-compiler</module>
+        <module>precompiler</module>
         <module>config-generator</module>
     </modules>
 </project>

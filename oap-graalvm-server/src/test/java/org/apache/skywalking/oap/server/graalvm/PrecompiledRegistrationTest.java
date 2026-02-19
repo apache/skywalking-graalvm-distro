@@ -31,11 +31,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
 import org.apache.skywalking.oap.server.core.analysis.ISourceDecorator;
 import org.apache.skywalking.oap.server.core.analysis.SourceDispatcher;
 import org.apache.skywalking.oap.server.core.analysis.Stream;
+import org.apache.skywalking.oap.server.core.analysis.meter.function.AcceptableValue;
+import org.apache.skywalking.oap.server.core.analysis.meter.function.MeterFunction;
 import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.ISource;
@@ -118,6 +121,75 @@ class PrecompiledRegistrationTest {
         assertFalse(manifest.isEmpty(), "ISourceDecorator manifest is empty");
         assertEquals(scanned, manifest,
             "ISourceDecorator manifest does not match classpath scan");
+    }
+
+    // =========================================================================
+    // 1b. MeterFunction manifest vs Guava ClassPath comparison
+    // =========================================================================
+
+    @Test
+    void meterFunctionManifestMatchesClasspath() throws Exception {
+        // Build expected map from Guava ClassPath scan
+        Map<String, String> scanned = guavaScanMeterFunctions();
+
+        // Read manifest
+        List<String> manifestLines = readManifest("META-INF/annotation-scan/MeterFunction.txt");
+        Map<String, String> manifest = new HashMap<>();
+        for (String line : manifestLines) {
+            String[] parts = line.split("=", 2);
+            assertEquals(2, parts.length, "Invalid MeterFunction manifest line: " + line);
+            manifest.put(parts[0], parts[1]);
+        }
+
+        assertFalse(manifest.isEmpty(), "MeterFunction manifest is empty");
+        assertEquals(scanned, manifest,
+            "MeterFunction manifest does not match classpath scan");
+    }
+
+    @Test
+    void meterFunctionManifestHasExpectedFunctions() throws Exception {
+        List<String> manifestLines = readManifest("META-INF/annotation-scan/MeterFunction.txt");
+        Map<String, String> manifest = new HashMap<>();
+        for (String line : manifestLines) {
+            String[] parts = line.split("=", 2);
+            manifest.put(parts[0], parts[1]);
+        }
+
+        // Verify well-known meter functions exist
+        String[] expectedFunctions = {
+            "avg", "avgLabeled", "avgHistogram", "avgHistogramPercentile",
+            "latest", "latestLabeled",
+            "max", "maxLabeled", "min", "minLabeled",
+            "sum", "sumLabeled", "sumHistogram", "sumHistogramPercentile",
+            "sumPerMin", "sumPerMinLabeled"
+        };
+        for (String fn : expectedFunctions) {
+            assertTrue(manifest.containsKey(fn),
+                "Missing expected meter function: " + fn);
+        }
+        assertEquals(expectedFunctions.length, manifest.size(),
+            "MeterFunction manifest should have exactly " + expectedFunctions.length + " entries");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void meterFunctionManifestClassesAreLoadableAndValid() throws Exception {
+        List<String> manifestLines = readManifest("META-INF/annotation-scan/MeterFunction.txt");
+        for (String line : manifestLines) {
+            String[] parts = line.split("=", 2);
+            String functionName = parts[0];
+            String className = parts[1];
+
+            Class<?> clazz = Class.forName(className);
+            assertTrue(AcceptableValue.class.isAssignableFrom(clazz),
+                "MeterFunction class " + className + " should implement AcceptableValue");
+            assertTrue(clazz.isAnnotationPresent(MeterFunction.class),
+                "MeterFunction class " + className + " should have @MeterFunction annotation");
+
+            MeterFunction mf = clazz.getAnnotation(MeterFunction.class);
+            assertEquals(functionName, mf.functionName(),
+                "functionName mismatch for " + className);
+        }
     }
 
     // =========================================================================
@@ -265,6 +337,104 @@ class PrecompiledRegistrationTest {
     }
 
     // =========================================================================
+    // 5. MAL pre-compiled classes
+    // =========================================================================
+
+    @Test
+    void malMeterClassManifestExistsAndIsNotEmpty() throws Exception {
+        List<String> entries = readManifest("META-INF/mal-meter-classes.txt");
+        assertFalse(entries.isEmpty(), "MAL meter classes manifest should not be empty");
+        for (String entry : entries) {
+            assertTrue(entry.contains("="),
+                "MAL meter class entry should be in format name=FQCN: " + entry);
+        }
+    }
+
+    @Test
+    void malMeterClassesAreLoadable() throws Exception {
+        List<String> entries = readManifest("META-INF/mal-meter-classes.txt");
+        for (String entry : entries) {
+            String[] parts = entry.split("=", 2);
+            String className = parts[1];
+            Class<?> clazz = Class.forName(className);
+            assertNotNull(clazz, "Should be able to load meter class: " + className);
+            // Verify it can be instantiated
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            assertNotNull(instance, "Should be able to instantiate: " + className);
+        }
+    }
+
+    @Test
+    void malGroovyScriptManifestExistsAndIsNotEmpty() throws Exception {
+        List<String> entries = readManifest("META-INF/mal-groovy-scripts.txt");
+        assertFalse(entries.isEmpty(), "MAL groovy scripts manifest should not be empty");
+    }
+
+    @Test
+    void malGroovyScriptsAreLoadable() throws Exception {
+        List<String> entries = readManifest("META-INF/mal-groovy-scripts.txt");
+        for (String entry : entries) {
+            String[] parts = entry.split("=", 2);
+            String metricName = parts[0];
+            String className = parts[1];
+            Class<?> clazz = Class.forName(className);
+            assertNotNull(clazz,
+                "Should be able to load MAL groovy script: " + metricName + " -> " + className);
+        }
+    }
+
+    @Test
+    void malFilterScriptManifestExistsAndScriptsAreLoadable() throws Exception {
+        ClassLoader cl = PrecompiledRegistrationTest.class.getClassLoader();
+        try (InputStream is = cl.getResourceAsStream("META-INF/mal-filter-scripts.properties")) {
+            assertNotNull(is, "Filter script manifest should exist");
+            Properties props = new Properties();
+            props.load(is);
+            assertFalse(props.isEmpty(), "Filter script manifest should not be empty");
+            for (Object value : props.values()) {
+                String className = (String) value;
+                Class<?> clazz = Class.forName(className);
+                assertNotNull(clazz, "Should be able to load filter script: " + className);
+            }
+        }
+    }
+
+    // =========================================================================
+    // 6. LAL pre-compiled classes
+    // =========================================================================
+
+    @Test
+    void lalScriptManifestExistsAndIsNotEmpty() throws Exception {
+        List<String> entries = readManifest("META-INF/lal-scripts.txt");
+        assertFalse(entries.isEmpty(), "LAL scripts manifest should not be empty");
+    }
+
+    @Test
+    void lalScriptsAreLoadable() throws Exception {
+        List<String> entries = readManifest("META-INF/lal-scripts.txt");
+        for (String entry : entries) {
+            String[] parts = entry.split("=", 2);
+            String scriptName = parts[0];
+            String className = parts[1];
+            Class<?> clazz = Class.forName(className);
+            assertNotNull(clazz,
+                "Should be able to load LAL script: " + scriptName + " -> " + className);
+        }
+    }
+
+    @Test
+    void lalHashManifestExistsAndScriptsAreLoadable() throws Exception {
+        List<String> entries = readManifest("META-INF/lal-scripts-by-hash.txt");
+        assertFalse(entries.isEmpty(), "LAL hash manifest should not be empty");
+        for (String entry : entries) {
+            String[] parts = entry.split("=", 2);
+            String className = parts[1];
+            Class<?> clazz = Class.forName(className);
+            assertNotNull(clazz, "Should be able to load LAL script by hash: " + className);
+        }
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
@@ -326,6 +496,27 @@ class PrecompiledRegistrationTest {
             }
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> guavaScanMeterFunctions() throws IOException {
+        ClassPath classpath = ClassPath.from(
+            PrecompiledRegistrationTest.class.getClassLoader());
+        ImmutableSet<ClassPath.ClassInfo> classes =
+            classpath.getTopLevelClassesRecursive("org.apache.skywalking");
+        Map<String, String> result = new HashMap<>();
+        for (ClassPath.ClassInfo info : classes) {
+            try {
+                Class<?> clazz = info.load();
+                if (clazz.isAnnotationPresent(MeterFunction.class)
+                    && AcceptableValue.class.isAssignableFrom(clazz)) {
+                    MeterFunction mf = clazz.getAnnotation(MeterFunction.class);
+                    result.put(mf.functionName(), clazz.getName());
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+            }
+        }
+        return result;
     }
 
     private static Set<String> guavaScanAnnotation(
