@@ -17,12 +17,16 @@
 
 package org.apache.skywalking.oap.server.buildtools.precompiler;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.ClassPath;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Reader;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -32,6 +36,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -42,6 +47,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.meter.analyzer.MetricConvert;
 import org.apache.skywalking.oap.log.analyzer.provider.LALConfig;
 import org.apache.skywalking.oap.log.analyzer.provider.LALConfigs;
+import org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig;
 import org.apache.skywalking.oap.meter.analyzer.dsl.DSL;
 import org.apache.skywalking.oap.meter.analyzer.dsl.FilterExpression;
 import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule;
@@ -229,27 +235,40 @@ public class Precompiler {
 
         MeterSystem meterSystem = new MeterSystem(null);
         int totalRules = 0;
+        Map<String, List<Rule>> rulesByPath = new LinkedHashMap<>();
 
         // 1. Agent meter configs (meter-analyzer-config/*.yaml)
-        totalRules += loadAndCompileRules("meter-analyzer-config", List.of("*"), meterSystem);
+        List<Rule> meterAnalyzerRules = loadAndCompileRules("meter-analyzer-config", List.of("*"), meterSystem);
+        totalRules += meterAnalyzerRules.size();
+        rulesByPath.put("meter-analyzer-config", meterAnalyzerRules);
 
         // 2. OTel rules (otel-rules/*.yaml + otel-rules/**/*.yaml) — includes root-level files
-        totalRules += loadAndCompileRules("otel-rules", List.of("*", "**/*"), meterSystem);
+        List<Rule> otelRules = loadAndCompileRules("otel-rules", List.of("*", "**/*"), meterSystem);
+        totalRules += otelRules.size();
+        rulesByPath.put("otel-rules", otelRules);
 
         // 3. Log MAL rules (log-mal-rules/*.yaml)
-        totalRules += loadAndCompileRules("log-mal-rules", List.of("*"), meterSystem);
+        List<Rule> logMalRules = loadAndCompileRules("log-mal-rules", List.of("*"), meterSystem);
+        totalRules += logMalRules.size();
+        rulesByPath.put("log-mal-rules", logMalRules);
 
         // 4. Envoy metrics rules (envoy-metrics-rules/*.yaml)
-        totalRules += loadAndCompileRules("envoy-metrics-rules", List.of("*"), meterSystem);
+        List<Rule> envoyRules = loadAndCompileRules("envoy-metrics-rules", List.of("*"), meterSystem);
+        totalRules += envoyRules.size();
+        rulesByPath.put("envoy-metrics-rules", envoyRules);
 
         // 5. Telegraf rules (telegraf-rules/*.yaml)
         // Shares metricPrefix=meter_vm with otel-rules/vm.yaml — combination pattern:
         // multiple expressions from different sources aggregate into the same metrics.
-        totalRules += loadAndCompileRules("telegraf-rules", List.of("*"), meterSystem);
+        List<Rule> telegrafRules = loadAndCompileRules("telegraf-rules", List.of("*"), meterSystem);
+        totalRules += telegrafRules.size();
+        rulesByPath.put("telegraf-rules", telegrafRules);
 
         // 6. Zabbix rules (zabbix-rules/*.yaml)
         // Uses 'metrics' field instead of 'metricsRules', requires custom loading.
-        totalRules += loadAndCompileZabbixRules("zabbix-rules", meterSystem);
+        List<Rule> zabbixRules = loadAndCompileZabbixRules("zabbix-rules", meterSystem);
+        totalRules += zabbixRules.size();
+        rulesByPath.put("zabbix-rules", zabbixRules);
 
         // Write manifests
         Path metaInf = Path.of(outputDir, "META-INF");
@@ -279,17 +298,22 @@ public class Precompiler {
             meterSystem.getExportedClasses().size(),
             DSL.getScriptRegistry().size(),
             FilterExpression.getScriptRegistry().size());
+
+        // ---- Serialize config data as JSON for runtime loaders ----
+        serializeMALConfigData(outputDir, rulesByPath);
     }
 
     /**
      * Load rules from a resource directory and compile them through the MAL pipeline.
+     * Returns the loaded rules for config data serialization.
      */
-    private static int loadAndCompileRules(String path, List<String> enabledPatterns,
-                                           MeterSystem meterSystem) {
+    private static List<Rule> loadAndCompileRules(String path, List<String> enabledPatterns,
+                                                  MeterSystem meterSystem) {
+        List<Rule> loadedRules = Collections.emptyList();
         int count = 0;
         try {
-            List<Rule> rules = Rules.loadRules(path, enabledPatterns);
-            for (Rule rule : rules) {
+            loadedRules = Rules.loadRules(path, enabledPatterns);
+            for (Rule rule : loadedRules) {
                 try {
                     new MetricConvert(rule, meterSystem);
                     count++;
@@ -302,16 +326,18 @@ public class Precompiler {
         } catch (Exception e) {
             log.warn("Failed to load rules from {}", path, e);
         }
-        return count;
+        return loadedRules;
     }
 
     /**
      * Load Zabbix rules which use 'metrics' field instead of 'metricsRules'.
      * Parses the YAML manually and maps into a Rule for MetricConvert.
+     * Returns the loaded rules for config data serialization.
      */
     @SuppressWarnings("unchecked")
-    private static int loadAndCompileZabbixRules(String path,
-                                                 MeterSystem meterSystem) {
+    private static List<Rule> loadAndCompileZabbixRules(String path,
+                                                        MeterSystem meterSystem) {
+        List<Rule> loadedRules = new ArrayList<>();
         int count = 0;
         try {
             File[] files = ResourceUtils.getPathFiles(path);
@@ -350,6 +376,7 @@ public class Precompiler {
                     }
 
                     new MetricConvert(rule, meterSystem);
+                    loadedRules.add(rule);
                     count++;
                 } catch (Exception e) {
                     log.warn("Failed to compile Zabbix rule: {}", resourcePath, e);
@@ -359,7 +386,7 @@ public class Precompiler {
         } catch (Exception e) {
             log.warn("Failed to load rules from {}", path, e);
         }
-        return count;
+        return loadedRules;
     }
 
     /**
@@ -374,10 +401,13 @@ public class Precompiler {
         // Enumerate all LAL YAML files from classpath
         File[] lalFiles = ResourceUtils.getPathFiles("lal");
         List<String> lalFileNames = new ArrayList<>();
+        Map<String, File> lalFileMap = new LinkedHashMap<>();
         for (File f : lalFiles) {
             String name = f.getName();
             if (name.endsWith(".yaml") || name.endsWith(".yml")) {
-                lalFileNames.add(name.substring(0, name.lastIndexOf('.')));
+                String key = name.substring(0, name.lastIndexOf('.'));
+                lalFileNames.add(key);
+                lalFileMap.put(key, f);
             }
         }
 
@@ -420,6 +450,9 @@ public class Precompiler {
         log.info("LAL pre-compilation: {} rules, {} scripts",
             totalRules,
             org.apache.skywalking.oap.log.analyzer.dsl.DSL.getScriptRegistry().size());
+
+        // ---- Serialize LAL config data as JSON for runtime loader ----
+        serializeLALConfigData(outputDir, lalFileMap);
     }
 
     /**
@@ -558,6 +591,88 @@ public class Precompiler {
         Collections.sort(result);
         log.info("Scanned @MeterFunction: {} classes", result.size());
         return result;
+    }
+
+    /**
+     * Serialize MAL config data (Rules and MeterConfigs) as JSON for runtime loaders.
+     * At runtime, replacement loader classes deserialize from these JSON files instead
+     * of reading YAML from the filesystem.
+     */
+    private static void serializeMALConfigData(String outputDir,
+                                               Map<String, List<Rule>> rulesByPath) throws Exception {
+        ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+        Path configDataDir = Path.of(outputDir, "META-INF", "config-data");
+        Files.createDirectories(configDataDir);
+
+        // Serialize MeterConfig objects for meter-analyzer-config (runtime uses MeterConfigs.loadConfig)
+        List<Rule> meterAnalyzerRules = rulesByPath.get("meter-analyzer-config");
+        if (meterAnalyzerRules != null) {
+            Map<String, MeterConfig> meterConfigs = loadMeterConfigs("meter-analyzer-config");
+            mapper.writeValue(configDataDir.resolve("meter-analyzer-config.json").toFile(), meterConfigs);
+            log.info("Serialized {} MeterConfig entries from meter-analyzer-config to config-data JSON",
+                meterConfigs.size());
+        }
+
+        // Serialize Rule lists for each path (runtime uses Rules.loadRules)
+        for (Map.Entry<String, List<Rule>> entry : rulesByPath.entrySet()) {
+            String path = entry.getKey();
+            if ("meter-analyzer-config".equals(path)) {
+                // meter-analyzer-config is already serialized as MeterConfig above
+                continue;
+            }
+            List<Rule> rules = entry.getValue();
+            mapper.writeValue(configDataDir.resolve(path + ".json").toFile(), rules);
+            log.info("Serialized {} Rule entries from {} to config-data JSON", rules.size(), path);
+        }
+    }
+
+    /**
+     * Load MeterConfig objects from meter-analyzer-config YAML files.
+     * Returns a Map keyed by filename (without extension) for filtering at runtime.
+     */
+    private static Map<String, MeterConfig> loadMeterConfigs(String path) throws Exception {
+        File[] files = ResourceUtils.getPathFiles(path);
+        Map<String, MeterConfig> result = new LinkedHashMap<>();
+        Yaml yaml = new Yaml();
+        for (File file : files) {
+            String name = file.getName();
+            if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
+                continue;
+            }
+            String key = name.substring(0, name.lastIndexOf('.'));
+            try (Reader r = new FileReader(file)) {
+                MeterConfig config = yaml.loadAs(r, MeterConfig.class);
+                if (config != null) {
+                    result.put(key, config);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Serialize LAL config data as JSON for runtime loader.
+     * At runtime, the replacement LALConfigs.load() deserializes from this JSON file.
+     */
+    private static void serializeLALConfigData(String outputDir,
+                                               Map<String, File> lalFileMap) throws Exception {
+        ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+        Path configDataDir = Path.of(outputDir, "META-INF", "config-data");
+        Files.createDirectories(configDataDir);
+
+        Map<String, LALConfigs> lalConfigMap = new LinkedHashMap<>();
+        Yaml yaml = new Yaml();
+        for (Map.Entry<String, File> entry : lalFileMap.entrySet()) {
+            try (Reader r = new FileReader(entry.getValue())) {
+                LALConfigs config = yaml.loadAs(r, LALConfigs.class);
+                if (config != null) {
+                    lalConfigMap.put(entry.getKey(), config);
+                }
+            }
+        }
+
+        mapper.writeValue(configDataDir.resolve("lal.json").toFile(), lalConfigMap);
+        log.info("Serialized {} LALConfigs entries from lal to config-data JSON", lalConfigMap.size());
     }
 
     private static void writeManifest(Path path, List<String> lines) throws IOException {

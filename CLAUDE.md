@@ -39,6 +39,9 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal mvn -pl build-tools/pr
 JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal mvn -pl oap-graalvm-server test
 ```
 
+## Git Commit Rules
+- **No Co-Authored-By**: Do not add `Co-Authored-By` lines to commit messages.
+
 ## Selected Modules
 - **Storage**: BanyanDB
 - **Cluster**: Standalone, Kubernetes

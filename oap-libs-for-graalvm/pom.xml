@@ -34,6 +34,7 @@
 
     <modules>
         <module>server-core-for-graalvm</module>
+        <module>library-module-for-graalvm</module>
         <module>library-util-for-graalvm</module>
         <module>meter-analyzer-for-graalvm</module>
         <module>log-analyzer-for-graalvm</module>

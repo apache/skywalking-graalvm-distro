@@ -37,6 +37,10 @@
             <artifactId>log-analyzer</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
@@ -60,6 +64,7 @@
                                 <exclude>org/apache/skywalking/oap/log/analyzer/dsl/DSL.class</exclude>
                                 <exclude>org/apache/skywalking/oap/log/analyzer/dsl/DSL$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/log/analyzer/provider/LogAnalyzerModuleConfig.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/provider/LALConfigs.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

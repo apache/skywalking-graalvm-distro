@@ -237,7 +237,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestMaxThreads((int) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize((int) value);
@@ -270,10 +270,10 @@ public class YamlConfigLoaderUtils {
                     cfg.setTopNReportPeriod((int) value);
                     break;
                 case "l1FlushPeriod":
-                    cfg.setL1FlushPeriod((long) value);
+                    cfg.setL1FlushPeriod(((Number) value).longValue());
                     break;
                 case "storageSessionTimeout":
-                    cfg.setStorageSessionTimeout((long) value);
+                    cfg.setStorageSessionTimeout(((Number) value).longValue());
                     break;
                 case "downsampling":
                     cfg.getDownsampling().clear();
@@ -301,13 +301,13 @@ public class YamlConfigLoaderUtils {
                     cfg.setRemoteTimeout((int) value);
                     break;
                 case "maxSizeOfNetworkAddressAlias":
-                    cfg.setMaxSizeOfNetworkAddressAlias((long) value);
+                    cfg.setMaxSizeOfNetworkAddressAlias(((Number) value).longValue());
                     break;
                 case "maxSizeOfProfileTask":
-                    cfg.setMaxSizeOfProfileTask((long) value);
+                    cfg.setMaxSizeOfProfileTask(((Number) value).longValue());
                     break;
                 case "maxSizeOfPprofTask":
-                    cfg.setMaxSizeOfPprofTask((long) value);
+                    cfg.setMaxSizeOfPprofTask(((Number) value).longValue());
                     break;
                 case "maxPageSizeOfQueryProfileSnapshot":
                     cfg.setMaxPageSizeOfQueryProfileSnapshot((int) value);
@@ -379,10 +379,10 @@ public class YamlConfigLoaderUtils {
                     cfg.setEnableHierarchy((boolean) value);
                     break;
                 case "maxHeapMemoryUsagePercent":
-                    cfg.setMaxHeapMemoryUsagePercent((long) value);
+                    cfg.setMaxHeapMemoryUsagePercent(((Number) value).longValue());
                     break;
                 case "maxDirectMemoryUsage":
-                    cfg.setMaxDirectMemoryUsage((long) value);
+                    cfg.setMaxDirectMemoryUsage(((Number) value).longValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -654,7 +654,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize((int) value);
@@ -891,7 +891,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize((int) value);
@@ -1043,7 +1043,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setContextPath((String) value);
                     break;
                 case "idleTimeOut":
-                    cfg.setIdleTimeOut((long) value);
+                    cfg.setIdleTimeOut(((Number) value).longValue());
                     break;
                 case "acceptQueueSize":
                     cfg.setAcceptQueueSize((int) value);
@@ -1260,13 +1260,13 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize((int) value);
                     break;
                 case "lookback":
-                    cfg.setLookback((long) value);
+                    cfg.setLookback(((Number) value).longValue());
                     break;
                 case "namesMaxAge":
                     cfg.setNamesMaxAge((int) value);
@@ -1278,7 +1278,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setUiEnvironment((String) value);
                     break;
                 case "uiDefaultLookback":
-                    cfg.setUiDefaultLookback((long) value);
+                    cfg.setUiDefaultLookback(((Number) value).longValue());
                     break;
                 case "uiSearchEnabled":
                     cfg.setUiSearchEnabled((boolean) value);
@@ -1310,7 +1310,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize((int) value);
@@ -1360,7 +1360,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize((int) value);
@@ -1456,7 +1456,7 @@ public class YamlConfigLoaderUtils {
             final Object value = src.get(key);
             switch (key) {
                 case "checkIntervalSeconds":
-                    cfg.setCheckIntervalSeconds((long) value);
+                    cfg.setCheckIntervalSeconds(((Number) value).longValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",

@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,6 +43,7 @@ import lombok.extern.slf4j.Slf4j;
 public class FilterExpression {
     private static final String MANIFEST_PATH = "META-INF/mal-filter-scripts.properties";
     private static volatile Map<String, String> FILTER_MAP;
+    private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
     private final String literal;
     private final Closure<Boolean> filterClosure;
@@ -62,7 +64,8 @@ public class FilterExpression {
             Class<?> scriptClass = Class.forName(className);
             Script filterScript = (Script) scriptClass.getDeclaredConstructor().newInstance();
             filterClosure = (Closure<Boolean>) filterScript.run();
-            log.debug("Loaded pre-compiled filter script for: {}", literal);
+            int count = LOADED_COUNT.incrementAndGet();
+            log.debug("Loaded pre-compiled filter script [{}/{}]: {}", count, filterMap.size(), literal);
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(
                 "Pre-compiled filter script class not found: " + className, e);

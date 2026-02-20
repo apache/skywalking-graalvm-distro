@@ -27,6 +27,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +50,7 @@ import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 public class DSL {
     private static final String MANIFEST_PATH = "META-INF/lal-scripts-by-hash.txt";
     private static volatile Map<String, String> SCRIPT_MAP;
+    private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
     private final DelegatingScript script;
     private final FilterSpec filterSpec;
@@ -70,7 +72,8 @@ public class DSL {
             DelegatingScript script = (DelegatingScript) scriptClass.getDeclaredConstructor().newInstance();
             FilterSpec filterSpec = new FilterSpec(moduleManager, config);
             script.setDelegate(filterSpec);
-            log.debug("Loaded pre-compiled LAL script: {} -> {}", dslHash.substring(0, 12), className);
+            int count = LOADED_COUNT.incrementAndGet();
+            log.debug("Loaded pre-compiled LAL script [{}/{}]: {}", count, scriptMap.size(), className);
             return new DSL(script, filterSpec);
         } catch (ClassNotFoundException e) {
             throw new ModuleStartException(

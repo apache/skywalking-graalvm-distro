@@ -15,7 +15,7 @@ config-related reflection.
 
 ## Problem
 
-In `ModuleWiringBridge.wireAndPrepare()` and in `BanyanDBConfigLoader`,
+In `ModuleDefine.prepare()` and in `BanyanDBConfigLoader`,
 `copyProperties()` iterates property names, looks up fields by name via
 reflection, and sets them:
 

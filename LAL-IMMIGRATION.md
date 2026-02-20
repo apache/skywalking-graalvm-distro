@@ -148,12 +148,29 @@ Each test runs both paths and asserts identical `Binding` state:
 
 ---
 
+## Config Data Serialization
+
+At build time, the precompiler serializes parsed LAL config POJOs to a JSON manifest at
+`META-INF/config-data/lal.json`. This provides the runtime config data (rule names, DSL
+strings, layers) for `LogFilterListener` to create `DSL` instances — without requiring
+filesystem access to the original YAML files.
+
+| JSON Manifest | Source Directory | Serialized Type |
+|---|---|---|
+| `lal.json` | `lal/` | `Map<String, LALConfigs>` (filename → configs) |
+
+At runtime, the replacement `LALConfigs.load()` deserializes from this JSON file instead
+of reading YAML from the filesystem.
+
+---
+
 ## Same-FQCN Replacements (LAL)
 
 | Upstream Class | Upstream Location | Replacement Location | What Changed |
 |---|---|---|---|
 | `DSL` (LAL) | `analyzer/log-analyzer/.../dsl/DSL.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled `@CompileStatic` Groovy script classes from `META-INF/lal-scripts-by-hash.txt` manifest (keyed by SHA-256 hash) instead of `GroovyShell.parse()` runtime compilation. |
 | `LogAnalyzerModuleConfig` | `analyzer/log-analyzer/.../provider/LogAnalyzerModuleConfig.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `@Setter` at class level. Enables reflection-free config loading via Lombok setters. |
+| `LALConfigs` | `analyzer/log-analyzer/.../provider/LALConfigs.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Complete rewrite of static `load()` method. Loads pre-compiled LAL config data from `META-INF/config-data/{path}.json` instead of filesystem YAML files via `ResourceUtils.getPathFiles()`. |
 
 All replacements are repackaged into `log-analyzer-for-graalvm` via `maven-shade-plugin` — the original `.class` files are excluded from the shaded JAR.
 

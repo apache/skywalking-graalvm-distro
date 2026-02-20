@@ -17,17 +17,20 @@
 
 package org.apache.skywalking.oap.server.library.module;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * A ModuleManager that uses fixed module wiring instead of ServiceLoader discovery.
  * Modules and providers are explicitly registered before initialization.
+ * Uses the direct-wiring prepare() overload added in the library-module-for-graalvm
+ * replacement of ModuleDefine.
  */
 public class FixedModuleManager extends ModuleManager {
 
-    private final Map<String, ModuleWiringBridge.ModuleBinding> bindings = new LinkedHashMap<>();
-    private final Map<String, ModuleDefine> loadedModules = new LinkedHashMap<>();
+    private final List<ModuleBinding> bindings = new ArrayList<>();
 
     public FixedModuleManager(String description) {
         super(description);
@@ -35,36 +38,56 @@ public class FixedModuleManager extends ModuleManager {
 
     /**
      * Register a module with its chosen provider.
-     * The module name is derived from {@link ModuleDefine#name()}.
      */
     public void register(ModuleDefine moduleDefine, ModuleProvider provider) {
-        bindings.put(moduleDefine.name(), new ModuleWiringBridge.ModuleBinding(moduleDefine, provider));
+        bindings.add(new ModuleBinding(moduleDefine, provider));
     }
 
     /**
      * Initialize all registered modules using fixed wiring (no ServiceLoader).
+     * Calls the direct-wiring prepare() overload on ModuleDefine, then uses
+     * BootstrapFlow for dependency-ordered start and notify.
      */
     public void initFixed(ApplicationConfiguration configuration)
         throws ModuleNotFoundException, ProviderNotFoundException, ServiceNotProvidedException,
         CycleDependencyException, ModuleConfigException, ModuleStartException {
-        ModuleWiringBridge.initAll(this, bindings, configuration);
-        // Populate our loaded modules map for find()/has() lookups
-        for (Map.Entry<String, ModuleWiringBridge.ModuleBinding> entry : bindings.entrySet()) {
-            loadedModules.put(entry.getKey(), entry.getValue().moduleDefine());
+
+        Map<String, ModuleDefine> loadedModules = new LinkedHashMap<>();
+        TerminalFriendlyTable bootingParameters = getBootingParameters();
+
+        // Phase 1: Prepare all modules using direct provider wiring
+        for (ModuleBinding binding : bindings) {
+            String moduleName = binding.moduleDefine.name();
+            binding.moduleDefine.prepare(
+                this,
+                binding.provider,
+                configuration.getModuleConfiguration(moduleName),
+                bootingParameters
+            );
+            loadedModules.put(moduleName, binding.moduleDefine);
         }
+
+        // Phase 2: Start and notify (using BootstrapFlow for dependency ordering)
+        BootstrapFlow bootstrapFlow = new BootstrapFlow(loadedModules);
+        bootstrapFlow.start(this);
+        bootstrapFlow.notifyAfterCompleted();
     }
 
     @Override
     public boolean has(String moduleName) {
-        return loadedModules.containsKey(moduleName);
+        return bindings.stream().anyMatch(b -> b.moduleDefine.name().equals(moduleName));
     }
 
     @Override
     public ModuleProviderHolder find(String moduleName) throws ModuleNotFoundRuntimeException {
-        ModuleDefine module = loadedModules.get(moduleName);
-        if (module != null) {
-            return module;
+        for (ModuleBinding binding : bindings) {
+            if (binding.moduleDefine.name().equals(moduleName)) {
+                return binding.moduleDefine;
+            }
         }
         throw new ModuleNotFoundRuntimeException(moduleName + " missing.");
+    }
+
+    private record ModuleBinding(ModuleDefine moduleDefine, ModuleProvider provider) {
     }
 }

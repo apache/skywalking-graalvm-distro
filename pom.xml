@@ -41,6 +41,12 @@
         <checkstyle.version>6.18</checkstyle.version>
         <checkstyle.fails.on.error>true</checkstyle.fails.on.error>
         <junit.version>5.9.2</junit.version>
+        <!-- Versions aligned with upstream skywalking transitive deps -->
+        <groovy.version>5.0.3</groovy.version>
+        <commons-text.version>1.4</commons-text.version>
+        <joda-time.version>2.10.5</joda-time.version>
+        <mockito.version>5.11.0</mockito.version>
+        <powermock.version>2.0.9</powermock.version>
     </properties>
 
     <modules>
@@ -52,6 +58,22 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Import upstream BOM to align third-party dependency versions -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>oap-server-bom</artifactId>
+                <version>${skywalking.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Proto stubs (OpenTelemetry, Envoy, etc.) -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>receiver-proto</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+
             <!-- Storage: BanyanDB -->
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
@@ -192,6 +214,11 @@
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>skywalking-async-profiler-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-async-profiler-jfr-parser</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
             <dependency>
@@ -338,6 +365,11 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-module-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
                 <artifactId>library-util-for-graalvm</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -400,11 +432,50 @@
                 <scope>provided</scope>
             </dependency>
 
+            <!--
+              Transitive deps of provided-scope upstream JARs that are
+              still needed at runtime (Groovy for pre-compiled MAL scripts,
+              commons-text for MetricConvert, joda-time for alarm formatting).
+            -->
+            <dependency>
+                <groupId>org.apache.groovy</groupId>
+                <artifactId>groovy</artifactId>
+                <version>${groovy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-text</artifactId>
+                <version>${commons-text.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>joda-time</groupId>
+                <artifactId>joda-time</artifactId>
+                <version>${joda-time.version}</version>
+            </dependency>
+
             <!-- Test -->
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter</artifactId>
                 <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-junit-jupiter</artifactId>
+                <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.powermock</groupId>
+                <artifactId>powermock-reflect</artifactId>
+                <version>${powermock.version}</version>
                 <scope>test</scope>
             </dependency>
         </dependencies>

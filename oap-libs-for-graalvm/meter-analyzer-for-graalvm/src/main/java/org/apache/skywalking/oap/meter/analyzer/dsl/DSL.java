@@ -25,6 +25,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -40,6 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 public final class DSL {
     private static final String MANIFEST_PATH = "META-INF/mal-groovy-scripts.txt";
     private static volatile Map<String, String> SCRIPT_MAP;
+    private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
     public static Expression parse(final String metricName, final String expression) {
         if (metricName == null) {
@@ -59,7 +61,8 @@ public final class DSL {
         try {
             Class<?> scriptClass = Class.forName(className);
             DelegatingScript script = (DelegatingScript) scriptClass.getDeclaredConstructor().newInstance();
-            log.debug("Loaded pre-compiled MAL script: {} -> {}", metricName, className);
+            int count = LOADED_COUNT.incrementAndGet();
+            log.debug("Loaded pre-compiled MAL script [{}/{}]: {}", count, scriptMap.size(), metricName);
             return new Expression(metricName, expression, script);
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(

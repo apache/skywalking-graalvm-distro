@@ -358,6 +358,28 @@ LAL already uses `@CompileStatic` with `LALPrecompiledExtension` for type checki
 
 ---
 
+## Config Data Serialization
+
+At build time, the precompiler serializes parsed config POJOs to JSON manifests in
+`META-INF/config-data/`. This provides the runtime "wiring" data (metric prefixes,
+rule names, expression lookup keys) that connects pre-compiled Groovy scripts to
+incoming metrics — without requiring filesystem access to the original YAML files.
+
+| JSON Manifest | Source Directory | Serialized Type |
+|---|---|---|
+| `meter-analyzer-config.json` | `meter-analyzer-config/` | `Map<String, MeterConfig>` (filename → config) |
+| `otel-rules.json` | `otel-rules/` | `List<Rule>` |
+| `envoy-metrics-rules.json` | `envoy-metrics-rules/` | `List<Rule>` |
+| `log-mal-rules.json` | `log-mal-rules/` | `List<Rule>` |
+| `telegraf-rules.json` | `telegraf-rules/` | `List<Rule>` |
+| `zabbix-rules.json` | `zabbix-rules/` | `List<Rule>` |
+
+At runtime, replacement loader classes (`MeterConfigs`, `Rules`) deserialize from
+these JSON files instead of reading YAML from the filesystem. Each logs that configs
+are loaded from the pre-compiled distro.
+
+---
+
 ## Same-FQCN Replacements (MAL)
 
 | Upstream Class | Upstream Location | Replacement Location | What Changed |
@@ -365,6 +387,8 @@ LAL already uses `@CompileStatic` with `LALPrecompiledExtension` for type checki
 | `MeterSystem` | `server-core/.../analysis/meter/MeterSystem.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Reads `@MeterFunction` classes from `META-INF/annotation-scan/MeterFunction.txt` manifest instead of Guava `ClassPath.from()`. Loads pre-generated Javassist meter classes from classpath instead of runtime `ClassPool.makeClass()`. |
 | `DSL` (MAL) | `analyzer/meter-analyzer/.../dsl/DSL.java` | `oap-libs-for-graalvm/meter-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled Groovy `DelegatingScript` classes from `META-INF/mal-groovy-scripts.txt` manifest instead of `GroovyShell.parse()` runtime compilation. |
 | `FilterExpression` | `analyzer/meter-analyzer/.../dsl/FilterExpression.java` | `oap-libs-for-graalvm/meter-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled Groovy filter closure classes from `META-INF/mal-filter-scripts.properties` manifest instead of `GroovyShell.evaluate()` runtime compilation. |
+| `Rules` | `analyzer/meter-analyzer/.../prometheus/rule/Rules.java` | `oap-libs-for-graalvm/meter-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled rule data from `META-INF/config-data/{path}.json` instead of filesystem YAML files via `ResourceUtils.getPath()` + `Files.walk()`. |
+| `MeterConfigs` | `analyzer/agent-analyzer/.../meter/config/MeterConfigs.java` | `oap-libs-for-graalvm/agent-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled meter config data from `META-INF/config-data/{path}.json` instead of filesystem YAML files via `ResourceUtils.getPathFiles()`. |
 
 All replacements are repackaged into their respective `-for-graalvm` modules via `maven-shade-plugin` — the original `.class` files are excluded from the shaded JARs.
 

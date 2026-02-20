@@ -19,7 +19,7 @@ SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*
 MVN := ./mvnw
 MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
 
-.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info
+.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown
 
 all: build
 
@@ -69,3 +69,24 @@ build: build-skywalking build-distro
 clean:
 	$(MVN) clean $(MVN_ARGS)
 	cd skywalking && ../mvnw clean
+
+# Start BanyanDB for local development
+docker-up:
+	docker compose -f docker/docker-compose.yml up -d
+	@echo "Waiting for BanyanDB to be ready..."
+	@until docker compose -f docker/docker-compose.yml exec banyandb sh -c 'nc -nz 127.0.0.1 17912' 2>/dev/null; do sleep 1; done
+	@echo "BanyanDB is ready on localhost:17912"
+
+# Stop BanyanDB
+docker-down:
+	docker compose -f docker/docker-compose.yml down
+
+# Stop a previously running OAP server
+shutdown:
+	@oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/bin/oapServiceStop.sh 2>/dev/null || true
+
+# Build distro and boot OAP with BanyanDB
+boot: build-distro docker-up
+	SW_STORAGE_BANYANDB_TARGETS=localhost:17912 \
+	SW_CLUSTER=standalone \
+	  oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/bin/oapService.sh

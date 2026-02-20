@@ -27,18 +27,14 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>meter-analyzer-for-graalvm</artifactId>
-    <name>Meter Analyzer for GraalVM</name>
-    <description>Repackaged meter-analyzer with pre-compiled MAL DSL</description>
+    <artifactId>library-module-for-graalvm</artifactId>
+    <name>Library Module for GraalVM</name>
+    <description>Repackaged library-module with ModuleDefine that supports direct provider wiring</description>
 
     <dependencies>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>meter-analyzer</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
+            <artifactId>library-module</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -54,18 +50,14 @@
                 <configuration>
                     <artifactSet>
                         <includes>
-                            <include>org.apache.skywalking:meter-analyzer</include>
+                            <include>org.apache.skywalking:library-module</include>
                         </includes>
                     </artifactSet>
                     <filters>
                         <filter>
-                            <artifact>org.apache.skywalking:meter-analyzer</artifact>
+                            <artifact>org.apache.skywalking:library-module</artifact>
                             <excludes>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/DSL.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/DSL$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/FilterExpression.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/FilterExpression$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/prometheus/rule/Rules.class</exclude>
+                                <exclude>org/apache/skywalking/oap/server/library/module/ModuleDefine.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

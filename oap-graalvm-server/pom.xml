@@ -41,6 +41,12 @@
         <dependencies>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-module</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
                 <artifactId>server-core</artifactId>
                 <version>${skywalking.version}</version>
                 <scope>provided</scope>
@@ -118,6 +124,10 @@
         <!-- Repackaged OAP libs with GraalVM-compatible replacements baked in -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
+            <artifactId>library-module-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
             <artifactId>server-core-for-graalvm</artifactId>
         </dependency>
         <dependency>
@@ -166,6 +176,10 @@
         </dependency>
 
         <!-- Core (non-repackaged) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>receiver-proto</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>oal-rt</artifactId>
@@ -253,6 +267,11 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>skywalking-async-profiler-receiver-plugin</artifactId>
         </dependency>
+        <!-- Upstream marks this as 'provided'; we need it at runtime for JFREventType -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>library-async-profiler-jfr-parser</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>skywalking-pprof-receiver-plugin</artifactId>
@@ -335,6 +354,23 @@
             <classifier>generated</classifier>
         </dependency>
 
+        <!--
+          Transitive deps that are excluded by provided-scope overrides above
+          but are needed at runtime.
+        -->
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-text</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>joda-time</groupId>
+            <artifactId>joda-time</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -350,19 +386,16 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>5.11.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-junit-jupiter</artifactId>
-            <version>5.11.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.powermock</groupId>
             <artifactId>powermock-reflect</artifactId>
-            <version>2.0.9</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

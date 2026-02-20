@@ -17,12 +17,12 @@
 
 package org.apache.skywalking.oap.server.core.config;
 
-import groovy.lang.Closure;
 import java.io.FileNotFoundException;
 import java.io.Reader;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.CoreModuleConfig;
@@ -37,54 +37,44 @@ import static java.util.stream.Collectors.toMap;
 /**
  * Same-FQCN replacement of upstream HierarchyDefinitionService.
  *
- * <p>Replaces {@code GroovyShell.evaluate()} in {@code MatchingRule} with
- * pre-built Java-backed {@link Closure} objects. Eliminates runtime Groovy
- * compilation, which is not available in GraalVM native image.
+ * <p>Replaces {@code GroovyShell.evaluate()} with pre-built Java
+ * {@link BiFunction} implementations. Eliminates runtime Groovy
+ * compilation and the Groovy runtime dependency entirely.
  *
- * <p>The 4 matching rules from {@code hierarchy-definition.yml} are implemented
- * as anonymous {@code Closure<Boolean>} subclasses in {@link #RULE_REGISTRY}.
+ * <p>The 4 matching rules from {@code hierarchy-definition.yml} are
+ * implemented as lambda expressions in {@link #RULE_REGISTRY}.
  * Unknown rule names fail fast at startup.
  */
 @Slf4j
 public class HierarchyDefinitionService implements org.apache.skywalking.oap.server.library.module.Service {
 
     /**
-     * Pre-built matching rule closures keyed by rule name from hierarchy-definition.yml.
-     * Each closure takes two Service arguments (upper, lower) and returns Boolean.
+     * Pre-built matching rules keyed by rule name from hierarchy-definition.yml.
+     * Each function takes two Service arguments (upper, lower) and returns Boolean.
      */
-    private static final Map<String, Closure<Boolean>> RULE_REGISTRY;
+    private static final Map<String, BiFunction<Service, Service, Boolean>> RULE_REGISTRY;
 
     static {
         RULE_REGISTRY = new HashMap<>();
 
         // name: "{ (u, l) -> u.name == l.name }"
-        RULE_REGISTRY.put("name", new Closure<Boolean>(null) {
-            public Boolean doCall(final Service u, final Service l) {
-                return Objects.equals(u.getName(), l.getName());
-            }
-        });
+        RULE_REGISTRY.put("name", (u, l) -> Objects.equals(u.getName(), l.getName()));
 
         // short-name: "{ (u, l) -> u.shortName == l.shortName }"
-        RULE_REGISTRY.put("short-name", new Closure<Boolean>(null) {
-            public Boolean doCall(final Service u, final Service l) {
-                return Objects.equals(u.getShortName(), l.getShortName());
-            }
-        });
+        RULE_REGISTRY.put("short-name", (u, l) -> Objects.equals(u.getShortName(), l.getShortName()));
 
         // lower-short-name-remove-ns:
         // "{ (u, l) -> { if(l.shortName.lastIndexOf('.') > 0)
         //     return u.shortName == l.shortName.substring(0, l.shortName.lastIndexOf('.'));
         //     return false; } }"
-        RULE_REGISTRY.put("lower-short-name-remove-ns", new Closure<Boolean>(null) {
-            public Boolean doCall(final Service u, final Service l) {
-                int dot = l.getShortName().lastIndexOf('.');
-                if (dot > 0) {
-                    return Objects.equals(
-                        u.getShortName(),
-                        l.getShortName().substring(0, dot));
-                }
-                return false;
+        RULE_REGISTRY.put("lower-short-name-remove-ns", (u, l) -> {
+            int dot = l.getShortName().lastIndexOf('.');
+            if (dot > 0) {
+                return Objects.equals(
+                    u.getShortName(),
+                    l.getShortName().substring(0, dot));
             }
+            return false;
         });
 
         // lower-short-name-with-fqdn:
@@ -92,16 +82,14 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
         //     return u.shortName.substring(0, u.shortName.lastIndexOf(':'))
         //         == l.shortName.concat('.svc.cluster.local');
         //     return false; } }"
-        RULE_REGISTRY.put("lower-short-name-with-fqdn", new Closure<Boolean>(null) {
-            public Boolean doCall(final Service u, final Service l) {
-                int colon = u.getShortName().lastIndexOf(':');
-                if (colon > 0) {
-                    return Objects.equals(
-                        u.getShortName().substring(0, colon),
-                        l.getShortName() + ".svc.cluster.local");
-                }
-                return false;
+        RULE_REGISTRY.put("lower-short-name-with-fqdn", (u, l) -> {
+            int colon = u.getShortName().lastIndexOf(':');
+            if (colon > 0) {
+                return Objects.equals(
+                    u.getShortName().substring(0, colon),
+                    l.getShortName() + ".svc.cluster.local");
             }
+            return false;
         });
     }
 
@@ -177,13 +165,13 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
     public static class MatchingRule {
         private final String name;
         private final String expression;
-        private final Closure<Boolean> closure;
+        private final BiFunction<Service, Service, Boolean> matcher;
 
         public MatchingRule(final String name, final String expression) {
             this.name = name;
             this.expression = expression;
-            this.closure = RULE_REGISTRY.get(name);
-            if (this.closure == null) {
+            this.matcher = RULE_REGISTRY.get(name);
+            if (this.matcher == null) {
                 throw new IllegalArgumentException(
                     "Unknown hierarchy matching rule: " + name
                         + ". Known rules: " + RULE_REGISTRY.keySet());

@@ -84,6 +84,18 @@
             <artifactId>cilium-fetcher-plugin</artifactId>
         </dependency>
 
+        <!-- Agent analyzer (for MeterConfig POJO used in config serialization) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>agent-analyzer</artifactId>
+        </dependency>
+
+        <!-- Jackson for config data JSON serialization -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

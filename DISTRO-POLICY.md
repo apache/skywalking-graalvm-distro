@@ -109,12 +109,12 @@ MAL expressions rely on `propertyMissing()` for sample name resolution and `Expa
 **Details**: [CONFIG-INIT-IMMIGRATION.md](CONFIG-INIT-IMMIGRATION.md)
 
 ### What Was Built
-- `FixedModuleManager` — direct module/provider construction, no SPI
-- `ModuleWiringBridge` — wires all selected modules/providers
-- `GraalVMOAPServerStartUp` — entry point
+- `FixedModuleManager` — direct module/provider construction via `ModuleDefine.prepare()` overload, no SPI
+- `GraalVMOAPServerStartUp` — entry point with `configuration.has()` guards for 6 optional modules
 - `application.yml` — simplified config for selected providers
 - `ConfigInitializerGenerator` — build-time tool that scans config classes and generates `YamlConfigLoaderUtils` replacement
-- `YamlConfigLoaderUtils` — same-FQCN replacement (8th replacement class) using type-dispatch + setter/VarHandle instead of reflection
+- `YamlConfigLoaderUtils` — same-FQCN replacement using type-dispatch + setter/VarHandle instead of reflection
+- `ModuleDefine` — same-FQCN replacement (`library-module-for-graalvm`) adding `prepare(ModuleManager, ModuleProvider, ...)` overload for direct provider wiring without ServiceLoader
 
 ---
 
@@ -133,17 +133,18 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 
 `oap-graalvm-server` depends on `*-for-graalvm` JARs instead of originals. Original upstream JARs are forced to `provided` scope via `<dependencyManagement>` to prevent transitive leakage.
 
-### 19 Same-FQCN Replacement Classes Across 12 Modules
+### 23 Same-FQCN Replacement Classes Across 13 Modules
 
 **Non-trivial replacements (load pre-compiled assets from manifests):**
 
 | Module | Replacement Classes | Purpose |
 |---|---|---|
+| `library-module-for-graalvm` | `ModuleDefine` | Add `prepare()` overload for direct provider wiring (bypasses ServiceLoader) |
 | `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService` | Load from manifests instead of Javassist/ClassPath; config with @Setter; Java-backed closures instead of GroovyShell |
 | `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set config fields via setter instead of reflection |
-| `meter-analyzer-for-graalvm` | `DSL`, `FilterExpression` | Load pre-compiled MAL Groovy scripts from manifest |
-| `log-analyzer-for-graalvm` | `DSL`, `LogAnalyzerModuleConfig` | Load pre-compiled LAL scripts; config with @Setter |
-| `agent-analyzer-for-graalvm` | `AnalyzerModuleConfig` | Config with @Setter |
+| `meter-analyzer-for-graalvm` | `DSL`, `FilterExpression`, `Rules` | Load pre-compiled MAL Groovy scripts from manifest; load rule data from JSON config-data manifests |
+| `log-analyzer-for-graalvm` | `DSL`, `LogAnalyzerModuleConfig`, `LALConfigs` | Load pre-compiled LAL scripts; config with @Setter; load LAL config data from JSON config-data manifests |
+| `agent-analyzer-for-graalvm` | `AnalyzerModuleConfig`, `MeterConfigs` | Config with @Setter; load meter config data from JSON config-data manifests |
 
 **Config-only replacements (add `@Setter` for reflection-free config):**
 
@@ -239,6 +240,12 @@ packaged in JARs. The YAML source files are not needed at runtime.
 **Total: 89 files** consumed at build time, producing ~1285 pre-compiled classes
 and ~1254 Groovy scripts stored in JARs.
 
+Additionally, the precompiler serializes parsed config POJOs as JSON manifests in
+`META-INF/config-data/` (7 JSON files for meter-analyzer-config, otel-rules,
+envoy-metrics-rules, log-mal-rules, telegraf-rules, zabbix-rules, and lal). These
+provide the runtime "wiring" data (metric prefixes, rule names, expression lookup
+keys) that replacement loader classes use instead of filesystem YAML access.
+
 ### Not Included (upstream-only)
 
 | File | Reason |
@@ -253,7 +260,7 @@ and ~1254 Groovy scripts stored in JARs.
 - [x] Set up Maven + Makefile in this repo
 - [x] Build skywalking submodule as a dependency
 - [x] Set up GraalVM JDK 25 in CI (`.github/workflows/ci.yml`)
-- [x] Create a JVM-mode starter with fixed module wiring (`FixedModuleManager` + `ModuleWiringBridge` + `GraalVMOAPServerStartUp`)
+- [x] Create a JVM-mode starter with fixed module wiring (`FixedModuleManager` + `GraalVMOAPServerStartUp`)
 - [x] Simplified config file for selected modules (`application.yml`)
 
 ### Phase 2: Build-Time Pre-Compilation & Verification — COMPLETE
@@ -283,10 +290,28 @@ and ~1254 Groovy scripts stored in JARs.
 - [x] Generated class uses Lombok setters, VarHandle, and getter+clear+addAll — zero `Field.setAccessible` at runtime
 - [x] Reflective fallback for unknown config types (safety net)
 
+**Config data serialization — COMPLETE:**
+- [x] Precompiler serializes parsed config POJOs to `META-INF/config-data/*.json` (7 JSON files)
+- [x] 3 same-FQCN replacement loaders: `MeterConfigs` (meter-analyzer-config), `Rules` (otel-rules, envoy-metrics-rules, telegraf-rules, log-mal-rules), `LALConfigs` (lal)
+- [x] Replacement loaders deserialize from JSON instead of filesystem YAML, with glob matching for enabled rules
+
+**Module system — COMPLETE:**
+- [x] `library-module-for-graalvm`: `ModuleDefine` replacement with direct `prepare()` overload (bypasses ServiceLoader)
+- [x] `FixedModuleManager` simplified: calls `module.prepare(manager, provider, config, params)` directly
+- [x] `GraalVMOAPServerStartUp`: `configuration.has()` guards for 6 optional modules (receiver-zabbix, receiver-zipkin, kafka-fetcher, cilium-fetcher, query-zipkin, exporter)
+
 **Distro resource packaging — COMPLETE:**
 - [x] Identified all 236 upstream resource files: 146 runtime files → distro `config/`, 89 pre-compiled files → JARs
 - [x] Assembly descriptor (`distribution.xml`) packages runtime config files from upstream
 - [x] Pre-compiled OAL/MAL/LAL files excluded from distro (not needed at runtime)
+
+**JVM boot verification — COMPLETE:**
+- [x] Full boot with BanyanDB storage: 38 modules started (6 optional modules disabled by default)
+- [x] Pre-compiled assets loaded: 620 OAL metrics + 45 dispatchers, 1250 MAL scripts, 29 filter scripts, 7 LAL scripts
+- [x] Config data loaded from JSON: 9 meter configs, 55 otel rules, 2 envoy rules, 1 telegraf rule, 1 log-mal rule, 8 LAL configs
+- [x] HTTP endpoints: gRPC :11800, HTTP :12800, Firehose :12801, PromQL :9090, LogQL :3100, Prometheus :1234
+- [x] Debug logging for per-script MAL/LAL/filter loading (`[count/total]: metricName`) for e2e verification
+- [x] Dependency versions centralized in root `pom.xml`
 
 ### Phase 3: Native Image Build
 - [ ] `native-image-maven-plugin` configuration in `oap-graalvm-native`

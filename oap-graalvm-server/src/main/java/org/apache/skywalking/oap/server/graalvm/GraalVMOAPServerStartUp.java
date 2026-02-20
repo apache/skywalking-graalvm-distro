@@ -200,12 +200,16 @@ public class GraalVMOAPServerStartUp {
         manager.register(new ProfileModule(), new ProfileModuleProvider());
         manager.register(new AsyncProfilerModule(), new AsyncProfilerModuleProvider());
         manager.register(new PprofModule(), new PprofModuleProvider());
-        manager.register(new ZabbixReceiverModule(), new ZabbixReceiverProvider());
+        if (configuration.has("receiver-zabbix")) {
+            manager.register(new ZabbixReceiverModule(), new ZabbixReceiverProvider());
+        }
         manager.register(new MeshReceiverModule(), new MeshReceiverProvider());
         manager.register(new EnvoyMetricReceiverModule(), new EnvoyMetricReceiverProvider());
         manager.register(new MeterReceiverModule(), new MeterReceiverProvider());
         manager.register(new OtelMetricReceiverModule(), new OtelMetricReceiverProvider());
-        manager.register(new ZipkinReceiverModule(), new ZipkinReceiverProvider());
+        if (configuration.has("receiver-zipkin")) {
+            manager.register(new ZipkinReceiverModule(), new ZipkinReceiverProvider());
+        }
         manager.register(new BrowserModule(), new BrowserModuleProvider());
         manager.register(new LogModule(), new LogModuleProvider());
         manager.register(new EventModule(), new EventModuleProvider());
@@ -214,13 +218,19 @@ public class GraalVMOAPServerStartUp {
         manager.register(new AWSFirehoseReceiverModule(), new AWSFirehoseReceiverModuleProvider());
         manager.register(new ConfigurationDiscoveryModule(), new ConfigurationDiscoveryProvider());
 
-        // Fetchers
-        manager.register(new KafkaFetcherModule(), new KafkaFetcherProvider());
-        manager.register(new CiliumFetcherModule(), new CiliumFetcherProvider());
+        // Fetchers (optional, disabled by default with selector: -)
+        if (configuration.has("kafka-fetcher")) {
+            manager.register(new KafkaFetcherModule(), new KafkaFetcherProvider());
+        }
+        if (configuration.has("cilium-fetcher")) {
+            manager.register(new CiliumFetcherModule(), new CiliumFetcherProvider());
+        }
 
         // Query
         manager.register(new QueryModule(), new GraphQLQueryProvider());
-        manager.register(new ZipkinQueryModule(), new ZipkinQueryProvider());
+        if (configuration.has("query-zipkin")) {
+            manager.register(new ZipkinQueryModule(), new ZipkinQueryProvider());
+        }
         manager.register(new PromQLModule(), new PromQLProvider());
         manager.register(new LogQLModule(), new LogQLProvider());
         manager.register(new StatusQueryModule(), new StatusQueryProvider());
@@ -228,8 +238,10 @@ public class GraalVMOAPServerStartUp {
         // Alarm
         manager.register(new AlarmModule(), new AlarmModuleProvider());
 
-        // Exporter
-        manager.register(new ExporterModule(), new ExporterProvider());
+        // Exporter (optional, disabled by default with selector: -)
+        if (configuration.has("exporter")) {
+            manager.register(new ExporterModule(), new ExporterProvider());
+        }
 
         // Health Checker
         manager.register(new HealthCheckerModule(), new HealthCheckerProvider());
