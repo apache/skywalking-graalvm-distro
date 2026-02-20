@@ -456,6 +456,7 @@ public class ConfigInitializerGenerator {
         sb.append("        while (propertyNames.hasMoreElements()) {\n");
         sb.append("            final String key = (String) propertyNames.nextElement();\n");
         sb.append("            final Object value = src.get(key);\n");
+        sb.append("            log.debug(\"{}.{} config: {} = {}\", moduleName, providerName, key, value);\n");
         sb.append("            switch (key) {\n");
 
         for (FieldInfo field : info.fields) {

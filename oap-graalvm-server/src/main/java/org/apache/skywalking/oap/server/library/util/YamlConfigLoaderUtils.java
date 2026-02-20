@@ -217,6 +217,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "role":
                     cfg.setRole((String) value);
@@ -400,6 +401,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "global":
                     cfg.setGlobal((BanyanDBStorageConfig.Global) value);
@@ -459,6 +461,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "namespace":
                     cfg.setNamespace((String) value);
@@ -485,6 +488,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "namespace":
                     cfg.setNamespace((String) value);
@@ -511,6 +515,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "host":
                     cfg.setHost((String) value);
@@ -543,6 +548,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "traceSamplingPolicySettingsFile":
                     cfg.setTraceSamplingPolicySettingsFile((String) value);
@@ -611,6 +617,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "lalPath":
                     cfg.setLalPath((String) value);
@@ -643,6 +650,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "restHost":
                     cfg.setRestHost((String) value);
@@ -708,6 +716,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "jfrMaxSize":
                     cfg.setJfrMaxSize((int) value);
@@ -731,6 +740,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "pprofMaxSize":
                     cfg.setPprofMaxSize((int) value);
@@ -754,6 +764,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "port":
                     cfg.setPort((int) value);
@@ -780,6 +791,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "acceptMetricsService":
                     cfg.setAcceptMetricsService((boolean) value);
@@ -854,6 +866,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "enabledHandlers":
                     cfg.setEnabledHandlers((String) value);
@@ -877,6 +890,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "enableHttpCollector":
                     cfg.setEnableHttpCollector((boolean) value);
@@ -945,6 +959,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "sampleRate":
                     cfg.setSampleRate((int) value);
@@ -965,6 +980,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "continuousPolicyCacheTimeout":
                     cfg.setContinuousPolicyCacheTimeout((int) value);
@@ -1012,6 +1028,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "activeFiles":
                     cfg.setActiveFiles((String) value);
@@ -1032,6 +1049,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "host":
                     cfg.setHost((String) value);
@@ -1079,6 +1097,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "disableMessageDigest":
                     cfg.setDisableMessageDigest((boolean) value);
@@ -1099,6 +1118,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "kafkaConsumerConfig":
                     cfg.setKafkaConsumerConfig((Properties) value);
@@ -1179,6 +1199,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "peerHost":
                     cfg.setPeerHost((String) value);
@@ -1220,6 +1241,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "enableLogTestTool":
                     cfg.setEnableLogTestTool((boolean) value);
@@ -1249,6 +1271,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "restHost":
                     cfg.setRestHost((String) value);
@@ -1299,6 +1322,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "restHost":
                     cfg.setRestHost((String) value);
@@ -1349,6 +1373,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "restHost":
                     cfg.setRestHost((String) value);
@@ -1381,6 +1406,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "keywords4MaskingSecretsOfConfig":
                     cfg.setKeywords4MaskingSecretsOfConfig((String) value);
@@ -1401,6 +1427,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "enableGRPCMetrics":
                     cfg.setEnableGRPCMetrics((boolean) value);
@@ -1454,6 +1481,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "checkIntervalSeconds":
                     cfg.setCheckIntervalSeconds(((Number) value).longValue());
@@ -1474,6 +1502,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "uriRecognitionServerAddr":
                     cfg.setUriRecognitionServerAddr((String) value);
@@ -1503,6 +1532,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "targets":
                     cfg.setTargets((String) value);
@@ -1574,6 +1604,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1615,6 +1646,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1656,6 +1688,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1697,6 +1730,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1738,6 +1772,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1779,6 +1814,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1820,6 +1856,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1861,6 +1898,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1902,6 +1940,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1943,6 +1982,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -1984,6 +2024,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -2025,6 +2066,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
                     cfg.setShardNum((int) value);
@@ -2066,6 +2108,7 @@ public class YamlConfigLoaderUtils {
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
             final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "name":
                     cfg.setName((BanyanDBStorageConfig.StageName) value);
