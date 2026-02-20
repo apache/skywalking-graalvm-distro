@@ -99,18 +99,30 @@ GraalVM reflection configuration for `Class.forName()` calls on OAL-generated an
 
 ---
 
+## Same-FQCN Replacements (OAL)
+
+| Upstream Class | Upstream Location | Replacement Location | What Changed |
+|---|---|---|---|
+| `OALEngineLoaderService` | `server-core/.../oal/rt/OALEngineLoaderService.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Loads pre-compiled OAL classes from build-time manifests instead of running ANTLR4 + FreeMarker + Javassist at runtime. |
+| `AnnotationScan` | `server-core/.../annotation/AnnotationScan.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Reads `META-INF/annotation-scan/{name}.txt` manifests instead of Guava `ClassPath.from()` scanning. |
+| `SourceReceiverImpl` | `server-core/.../source/SourceReceiverImpl.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Reads dispatcher/decorator manifests instead of Guava `ClassPath.from()` scanning. |
+
+All three replacements are repackaged into `server-core-for-graalvm` via `maven-shade-plugin` — the original `.class` files are excluded from the shaded JAR.
+
+---
+
 ## Files Created
 
 1. **`build-tools/oal-exporter/src/main/java/.../OALClassExporter.java`**
    - Build-time tool: runs 9 OAL defines, exports `.class` files, writes OAL manifests + annotation/interface manifests
 
-2. **`oap-graalvm-server/src/main/java/.../core/oal/rt/OALEngineLoaderService.java`**
+2. **`oap-libs-for-graalvm/server-core-for-graalvm/src/main/java/.../core/oal/rt/OALEngineLoaderService.java`**
    - Same-FQCN replacement: loads pre-compiled OAL classes from manifests
 
-3. **`oap-graalvm-server/src/main/java/.../core/annotation/AnnotationScan.java`**
+3. **`oap-libs-for-graalvm/server-core-for-graalvm/src/main/java/.../core/annotation/AnnotationScan.java`**
    - Same-FQCN replacement: reads annotation manifests instead of Guava classpath scanning
 
-4. **`oap-graalvm-server/src/main/java/.../core/source/SourceReceiverImpl.java`**
+4. **`oap-libs-for-graalvm/server-core-for-graalvm/src/main/java/.../core/source/SourceReceiverImpl.java`**
    - Same-FQCN replacement: reads dispatcher/decorator manifests instead of Guava classpath scanning
 
 5. **`build-tools/oal-exporter/src/test/java/.../OALClassExporterTest.java`**

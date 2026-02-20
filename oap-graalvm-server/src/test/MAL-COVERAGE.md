@@ -119,8 +119,8 @@ metric expressions each covers.
 
 ## Staleness Detection
 
-`MALYamlStalenessTest` compares SHA-256 hashes of all tracked YAML files
-against `src/test/resources/mal-yaml-sha256.properties`. When a YAML file
+`PrecompiledYamlStalenessTest` compares SHA-256 hashes of all tracked YAML files
+against `src/test/resources/precompiled-yaml-sha256.properties`. When a YAML file
 changes (e.g. after submodule update), the test fails listing which files
 need their test classes regenerated.
 

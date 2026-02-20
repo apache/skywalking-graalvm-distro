@@ -31,36 +31,141 @@
     <name>OAP GraalVM Server</name>
     <description>SkyWalking OAP server with fixed module wiring for GraalVM (JVM mode)</description>
 
+    <!--
+      == Provided-scope overrides ==
+      Force original upstream JARs that have been repackaged into *-for-graalvm
+      modules to provided scope. This prevents them from leaking into the runtime
+      classpath via transitive dependencies of other upstream modules.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-core</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-util</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>meter-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>log-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>agent-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>envoy-metrics-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>otel-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-ebpf-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>aws-firehose-receiver</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>cilium-fetcher-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>status-query-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-health-checker</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
-        <!--
-          == Same-FQCN Override ==
-          This module contains 7 classes that share the exact fully-qualified class name
-          with classes in upstream dependencies (server-core, meter-analyzer, log-analyzer).
-          These replacement classes load pre-compiled OAL/MAL/LAL assets from build-time
-          manifests instead of using runtime code generation (Javassist, Groovy, Guava ClassPath).
-
-          WHY IT WORKS NOW (compile + test):
-          Maven places this module's compiled classes (target/classes/) on the classpath
-          BEFORE all dependency JARs. Java's classloader uses first-found-wins, so our
-          replacement classes shadow the upstream originals during compilation and testing.
-
-          WHAT WE WILL DO FOR FINAL PACKAGING (Phase 3):
-          The oap-graalvm-native module will use maven-shade-plugin to produce an uber JAR
-          with explicit <filters> that exclude the 7 upstream classes from their origin
-          artifacts. This eliminates duplicate FQCNs entirely, making the conflict resolution
-          explicit and safe for GraalVM native-image. See DISTRO-POLICY.md Challenge 5.
-
-          Shadowed classes:
-            server-core    -> OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem
-            meter-analyzer -> DSL (MAL), FilterExpression
-            log-analyzer   -> DSL (LAL)
-        -->
-
-        <!-- Core -->
+        <!-- Repackaged OAP libs with GraalVM-compatible replacements baked in -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>server-core</artifactId>
+            <artifactId>server-core-for-graalvm</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>library-util-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>meter-analyzer-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>log-analyzer-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>agent-analyzer-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>envoy-metrics-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>otel-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ebpf-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>aws-firehose-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>cilium-fetcher-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>status-query-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>health-checker-for-graalvm</artifactId>
+        </dependency>
+
+        <!-- Core (non-repackaged) -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>oal-rt</artifactId>
@@ -93,19 +198,7 @@
             <artifactId>configuration-k8s-configmap</artifactId>
         </dependency>
 
-        <!-- Analyzers -->
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>agent-analyzer</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>meter-analyzer</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>log-analyzer</artifactId>
-        </dependency>
+        <!-- Analyzers (non-repackaged) -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>event-analyzer</artifactId>
@@ -158,10 +251,6 @@
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>skywalking-ebpf-receiver-plugin</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
             <artifactId>skywalking-async-profiler-receiver-plugin</artifactId>
         </dependency>
         <dependency>
@@ -182,29 +271,13 @@
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>envoy-metrics-receiver-plugin</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>otel-receiver-plugin</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
             <artifactId>configuration-discovery-receiver-plugin</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>aws-firehose-receiver</artifactId>
         </dependency>
 
         <!-- Fetchers -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>kafka-fetcher-plugin</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>cilium-fetcher-plugin</artifactId>
         </dependency>
 
         <!-- Query -->
@@ -224,11 +297,6 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>zipkin-query-plugin</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>status-query-plugin</artifactId>
-        </dependency>
-
         <!-- Alarm -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
@@ -245,12 +313,6 @@
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>exporter</artifactId>
-        </dependency>
-
-        <!-- Health Checker -->
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>server-health-checker</artifactId>
         </dependency>
 
         <!-- AI Pipeline -->
@@ -350,10 +412,10 @@
                                     <format property="build.timestamp" pattern="yyyy-MM-dd'T'HH:mm:ssZ"/>
                                 </tstamp>
                                 <echo file="${project.build.directory}/VERSION">version=${project.version}
-git.commit.id=${git.commit.id.full}
-git.commit.id.short=${git.commit.id}
-build.time=${build.timestamp}
-</echo>
+                                    git.commit.id=${git.commit.id.full}
+                                    git.commit.id.short=${git.commit.id}
+                                    build.time=${build.timestamp}
+                                </echo>
                             </target>
                         </configuration>
                     </execution>

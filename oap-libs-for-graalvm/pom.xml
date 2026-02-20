@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one or more
+  ~ contributor license agreements.  See the NOTICE file distributed with
+  ~ this work for additional information regarding copyright ownership.
+  ~ The ASF licenses this file to You under the Apache License, Version 2.0
+  ~ (the "License"); you may not use this file except in compliance with
+  ~ the License.  You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.apache.skywalking</groupId>
+        <artifactId>skywalking-graalvm-distro</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>oap-libs-for-graalvm</artifactId>
+    <packaging>pom</packaging>
+    <name>OAP Libs for GraalVM</name>
+    <description>Repackaged upstream OAP libraries with GraalVM-compatible replacement classes baked in</description>
+
+    <modules>
+        <module>server-core-for-graalvm</module>
+        <module>library-util-for-graalvm</module>
+        <module>meter-analyzer-for-graalvm</module>
+        <module>log-analyzer-for-graalvm</module>
+        <module>agent-analyzer-for-graalvm</module>
+        <module>envoy-metrics-receiver-for-graalvm</module>
+        <module>otel-receiver-for-graalvm</module>
+        <module>ebpf-receiver-for-graalvm</module>
+        <module>aws-firehose-receiver-for-graalvm</module>
+        <module>cilium-fetcher-for-graalvm</module>
+        <module>status-query-for-graalvm</module>
+        <module>health-checker-for-graalvm</module>
+    </modules>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>3.6.0</version>
+                    <executions>
+                        <execution>
+                            <phase>package</phase>
+                            <goals>
+                                <goal>shade</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <createDependencyReducedPom>true</createDependencyReducedPom>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

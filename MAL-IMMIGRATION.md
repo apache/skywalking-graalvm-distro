@@ -358,46 +358,36 @@ LAL already uses `@CompileStatic` with `LALPrecompiledExtension` for type checki
 
 ---
 
-## Files to Create
+## Same-FQCN Replacements (MAL)
 
-1. **`build-tools/mal-compiler/src/main/java/.../buildtools/mal/MALCompiler.java`**
+| Upstream Class | Upstream Location | Replacement Location | What Changed |
+|---|---|---|---|
+| `MeterSystem` | `server-core/.../analysis/meter/MeterSystem.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Reads `@MeterFunction` classes from `META-INF/annotation-scan/MeterFunction.txt` manifest instead of Guava `ClassPath.from()`. Loads pre-generated Javassist meter classes from classpath instead of runtime `ClassPool.makeClass()`. |
+| `DSL` (MAL) | `analyzer/meter-analyzer/.../dsl/DSL.java` | `oap-libs-for-graalvm/meter-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled Groovy `DelegatingScript` classes from `META-INF/mal-groovy-scripts.txt` manifest instead of `GroovyShell.parse()` runtime compilation. |
+| `FilterExpression` | `analyzer/meter-analyzer/.../dsl/FilterExpression.java` | `oap-libs-for-graalvm/meter-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled Groovy filter closure classes from `META-INF/mal-filter-scripts.properties` manifest instead of `GroovyShell.evaluate()` runtime compilation. |
+
+All replacements are repackaged into their respective `-for-graalvm` modules via `maven-shade-plugin` — the original `.class` files are excluded from the shaded JARs.
+
+---
+
+## Files Created
+
+1. **`build-tools/precompiler/`** (unified, replaces separate `oal-exporter` + `mal-compiler`)
    - Main build tool: loads all MAL/LAL rules, runs full initialization pipeline, exports .class files + manifests
 
-2. **`build-tools/mal-compiler/src/main/java/.../buildtools/mal/ExportingMeterSystem.java`**
-   - MeterSystem variant that exports Javassist bytecode to disk via `toBytecode()` instead of `toClass()`
-
-3. **`oap-graalvm-server/src/main/java/.../core/analysis/meter/MeterSystem.java`**
+2. **`oap-libs-for-graalvm/server-core-for-graalvm/src/main/java/.../core/analysis/meter/MeterSystem.java`**
    - Same-FQCN replacement: reads function registry from manifest, loads pre-generated classes in `create()`
 
-4. **`oap-graalvm-server/src/main/java/.../meter/analyzer/dsl/DSL.java`**
+3. **`oap-libs-for-graalvm/meter-analyzer-for-graalvm/src/main/java/.../meter/analyzer/dsl/DSL.java`**
    - Same-FQCN replacement: loads pre-compiled MAL Groovy scripts from manifest
 
-5. **`oap-graalvm-server/src/main/java/.../meter/analyzer/dsl/FilterExpression.java`**
+4. **`oap-libs-for-graalvm/meter-analyzer-for-graalvm/src/main/java/.../meter/analyzer/dsl/FilterExpression.java`**
    - Same-FQCN replacement: loads pre-compiled filter closures from manifest
 
-6. **`oap-graalvm-server/src/main/java/.../log/analyzer/dsl/DSL.java`**
-   - Same-FQCN replacement: loads pre-compiled LAL scripts from manifest
-
-7. **`build-tools/mal-compiler/src/test/java/.../buildtools/mal/MALCompilerTest.java`**
-   - Build-time compilation tests
-
-8. **`oap-graalvm-server/src/test/java/.../graalvm/MALPrecompiledRegistrationTest.java`**
+5. **`oap-graalvm-server/src/test/java/.../graalvm/PrecompiledMALExecutionTest.java`**
    - Runtime registration and loading tests
 
-## Files to Modify
-
-1. **`build-tools/oal-exporter/src/main/java/.../buildtools/oal/OALClassExporter.java`**
-   - Add `@MeterFunction` annotation scan → `META-INF/annotation-scan/MeterFunction.txt`
-
-2. **`build-tools/mal-compiler/pom.xml`**
-   - Add dependencies (server-core, meter-analyzer, log-analyzer, agent-analyzer, all receiver plugins for rule YAMLs)
-   - Configure `exec-maven-plugin` + `maven-jar-plugin`
-
-3. **`oap-graalvm-server/pom.xml`**
-   - Add dependency on `mal-compiler` generated JAR
-
-4. **`build-tools/oal-exporter/src/test/java/.../OALClassExporterTest.java`**
-   - Add test for MeterFunction manifest
+6. **`oap-graalvm-server/src/test/java/.../graalvm/mal/`** — 73 comparison test classes covering all 71 MAL YAML files
 
 ## Key Upstream Files (read-only)
 

@@ -148,9 +148,20 @@ Each test runs both paths and asserts identical `Binding` state:
 
 ---
 
+## Same-FQCN Replacements (LAL)
+
+| Upstream Class | Upstream Location | Replacement Location | What Changed |
+|---|---|---|---|
+| `DSL` (LAL) | `analyzer/log-analyzer/.../dsl/DSL.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled `@CompileStatic` Groovy script classes from `META-INF/lal-scripts-by-hash.txt` manifest (keyed by SHA-256 hash) instead of `GroovyShell.parse()` runtime compilation. |
+| `LogAnalyzerModuleConfig` | `analyzer/log-analyzer/.../provider/LogAnalyzerModuleConfig.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `@Setter` at class level. Enables reflection-free config loading via Lombok setters. |
+
+All replacements are repackaged into `log-analyzer-for-graalvm` via `maven-shade-plugin` — the original `.class` files are excluded from the shaded JAR.
+
+---
+
 ## Files Created
 
-1. **`oap-graalvm-server/src/main/java/.../log/analyzer/dsl/DSL.java`**
+1. **`oap-libs-for-graalvm/log-analyzer-for-graalvm/src/main/java/.../log/analyzer/dsl/DSL.java`**
    Same-FQCN replacement: loads pre-compiled LAL scripts from manifest via SHA-256 hash
 
 2. **`oap-graalvm-server/src/test/java/.../graalvm/lal/LALScriptComparisonBase.java`**

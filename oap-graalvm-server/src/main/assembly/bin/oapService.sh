@@ -29,32 +29,12 @@ fi
 _RUNJAVA=${JAVA_HOME}/bin/java
 [ -z "$JAVA_HOME" ] && _RUNJAVA=java
 
-# Build classpath: config directory first, then libs.
-# IMPORTANT: oap-graalvm-server-*.jar MUST appear on the classpath BEFORE
-# upstream JARs (server-core, meter-analyzer, log-analyzer) to ensure
-# same-FQCN replacement classes shadow the upstream originals.
-# See DISTRO-POLICY.md Challenge 5 for details.
+# Build classpath: config directory first, then all libs.
+# No special ordering needed — upstream JARs that contained same-FQCN classes
+# have been repackaged into *-for-graalvm modules with replacements baked in.
 CLASSPATH="$OAP_HOME/config"
-
-# Add oap-graalvm-server JAR first (contains same-FQCN override classes)
-for i in "$OAP_HOME"/libs/oap-graalvm-server-*.jar
-do
-    CLASSPATH="$CLASSPATH:$i"
-done
-
-# Add precompiler-generated JAR second (contains pre-compiled OAL/MAL/LAL classes + manifests)
-for i in "$OAP_HOME"/libs/precompiler-*-generated.jar
-do
-    CLASSPATH="$CLASSPATH:$i"
-done
-
-# Add all remaining JARs
 for i in "$OAP_HOME"/libs/*.jar
 do
-    case "$i" in
-        */oap-graalvm-server-*) continue ;;
-        *precompiler-*-generated*) continue ;;
-    esac
     CLASSPATH="$CLASSPATH:$i"
 done
 

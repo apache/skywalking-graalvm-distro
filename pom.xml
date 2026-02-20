@@ -45,6 +45,7 @@
 
     <modules>
         <module>build-tools</module>
+        <module>oap-libs-for-graalvm</module>
         <module>oap-graalvm-server</module>
         <module>oap-graalvm-native</module>
     </modules>
@@ -326,6 +327,68 @@
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>oap-graalvm-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Repackaged OAP libs for GraalVM -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-core-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>library-util-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>meter-analyzer-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>log-analyzer-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>agent-analyzer-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>envoy-metrics-receiver-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>otel-receiver-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>ebpf-receiver-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>aws-firehose-receiver-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>cilium-fetcher-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>status-query-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>health-checker-for-graalvm</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

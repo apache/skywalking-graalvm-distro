@@ -253,8 +253,8 @@ class NewFileTest extends MALScriptComparisonBase {
 
 ### Staleness detection (SHA-256 tracking)
 
-`MALYamlStalenessTest` compares the SHA-256 of each tracked MAL YAML file
-against the recorded hash in `src/test/resources/mal-yaml-sha256.properties`.
+`PrecompiledYamlStalenessTest` compares the SHA-256 of each tracked MAL YAML file
+against the recorded hash in `src/test/resources/precompiled-yaml-sha256.properties`.
 
 **AI workflow — before starting MAL test work:**
 
@@ -262,13 +262,13 @@ against the recorded hash in `src/test/resources/mal-yaml-sha256.properties`.
    ```bash
    JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
      mvn -pl oap-graalvm-server test \
-     -Dtest="org.apache.skywalking.oap.server.graalvm.mal.MALYamlStalenessTest"
+     -Dtest="org.apache.skywalking.oap.server.graalvm.mal.PrecompiledYamlStalenessTest"
    ```
 2. If it **passes** — all test files are up-to-date, no regeneration needed.
 3. If it **fails** — the output lists which YAML files changed. For each:
    - Re-read the changed YAML file to understand the new expressions.
    - Regenerate the corresponding test class with updated mock input.
-   - Update the SHA-256 in `mal-yaml-sha256.properties` by running:
+   - Update the SHA-256 in `precompiled-yaml-sha256.properties` by running:
      ```bash
      shasum -a 256 skywalking/oap-server/server-starter/src/main/resources/<path>
      ```
@@ -279,7 +279,7 @@ to explicitly request regeneration. The staleness test catches drift after
 `skywalking/` submodule updates. New YAML files not yet in the properties file
 also need detection; check for untracked files via:
 ```bash
-diff <(sort mal-yaml-sha256.properties | grep -v '^#' | cut -d= -f1) \
+diff <(sort precompiled-yaml-sha256.properties | grep -v '^#' | cut -d= -f1) \
      <(find skywalking/.../resources/{meter-analyzer-config,otel-rules,log-mal-rules} \
        -name "*.yaml" | sed 's|.*/resources/||' | sort)
 ```
@@ -294,7 +294,7 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
 # Run staleness check (fast — no Groovy compilation)
 JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
   mvn -pl oap-graalvm-server test \
-  -Dtest="org.apache.skywalking.oap.server.graalvm.mal.MALYamlStalenessTest"
+  -Dtest="org.apache.skywalking.oap.server.graalvm.mal.PrecompiledYamlStalenessTest"
 
 # Run specific test
 JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
@@ -308,8 +308,8 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 ### Reference files
 
 - `MALScriptComparisonBase.java` — base class with both auto-discovery and explicit input modes
-- `MALYamlStalenessTest.java` — SHA-256 staleness detector
-- `mal-yaml-sha256.properties` — recorded SHA-256 hashes of all tracked YAML files
+- `PrecompiledYamlStalenessTest.java` — SHA-256 staleness detector
+- `precompiled-yaml-sha256.properties` — recorded SHA-256 hashes of all tracked YAML files
 - `SpringMicrometerTest.java` — example of auto-discovery mode (no tag filters)
 - `MysqlInstanceTest.java` — example of explicit input mode (tagEqual, tagMatch, multi-sample)
 - `K8sClusterTest.java` — example of K8s retagByK8sMeta mocking

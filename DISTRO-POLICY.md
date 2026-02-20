@@ -96,7 +96,7 @@ MAL expressions rely on `propertyMissing()` for sample name resolution and `Expa
 
 ---
 
-## Challenge 4: Module System & Configuration
+## Challenge 4: Module System & Configuration — SOLVED
 
 ### Current Behavior
 `ModuleManager` uses `ServiceLoader` (SPI). `application.yml` selects providers. Config loaded via reflection (`Field.setAccessible` + `field.set` in `YamlConfigLoaderUtils.copyProperties`).
@@ -104,80 +104,72 @@ MAL expressions rely on `propertyMissing()` for sample name resolution and `Expa
 ### Approach (this repo)
 1. **New module manager**: Directly constructs chosen `ModuleDefine`/`ModuleProvider` — no SPI
 2. **Simplified config file**: Only knobs for selected providers
-3. **Config loading**: **No reflection.** At build time, read `application.yml` + scan `ModuleConfig` subclass fields → generate Java code that directly sets config fields (e.g. `config.restPort = 12800;`). Eliminates `Field.setAccessible`/`field.set` and the need for `reflect-config.json` for config classes.
+3. **Config loading**: **No reflection.** Build-time tool scans all `ModuleConfig` subclass fields → generates same-FQCN replacement of `YamlConfigLoaderUtils` that uses Lombok setters and VarHandle to set config fields directly. Eliminates `Field.setAccessible`/`field.set` and the need for `reflect-config.json` for config classes.
 
-### What Was Built (Phase 1)
+**Details**: [CONFIG-INIT-IMMIGRATION.md](CONFIG-INIT-IMMIGRATION.md)
+
+### What Was Built
 - `FixedModuleManager` — direct module/provider construction, no SPI
 - `ModuleWiringBridge` — wires all selected modules/providers
 - `GraalVMOAPServerStartUp` — entry point
 - `application.yml` — simplified config for selected providers
+- `ConfigInitializerGenerator` — build-time tool that scans config classes and generates `YamlConfigLoaderUtils` replacement
+- `YamlConfigLoaderUtils` — same-FQCN replacement (8th replacement class) using type-dispatch + setter/VarHandle instead of reflection
 
 ---
 
-## Challenge 5: Same-FQCN Packaging for Distribution
+## Challenge 5: Same-FQCN Packaging — SOLVED (Repackaged Modules)
 
 ### Problem
 
-The same-FQCN replacement technique works during Maven compilation and testing because Maven places `target/classes/` (the module's own compiled source) on the classpath **before** all dependency JARs. Java's classloader uses first-found-wins, so our replacement classes shadow the upstream originals.
+Same-FQCN replacement classes need to shadow upstream originals. Classpath ordering tricks confuse developers and AI tools.
 
-However, this implicit ordering does **not** carry over to distribution packaging:
+### Solution: Per-JAR Repackaged Modules (`oap-libs-for-graalvm`)
 
-- **Uber JAR** (maven-shade-plugin): When merging all JARs into one, duplicate FQCN class files collide. Only one copy survives, and the winner depends on dependency processing order — not guaranteed to be ours.
-- **Classpath mode** (separate JARs): `java -cp jar1:jar2:jar3` or `native-image -cp jar1:jar2:jar3` uses first-found-wins based on `-cp` ordering. Requires explicit ordering that is fragile and easy to break.
-- **GraalVM native-image**: Uses the same classpath resolution as JVM. Duplicate FQCNs on the classpath may produce warnings or unpredictable behavior.
+Each upstream JAR that has replacement classes gets a corresponding `*-for-graalvm` module under `oap-libs-for-graalvm/`. The module uses `maven-shade-plugin` to:
+1. Include only the upstream JAR in the shade
+2. Exclude the specific `.class` files being replaced
+3. Produce a JAR containing: all upstream classes MINUS replaced ones PLUS our replacements
 
-### 7 Same-FQCN Replacement Classes
+`oap-graalvm-server` depends on `*-for-graalvm` JARs instead of originals. Original upstream JARs are forced to `provided` scope via `<dependencyManagement>` to prevent transitive leakage.
 
-| Replacement Class | Upstream Artifact | Purpose |
+### 18 Same-FQCN Replacement Classes Across 12 Modules
+
+**Non-trivial replacements (load pre-compiled assets from manifests):**
+
+| Module | Replacement Classes | Purpose |
 |---|---|---|
-| `OALEngineLoaderService` | `server-core` | Load OAL classes from manifests instead of Javassist |
-| `AnnotationScan` | `server-core` | Read annotation manifests instead of Guava ClassPath |
-| `SourceReceiverImpl` | `server-core` | Read dispatcher/decorator manifests instead of Guava ClassPath |
-| `MeterSystem` | `server-core` | Read MeterFunction manifest + pre-generated meter classes |
-| `DSL` (MAL) | `meter-analyzer` | Load pre-compiled MAL Groovy scripts from manifest |
-| `FilterExpression` | `meter-analyzer` | Load pre-compiled filter closures from manifest |
-| `DSL` (LAL) | `log-analyzer` | Load pre-compiled LAL scripts via SHA-256 hash lookup |
+| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig` | Load from manifests instead of Javassist/ClassPath; config with @Setter |
+| `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set config fields via setter instead of reflection |
+| `meter-analyzer-for-graalvm` | `DSL`, `FilterExpression` | Load pre-compiled MAL Groovy scripts from manifest |
+| `log-analyzer-for-graalvm` | `DSL`, `LogAnalyzerModuleConfig` | Load pre-compiled LAL scripts; config with @Setter |
+| `agent-analyzer-for-graalvm` | `AnalyzerModuleConfig` | Config with @Setter |
 
-### Approach: Uber JAR with Explicit Shade Filters
+**Config-only replacements (add `@Setter` for reflection-free config):**
 
-The `oap-graalvm-native` module will use `maven-shade-plugin` to produce a single uber JAR with explicit filters that exclude the 7 upstream classes. This makes conflict resolution explicit and auditable.
+| Module | Replacement Class |
+|---|---|
+| `envoy-metrics-receiver-for-graalvm` | `EnvoyMetricReceiverConfig` |
+| `otel-receiver-for-graalvm` | `OtelMetricReceiverConfig` |
+| `ebpf-receiver-for-graalvm` | `EBPFReceiverModuleConfig` |
+| `aws-firehose-receiver-for-graalvm` | `AWSFirehoseReceiverModuleConfig` |
+| `cilium-fetcher-for-graalvm` | `CiliumFetcherConfig` |
+| `status-query-for-graalvm` | `StatusQueryConfig` |
+| `health-checker-for-graalvm` | `HealthCheckerConfig` |
 
-```xml
-<plugin>
-    <groupId>org.apache.maven.plugins</groupId>
-    <artifactId>maven-shade-plugin</artifactId>
-    <configuration>
-        <filters>
-            <filter>
-                <artifact>org.apache.skywalking:server-core</artifact>
-                <excludes>
-                    <exclude>org/apache/skywalking/oap/server/core/oal/rt/OALEngineLoaderService.class</exclude>
-                    <exclude>org/apache/skywalking/oap/server/core/annotation/AnnotationScan.class</exclude>
-                    <exclude>org/apache/skywalking/oap/server/core/source/SourceReceiverImpl.class</exclude>
-                    <exclude>org/apache/skywalking/oap/server/core/analysis/meter/MeterSystem.class</exclude>
-                </excludes>
-            </filter>
-            <filter>
-                <artifact>org.apache.skywalking:meter-analyzer</artifact>
-                <excludes>
-                    <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/DSL.class</exclude>
-                    <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/FilterExpression.class</exclude>
-                </excludes>
-            </filter>
-            <filter>
-                <artifact>org.apache.skywalking:log-analyzer</artifact>
-                <excludes>
-                    <exclude>org/apache/skywalking/oap/log/analyzer/dsl/DSL.class</exclude>
-                </excludes>
-            </filter>
-        </filters>
-    </configuration>
-</plugin>
-```
+### No Classpath Ordering Required
 
-The resulting uber JAR contains exactly one copy of each class — no duplicates, no ordering ambiguity. This JAR is then fed to `native-image` for AOT compilation.
+No duplicate FQCNs on the classpath. The startup script (`oapService.sh`) uses a simple flat classpath. The `oap-graalvm-native` uber JAR also has no FQCN conflicts.
 
-**Important**: When new same-FQCN replacement classes are added, the shade filter list must be updated to match. This list should be kept in sync with the table above.
+### Adding New Replacements
+
+To add a new same-FQCN replacement:
+1. Create a new `*-for-graalvm` module under `oap-libs-for-graalvm/` (or add to existing one)
+2. Add the replacement `.java` file with the same FQCN
+3. Configure shade plugin to exclude the original `.class` from the upstream JAR
+4. Add the `-for-graalvm` artifact to root `pom.xml` `<dependencyManagement>`
+5. In `oap-graalvm-server/pom.xml`: add the original JAR to `<dependencyManagement>` as `provided`, add `-for-graalvm` to `<dependencies>`
+6. Add the original JAR to `distribution.xml` `<excludes>`
 
 ---
 
@@ -185,7 +177,7 @@ The resulting uber JAR contains exactly one copy of each class — no duplicates
 
 | Risk | Mitigation |
 |------|------------|
-| **Reflection** (annotations, OAL enricher — not config loading) | Captured during pre-compilation; `reflect-config.json`. Config loading uses generated code, no reflection. |
+| **Reflection** (annotations, OAL enricher — not config loading) | Captured during pre-compilation; `reflect-config.json`. Config loading uses generated code (see [CONFIG-INIT-IMMIGRATION.md](CONFIG-INIT-IMMIGRATION.md)), no reflection. |
 | **gRPC 1.70.0 / Netty 4.2.9** | GraalVM reachability metadata repo, Netty substitutions |
 | **Resource loading** (`ResourceUtils`, config files) | `resource-config.json` via tracing agent |
 | **Log4j2** | GraalVM metadata, disable JNDI |
@@ -195,12 +187,72 @@ The resulting uber JAR contains exactly one copy of each class — no duplicates
 
 ---
 
+## Distro Resource Files
+
+Upstream `server-starter/src/main/resources/` contains 236 files. They fall into
+two categories: files included directly in the distro `config/` directory (loaded
+at runtime via file I/O), and files consumed by the precompiler at build time
+(not needed at runtime — their logic is baked into pre-compiled `.class` files).
+
+### Directly Included in Distro (`config/`)
+
+These files are loaded at runtime via `ResourceUtils.read()`, `Files.walk()`, or
+YAML parsing. No reflection involved — safe for GraalVM native image as-is.
+
+| File / Directory | Count | Loaded By | Purpose |
+|---|---|---|---|
+| `application.yml` | 1 | Custom (distro's own, not upstream) | Module/provider config |
+| `bydb.yml` | 1 | `BanyanDBConfigLoader` | BanyanDB storage base config |
+| `bydb-topn.yml` | 1 | `BanyanDBConfigLoader` | BanyanDB TopN aggregation config |
+| `log4j2.xml` | 1 | Log4j2 framework | Logging configuration |
+| `alarm-settings.yml` | 1 | `AlarmModuleProvider` via `ResourceUtils.read()` | Alarm rules |
+| `component-libraries.yml` | 1 | `ComponentLibraryCatalogService` via `ResourceUtils.read()` | Component ID mapping |
+| `endpoint-name-grouping.yml` | 1 | `EndpointNameGroupingRuleWatcher` via `ResourceUtils.read()` | Endpoint grouping rules |
+| `gateways.yml` | 1 | `UninstrumentedGatewaysConfig` via `ResourceUtils.read()` | Gateway definitions |
+| `hierarchy-definition.yml` | 1 | `HierarchyDefinitionService` via `ResourceUtils.read()` | Layer hierarchy |
+| `metadata-service-mapping.yaml` | 1 | `ResourceUtils.read()` | Metadata service mapping |
+| `service-apdex-threshold.yml` | 1 | `ApdexThresholdConfig` via `ResourceUtils.read()` | APDEX thresholds |
+| `trace-sampling-policy-settings.yml` | 1 | `TraceSamplingPolicyWatcher` via `ResourceUtils.read()` | Trace sampling |
+| `ui-initialized-templates/**` | 131 | `UITemplateInitializer` via `Files.walk()` | UI dashboard JSON templates |
+| `cilium-rules/**` | 2 | `CiliumFetcherProvider` via `ResourceUtils.getPathFiles()` | Cilium flow rules |
+| `openapi-definitions/**` | 1 | `EndpointNameGrouping` via `ResourceUtils.getPathFiles()` | OpenAPI grouping definitions |
+
+**Total: 146 files** included in the distro `config/` directory.
+
+### Pre-compiled at Build Time (NOT in distro)
+
+These files are consumed by `build-tools/precompiler` during the build. Their
+expressions, scripts, and metric definitions are compiled into `.class` files
+packaged in JARs. The YAML source files are not needed at runtime.
+
+| Category | Count | Pre-compiled Into | Tool |
+|---|---|---|---|
+| `oal/*.oal` | 9 | ~620 metrics classes + ~620 builders + ~45 dispatchers (Javassist) | `OALClassExporter` |
+| `meter-analyzer-config/*.yaml` | 11 | 147 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
+| `otel-rules/**/*.yaml` | 55 | 1044 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
+| `log-mal-rules/*.yaml` | 2 | 2 Groovy scripts | `MALPrecompiler` |
+| `envoy-metrics-rules/*.yaml` | 2 | 26 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
+| `telegraf-rules/*.yaml` | 1 | 20 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
+| `zabbix-rules/*.yaml` | 1 | 15 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
+| `lal/*.yaml` | 8 | 6 unique `@CompileStatic` Groovy classes | `LALPrecompiler` |
+
+**Total: 89 files** consumed at build time, producing ~1285 pre-compiled classes
+and ~1254 Groovy scripts stored in JARs.
+
+### Not Included (upstream-only)
+
+| File | Reason |
+|---|---|
+| `application.yml` (upstream) | Replaced by distro's own simplified `application.yml` |
+
+---
+
 ## Proposed Phases
 
 ### Phase 1: Build System Setup — COMPLETE
 - [x] Set up Maven + Makefile in this repo
 - [x] Build skywalking submodule as a dependency
-- [ ] Set up GraalVM JDK 25 in CI
+- [x] Set up GraalVM JDK 25 in CI (`.github/workflows/ci.yml`)
 - [x] Create a JVM-mode starter with fixed module wiring (`FixedModuleManager` + `ModuleWiringBridge` + `GraalVMOAPServerStartUp`)
 - [x] Simplified config file for selected modules (`application.yml`)
 
@@ -226,17 +278,24 @@ The resulting uber JAR contains exactly one copy of each class — no duplicates
 - [x] Same-FQCN replacement: `DSL.java` (LAL) loads pre-compiled scripts via SHA-256 hash lookup
 - [x] Comparison test suite: 5 test classes, 19 assertions (all 8 YAML files, 100% branch coverage)
 
-**Remaining:**
-- [ ] Config generator (`build-tools/config-generator` skeleton exists) — eliminate `Field.setAccessible` reflection in config loading
-- [ ] Package everything into native-image classpath
+**Config initialization — COMPLETE:**
+- [x] `ConfigInitializerGenerator` build tool scans all provider config classes, generates same-FQCN `YamlConfigLoaderUtils` replacement
+- [x] Generated class uses Lombok setters, VarHandle, and getter+clear+addAll — zero `Field.setAccessible` at runtime
+- [x] Reflective fallback for unknown config types (safety net)
+
+**Distro resource packaging — COMPLETE:**
+- [x] Identified all 236 upstream resource files: 146 runtime files → distro `config/`, 89 pre-compiled files → JARs
+- [x] Assembly descriptor (`distribution.xml`) packages runtime config files from upstream
+- [x] Pre-compiled OAL/MAL/LAL files excluded from distro (not needed at runtime)
 
 ### Phase 3: Native Image Build
-- [ ] Uber JAR packaging via `maven-shade-plugin` in `oap-graalvm-native` with explicit shade filters for same-FQCN classes (see Challenge 5)
-- [ ] `native-image-maven-plugin` configuration
+- [ ] `native-image-maven-plugin` configuration in `oap-graalvm-native`
 - [ ] Run tracing agent to capture reflection/resource/JNI metadata
+- [ ] `reflect-config.json` for OAL-generated classes (`Class.forName()` calls)
+- [ ] `resource-config.json` for runtime config files loaded via `ResourceUtils.read()`
 - [ ] Configure gRPC/Netty/Protobuf for native image
 - [ ] GraalVM Feature class for SkyWalking-specific registrations
-- [ ] `reflect-config.json` for OAL-generated classes (`Class.forName()` calls)
+- [ ] Resolve remaining code-level blockers: OTEL SPI, Envoy SPI, HierarchyDefinitionService Groovy
 - [ ] Get OAP server booting as native image with BanyanDB
 
 ### Phase 4: Harden & Test

@@ -29,16 +29,305 @@
 
     <artifactId>config-generator</artifactId>
     <name>Config Generator</name>
-    <description>Reads application.yml and ModuleConfig classes to generate direct config-setting code</description>
+    <description>Scans ModuleConfig classes and generates reflection-free YamlConfigLoaderUtils replacement</description>
+
+    <!--
+        Force original upstream JARs to provided scope so they don't appear on
+        the exec:java runtime classpath. Only the *-for-graalvm shaded versions
+        (which contain replacement config classes with @Setter) should be loaded.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-core</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>agent-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>log-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>envoy-metrics-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>otel-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-ebpf-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>aws-firehose-receiver</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>cilium-fetcher-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>status-query-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-health-checker</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
+        <!--
+            Uses *-for-graalvm repackaged modules where available, so the generator
+            sees config classes with @Setter added (e.g., CoreModuleConfig).
+            The -for-graalvm JARs must be installed before running the generator.
+        -->
+
+        <!-- Core (with @Setter on CoreModuleConfig) -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>library-module</artifactId>
+            <artifactId>server-core-for-graalvm</artifactId>
+        </dependency>
+
+        <!-- Storage: BanyanDB -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>storage-banyandb-plugin</artifactId>
+        </dependency>
+
+        <!-- Cluster -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>cluster-standalone-plugin</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>library-util</artifactId>
+            <artifactId>cluster-kubernetes-plugin</artifactId>
+        </dependency>
+
+        <!-- Configuration -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>configuration-k8s-configmap</artifactId>
+        </dependency>
+
+        <!-- Analyzers (with @Setter on AnalyzerModuleConfig, LogAnalyzerModuleConfig) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>agent-analyzer-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>meter-analyzer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>log-analyzer-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>event-analyzer</artifactId>
+        </dependency>
+
+        <!-- Receivers -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-sharing-server-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-trace-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-management-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-jvm-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-clr-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-profile-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-async-profiler-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-pprof-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-zabbix-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-mesh-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>envoy-metrics-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-meter-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>otel-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>zipkin-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-browser-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-log-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-event-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ebpf-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-telegraf-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>aws-firehose-receiver-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>configuration-discovery-receiver-plugin</artifactId>
+        </dependency>
+
+        <!-- Fetchers -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>kafka-fetcher-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>cilium-fetcher-for-graalvm</artifactId>
+        </dependency>
+
+        <!-- Query -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>query-graphql-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>zipkin-query-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>promql-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>logql-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>status-query-for-graalvm</artifactId>
+        </dependency>
+
+        <!-- Alarm -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>server-alarm-plugin</artifactId>
+        </dependency>
+
+        <!-- Telemetry -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>telemetry-prometheus</artifactId>
+        </dependency>
+
+        <!-- Exporter -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>exporter</artifactId>
+        </dependency>
+
+        <!-- Health Checker (with @Setter on HealthCheckerConfig) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>health-checker-for-graalvm</artifactId>
+        </dependency>
+
+        <!-- AI Pipeline -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ai-pipeline</artifactId>
+        </dependency>
+
+        <!-- Server Starter (for ApplicationConfigLoader) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>server-starter</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Build-time tool uses JDK 25 features (records, text blocks);
+                 checkstyle parser can't handle them -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>org.apache.skywalking.oap.server.buildtools.config.ConfigInitializerGenerator</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

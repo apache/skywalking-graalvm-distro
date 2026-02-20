@@ -50,8 +50,12 @@ javadoc:
 	$(MVN) javadoc:javadoc -DskipTests $(MVN_ARGS)
 
 # Build the distro modules (package + assembly, no tests)
+# Phase 1: install repackaged *-for-graalvm libs so dependency-reduced POMs
+#           are available in the local Maven repo for downstream resolution.
+# Phase 2: package oap-graalvm-server and oap-graalvm-native with assembly.
 build-distro:
-	$(MVN) clean package -DskipTests $(MVN_ARGS)
+	$(MVN) clean install -pl oap-libs-for-graalvm -am -DskipTests $(MVN_ARGS)
+	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -DskipTests $(MVN_ARGS)
 
 # Show the distribution directory
 dist: build-distro

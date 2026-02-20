@@ -50,21 +50,40 @@
                 <include>application.yml</include>
             </includes>
         </fileSet>
-        <!-- config/ — upstream OAL/MAL/LAL scripts and other resource files -->
+        <!-- config/ — upstream resource files loaded at runtime.
+             OAL/MAL/LAL scripts are NOT included — they are pre-compiled at build time
+             and loaded from manifests + pre-compiled .class files in JARs.
+             Only runtime config files (loaded via ResourceUtils.read()) are packaged. -->
         <fileSet>
             <directory>${project.basedir}/../skywalking/oap-server/server-starter/src/main/resources</directory>
             <outputDirectory>config</outputDirectory>
             <includes>
-                <include>oal/**</include>
+                <!-- BanyanDB storage config (loaded by BanyanDBConfigLoader) -->
+                <include>bydb.yml</include>
+                <include>bydb-topn.yml</include>
+                <!-- Logging -->
+                <include>log4j2.xml</include>
+                <!-- UI dashboard templates (loaded by UITemplateInitializer) -->
                 <include>ui-initialized-templates/**</include>
+                <!-- Cilium rules (loaded by CiliumFetcherProvider) -->
+                <include>cilium-rules/**</include>
+                <!-- OpenAPI endpoint grouping definitions -->
+                <include>openapi-definitions/**</include>
+                <!-- Alarm rules (loaded by AlarmModuleProvider) -->
                 <include>alarm-settings.yml</include>
+                <!-- Component library definitions (loaded by ComponentLibraryCatalogService) -->
                 <include>component-libraries.yml</include>
+                <!-- Endpoint name grouping (loaded by EndpointNameGroupingRuleWatcher) -->
                 <include>endpoint-name-grouping.yml</include>
+                <!-- Gateway definitions (loaded by UninstrumentedGatewaysConfig) -->
                 <include>gateways.yml</include>
+                <!-- Hierarchy definitions (loaded by HierarchyDefinitionService) -->
                 <include>hierarchy-definition.yml</include>
+                <!-- Metadata service mapping -->
                 <include>metadata-service-mapping.yaml</include>
-                <include>network-address-alias.yml</include>
+                <!-- APDEX thresholds (loaded by ApdexThresholdConfig) -->
                 <include>service-apdex-threshold.yml</include>
+                <!-- Trace sampling policy (loaded by TraceSamplingPolicyWatcher) -->
                 <include>trace-sampling-policy-settings.yml</include>
             </includes>
         </fileSet>
@@ -81,13 +100,26 @@
     <dependencySets>
         <!--
           libs/ — all dependency JARs.
-          The startup script controls classpath ordering:
-          oap-graalvm-server-*.jar is added FIRST to ensure same-FQCN
-          replacement classes shadow upstream originals.
+          Original upstream JARs that have been repackaged into *-for-graalvm
+          modules are excluded to prevent duplicate classes on the classpath.
         -->
         <dependencySet>
             <outputDirectory>libs</outputDirectory>
             <useProjectArtifact>true</useProjectArtifact>
+            <excludes>
+                <exclude>org.apache.skywalking:server-core</exclude>
+                <exclude>org.apache.skywalking:library-util</exclude>
+                <exclude>org.apache.skywalking:meter-analyzer</exclude>
+                <exclude>org.apache.skywalking:log-analyzer</exclude>
+                <exclude>org.apache.skywalking:agent-analyzer</exclude>
+                <exclude>org.apache.skywalking:envoy-metrics-receiver-plugin</exclude>
+                <exclude>org.apache.skywalking:otel-receiver-plugin</exclude>
+                <exclude>org.apache.skywalking:skywalking-ebpf-receiver-plugin</exclude>
+                <exclude>org.apache.skywalking:aws-firehose-receiver</exclude>
+                <exclude>org.apache.skywalking:cilium-fetcher-plugin</exclude>
+                <exclude>org.apache.skywalking:status-query-plugin</exclude>
+                <exclude>org.apache.skywalking:server-health-checker</exclude>
+            </excludes>
         </dependencySet>
     </dependencySets>
 </assembly>

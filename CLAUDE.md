@@ -19,7 +19,7 @@
 - **Combination pattern**: Multiple YAML files from different data sources (otel, telegraf, zabbix) may define metrics with the same name. The precompiler assigns deterministic suffixes (`_1`, `_2`, etc.) and tracks expression hashes for unambiguous resolution.
 - **Same-FQCN replacement**: Classes in `oap-graalvm-server/src/main/java/` with the same fully-qualified class name as upstream classes override them via Maven classpath ordering. Used for `DSL.java`, `LogFilterExpression.java`, etc.
 - **Classpath scanning**: Guava `ClassPath.from()` used in multiple places. Run at build-time pre-compilation as verification gate, export static class index.
-- **Config loading**: `YamlConfigLoaderUtils.copyProperties()` uses `Field.setAccessible()` + `field.set()`. Register known `ModuleConfig` classes for GraalVM reflection.
+- **Config loading**: `YamlConfigLoaderUtils.copyProperties()` replaced with same-FQCN version that uses Lombok setters + VarHandle instead of `Field.setAccessible()`. See [CONFIG-INIT-IMMIGRATION.md](CONFIG-INIT-IMMIGRATION.md).
 
 ## Test Suites
 - **MAL**: 71 YAML files covered by 73 test classes (1,281 assertions). See `oap-graalvm-server/src/test/CLAUDE.md` for test generation instructions and `oap-graalvm-server/src/test/MAL-COVERAGE.md` for coverage tracking.
