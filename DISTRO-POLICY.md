@@ -133,13 +133,13 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 
 `oap-graalvm-server` depends on `*-for-graalvm` JARs instead of originals. Original upstream JARs are forced to `provided` scope via `<dependencyManagement>` to prevent transitive leakage.
 
-### 18 Same-FQCN Replacement Classes Across 12 Modules
+### 19 Same-FQCN Replacement Classes Across 12 Modules
 
 **Non-trivial replacements (load pre-compiled assets from manifests):**
 
 | Module | Replacement Classes | Purpose |
 |---|---|---|
-| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig` | Load from manifests instead of Javassist/ClassPath; config with @Setter |
+| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService` | Load from manifests instead of Javassist/ClassPath; config with @Setter; Java-backed closures instead of GroovyShell |
 | `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set config fields via setter instead of reflection |
 | `meter-analyzer-for-graalvm` | `DSL`, `FilterExpression` | Load pre-compiled MAL Groovy scripts from manifest |
 | `log-analyzer-for-graalvm` | `DSL`, `LogAnalyzerModuleConfig` | Load pre-compiled LAL scripts; config with @Setter |
@@ -295,7 +295,8 @@ and ~1254 Groovy scripts stored in JARs.
 - [ ] `resource-config.json` for runtime config files loaded via `ResourceUtils.read()`
 - [ ] Configure gRPC/Netty/Protobuf for native image
 - [ ] GraalVM Feature class for SkyWalking-specific registrations
-- [ ] Resolve remaining code-level blockers: OTEL SPI, Envoy SPI, HierarchyDefinitionService Groovy
+- [x] Resolve HierarchyDefinitionService Groovy blocker (same-FQCN replacement with Java-backed closures)
+- [ ] Verify OTEL and Envoy ServiceLoader SPI work in native image (GraalVM supports META-INF/services natively)
 - [ ] Get OAP server booting as native image with BanyanDB
 
 ### Phase 4: Harden & Test

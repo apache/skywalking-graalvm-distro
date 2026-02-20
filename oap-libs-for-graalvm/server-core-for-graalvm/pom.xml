@@ -64,6 +64,8 @@
                                 <exclude>org/apache/skywalking/oap/server/core/source/SourceReceiverImpl.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/analysis/meter/MeterSystem.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/analysis/meter/MeterSystem$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/server/core/config/HierarchyDefinitionService.class</exclude>
+                                <exclude>org/apache/skywalking/oap/server/core/config/HierarchyDefinitionService$*.class</exclude>
                             </excludes>
                         </filter>
                     </filters>
