@@ -1,5 +1,6 @@
 # Build output
 target/
+dependency-reduced-pom.xml
 
 # IDE
 .idea/
