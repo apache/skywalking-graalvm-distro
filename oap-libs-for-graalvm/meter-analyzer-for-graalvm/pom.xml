@@ -67,6 +67,8 @@
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/FilterExpression$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/SampleFamily.class</exclude>
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/SampleFamily$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/Expression.class</exclude>
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/Expression$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/ExpressionParsingContext.class</exclude>
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/ExpressionParsingContext$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/EntityDescription/InstanceEntityDescription.class</exclude>

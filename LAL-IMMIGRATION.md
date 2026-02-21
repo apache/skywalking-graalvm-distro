@@ -1,4 +1,4 @@
-# Phase 2: LAL Build-Time Pre-Compilation — COMPLETE
+# LAL Immigration: Build-Time Pre-Compilation + Groovy Elimination
 
 ## Context
 
@@ -218,3 +218,82 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 ```
 
 Expected: 19 comparison tests across 5 test classes, all passing.
+
+---
+
+# Phase 3: Eliminate Groovy — Pure Java LAL Transpiler (Deferred)
+
+## Context
+
+LAL uses `@CompileStatic` Groovy, which generates standard Java bytecode without
+dynamic MOP. However, the Groovy runtime library is still required at runtime for
+base classes (`DelegatingScript`, `Closure`, `Binding`, `Script`). Since MAL's
+Phase 3 eliminates Groovy from runtime entirely, LAL must follow the same approach
+to fully remove the Groovy dependency.
+
+**Priority**: LAL transpilation is deferred until after MAL transpilation is complete
+and validated. There are only 10 LAL scripts (6 unique after SHA-256 dedup), compared
+to 1250+ MAL expressions. LAL can be tackled separately.
+
+---
+
+## Approach
+
+The same transpiler pattern used for MAL applies to LAL, but LAL scripts are more
+complex — they are full programs with nested spec calls rather than method chains:
+
+```groovy
+filter {
+    if (tag("LOG_KIND") == "NET_PROFILING_SAMPLED_TRACE") {
+        json {
+            tag("address", parsed.address)
+        }
+        sampledTrace {
+            // ...
+        }
+    } else {
+        abort {}
+    }
+}
+```
+
+### Option A (Recommended): Transpile LAL to Java
+
+Generate pure Java classes that implement the same logic:
+
+```java
+public class LalScript_envoy_als implements LalExpression {
+    @Override
+    public void run(FilterSpec filterSpec, Binding binding) {
+        filterSpec.filter(() -> {
+            if ("NET_PROFILING_SAMPLED_TRACE".equals(binding.getTag("LOG_KIND"))) {
+                filterSpec.json(() -> {
+                    binding.tag("address", binding.getParsed().get("address"));
+                });
+                filterSpec.sampledTrace(() -> { ... });
+            } else {
+                filterSpec.abort();
+            }
+        });
+    }
+}
+```
+
+### Option B: Minimal Groovy Stubs
+
+Keep LAL as `@CompileStatic` pre-compiled bytecode but provide minimal stubs for
+the few Groovy base classes needed (`DelegatingScript`, `Closure`, `Binding`).
+This avoids the full Groovy runtime while keeping the pre-compiled bytecode working.
+
+---
+
+## Implementation (when ready)
+
+1. Create `LalExpression` interface
+2. Create `LalToJavaTranspiler` (similar to `MalToJavaTranspiler`)
+3. Handle LAL-specific patterns: `filter {}`, `json {}`, `text { regexp }`,
+   `extractor {}`, `sink {}`, `sampledTrace {}`, `slowSql {}`, `abort {}`
+4. Replace LAL `DSL.java` to load `LalExpression` instead of `DelegatingScript`
+5. Update precompiler `compileLAL()` to use transpiler
+6. Run comparison tests (19 tests across 5 classes)
+7. Remove Groovy from runtime classpath

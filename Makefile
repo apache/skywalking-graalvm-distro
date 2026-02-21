@@ -19,7 +19,7 @@ SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*
 MVN := ./mvnw
 MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
 
-.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown
+.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image trace-agent
 
 all: build
 
@@ -84,6 +84,18 @@ docker-down:
 # Stop a previously running OAP server
 shutdown:
 	@oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/bin/oapServiceStop.sh 2>/dev/null || true
+
+# Build native image (requires GraalVM JDK)
+native-image: compile
+	$(MVN) package -pl oap-graalvm-native -Pnative -DskipTests $(MVN_ARGS)
+
+# Run tracing agent to capture supplementary native-image metadata
+# Merges with pre-generated reflect-config.json from the precompiler
+trace-agent: build-distro docker-up
+	SW_STORAGE_BANYANDB_TARGETS=localhost:17912 \
+	SW_CLUSTER=standalone \
+	JAVA_OPTS="-Xms256M -Xmx4096M -agentlib:native-image-agent=config-merge-dir=oap-graalvm-native/src/main/resources/META-INF/native-image/org.apache.skywalking/oap-graalvm-native" \
+	  oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/bin/oapService.sh
 
 # Build distro and boot OAP with BanyanDB
 boot: build-distro docker-up

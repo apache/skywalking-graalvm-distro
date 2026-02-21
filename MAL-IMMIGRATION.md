@@ -1,4 +1,4 @@
-# Phase 2: MAL/LAL Build-Time Pre-Compilation — COMPLETE
+# MAL Immigration: Build-Time Pre-Compilation + Groovy Elimination
 
 ## Context
 
@@ -455,4 +455,370 @@ cat build-tools/oal-exporter/target/generated-oal-classes/META-INF/annotation-sc
 
 # 6. Verify tests pass
 make build-distro  # runs MALCompilerTest + MALPrecompiledRegistrationTest
+```
+
+---
+
+# Phase 3: Eliminate Groovy — Pure Java MAL Transpiler
+
+## Why: Groovy + GraalVM Native Image is Incompatible
+
+The first native-image build (`make native-image`) failed with:
+
+```
+Error: Could not find target method:
+  protected static void com.oracle.svm.polyglot.groovy
+    .Target_org_codehaus_groovy_vmplugin_v7_IndyInterface_invalidateSwitchPoints
+    .invalidateSwitchPoints()
+```
+
+**Root cause**: GraalVM's built-in `GroovyIndyInterfaceFeature` (in `library-support.jar`)
+targets `IndyInterface.invalidateSwitchPoints()` — a method removed in Groovy 5.0.3.
+The Groovy 5.x runtime still uses `org.codehaus.groovy` packages and `invokedynamic`
+bootstrapping, but the internal API changed. GraalVM's substitution layer cannot find
+the target method.
+
+**Why fixing Groovy is not worth it**: Even if the substitution were patched, Groovy's
+dynamic runtime (ExpandoMetaClass, MOP, IndyInterface, MetaClassRegistry) requires
+extensive GraalVM reflection/substitution configuration. The MAL pre-compiled scripts
+use `invokedynamic` + Groovy MOP for method resolution. Making this work reliably in
+native-image would be fragile and complex.
+
+**Solution**: Eliminate Groovy from runtime entirely. Generate pure Java code at build
+time that implements the same MAL expression logic. The existing 1303 UTs validate
+that the generated Java code produces identical results to the Groovy-compiled scripts.
+
+---
+
+## Approach: MAL-to-Java Transpiler
+
+**Key insight**: MAL expressions are method chains on `SampleFamily` with a well-defined
+API. The precompiler already parses all 1250+ MAL rules. Instead of compiling them to
+Groovy bytecode (which needs Groovy runtime), we parse the Groovy AST at build time and
+generate equivalent Java source code. Zero Groovy at runtime.
+
+### What Changes
+
+| Aspect | Phase 2 (Groovy pre-compilation) | Phase 3 (Java transpiler) |
+|--------|----------------------------------|--------------------------|
+| Build output | Groovy `.class` bytecode | Pure Java `.class` files |
+| Runtime dependency | Groovy runtime (MOP, ExpandoMetaClass) | None |
+| Expression execution | `DelegatingScript.run()` + `ExpandoMetaClass` | `MalExpression.run(Map<String, SampleFamily>)` |
+| Closure parameters | `groovy.lang.Closure` | Java functional interfaces |
+| `propertyMissing()` | Groovy MOP resolves metric names | `samples.get("metricName")` |
+| `Number * SampleFamily` | `ExpandoMetaClass` on `Number` | `sf.multiply(number)` (transpiler swaps operands) |
+| Filter expressions | Groovy `Script.run()` → `Closure<Boolean>` | `SampleFilter.test(Map<String, String>)` |
+
+### What Stays the Same
+
+- **MeterSystem Javassist generation**: Pre-compiled at build time (Phase 2), unchanged
+- **Config data serialization**: JSON manifests for rule configs, unchanged
+- **Manifest-based loading**: Same pattern, new manifest format for Java expressions
+- **MetricConvert pipeline**: Still runs at build time for Javassist class generation
+
+---
+
+## Step 1: Java Functional Interfaces for Closure Replacements
+
+5 `SampleFamily` methods accept `groovy.lang.Closure` parameters. Replace with Java
+functional interfaces:
+
+| Method | Closure Type | Java Interface |
+|--------|-------------|----------------|
+| `tag(Closure<?> cl)` | `Map<String,String> → Map<String,String>` | `TagFunction extends Function<Map, Map>` |
+| `filter(Closure<Boolean> f)` | `Map<String,String> → Boolean` | `SampleFilter extends Predicate<Map>` |
+| `forEach(List, Closure each)` | `(String, Map) → void` | `ForEachFunction extends BiConsumer<String, Map>` |
+| `decorate(Closure c)` | `MeterEntity → void` | `DecorateFunction extends Consumer<MeterEntity>` |
+| `instance(..., Closure extractor)` | `Map<String,String> → Map<String,String>` | `PropertiesExtractor extends Function<Map, Map>` |
+
+**Files created**:
+- `oap-libs-for-graalvm/meter-analyzer-for-graalvm/.../dsl/MalExpression.java`
+- `oap-libs-for-graalvm/meter-analyzer-for-graalvm/.../dsl/SampleFamilyFunctions.java`
+
+### MalExpression Interface
+
+```java
+public interface MalExpression {
+    SampleFamily run(Map<String, SampleFamily> samples);
+}
+```
+
+Each generated MAL expression class implements this interface. The `samples` map
+replaces Groovy's `propertyMissing()` delegate — metric names are resolved via
+`samples.get("metricName")`.
+
+### MalFilter Interface
+
+```java
+public interface MalFilter {
+    boolean test(Map<String, String> tags);
+}
+```
+
+Each generated filter expression class implements this interface.
+
+---
+
+## Step 2: Same-FQCN SampleFamily Replacement
+
+**File**: `oap-libs-for-graalvm/meter-analyzer-for-graalvm/.../dsl/SampleFamily.java`
+
+Copy upstream `SampleFamily.java` and change ONLY the 5 Closure-based method signatures:
+
+```java
+// Before (upstream)
+public SampleFamily tag(Closure<?> cl) { ... cl.rehydrate(...).call(arg) ... }
+public SampleFamily filter(Closure<Boolean> filter) { ... filter.call(it.labels) ... }
+public SampleFamily forEach(List<String> array, Closure<Void> each) { ... each.call(element, labels) ... }
+public SampleFamily decorate(Closure<Void> c) { ... c.call(meterEntity) ... }
+public SampleFamily instance(..., Closure<Map<String,String>> propertiesExtractor) { ... }
+
+// After (replacement)
+public SampleFamily tag(TagFunction fn) { ... fn.apply(arg) ... }
+public SampleFamily filter(SampleFilter f) { ... f.test(it.labels) ... }
+public SampleFamily forEach(List<String> array, ForEachFunction each) { ... each.accept(element, labels) ... }
+public SampleFamily decorate(DecorateFunction fn) { ... fn.accept(meterEntity) ... }
+public SampleFamily instance(..., PropertiesExtractor extractor) { ... }
+```
+
+All other methods (tagEqual, sum, avg, histogram, service, endpoint, etc.) remain
+identical — they don't use Groovy types.
+
+**Shade config**: Add `SampleFamily.class` and `SampleFamily$*.class` to shade excludes.
+
+---
+
+## Step 3: MAL-to-Java Transpiler
+
+**File**: `build-tools/precompiler/.../MalToJavaTranspiler.java`
+
+Parses MAL expression strings using Groovy's parser (available at build time, not needed
+at runtime) and generates pure Java source code.
+
+### Input → Output Example
+
+**Input** (MAL expression string from apisix.yaml):
+```
+apisix_http_status.tagNotEqual('route','').tag({tags->tags.route='route/'+tags['route']})
+  .sum(['code','service_name','route','node']).rate('PT1M').endpoint(['service_name'],['route'], Layer.APISIX)
+```
+
+**Output** (generated Java class):
+```java
+package org.apache.skywalking.oap.server.core.source.oal.rt.mal;
+
+import java.util.*;
+import org.apache.skywalking.oap.meter.analyzer.dsl.*;
+import org.apache.skywalking.oap.server.core.analysis.Layer;
+
+public class MalExpr_meter_apisix_endpoint_http_status implements MalExpression {
+    @Override
+    public SampleFamily run(Map<String, SampleFamily> samples) {
+        SampleFamily v0 = samples.get("apisix_http_status");
+        if (v0 == null) return SampleFamily.EMPTY;
+        return v0
+            .tagNotEqual("route", "")
+            .tag(tags -> { tags.put("route", "route/" + tags.get("route")); return tags; })
+            .sum(List.of("code", "service_name", "route", "node"))
+            .rate("PT1M")
+            .endpoint(List.of("service_name"), List.of("route"), Layer.APISIX);
+    }
+}
+```
+
+### AST Node → Java Output Mapping
+
+| Groovy AST Node | Java Output |
+|-----------------|-------------|
+| Bare property access (`metric_name`) | `samples.get("metric_name")` |
+| Method call on SampleFamily | Direct method call (same name) |
+| `Closure` in `.tag()` | Lambda: `tags -> { tags.put(...); return tags; }` |
+| `Closure` in `.filter()` | Lambda: `labels -> booleanExpr` |
+| `Closure` in `.forEach()` | Lambda: `(element, labels) -> { ... }` |
+| `tags.name` inside closure | `tags.get("name")` |
+| `tags.name = val` inside closure | `tags.put("name", val)` |
+| `tags['key']` inside closure | `tags.get("key")` |
+| Binary `SF + SF` | `left.plus(right)` |
+| Binary `SF - SF` | `left.minus(right)` |
+| Binary `SF * SF` | `left.multiply(right)` |
+| Binary `SF / SF` | `left.div(right)` |
+| Binary `Number * SF` | `sf.multiply(number)` (swap operands) |
+| Binary `Number + SF` | `sf.plus(number)` (swap operands) |
+| Binary `Number - SF` | `sf.minus(number).negative()` (swap operands) |
+| Binary `Number / SF` | `sf.newValue(v -> number / v)` (swap operands) |
+| Unary `-SF` | `sf.negative()` |
+| `['a','b','c']` (list literal) | `List.of("a", "b", "c")` |
+| `[50,75,90,95,99]` (int list) | `List.of(50, 75, 90, 95, 99)` |
+| String literal `'foo'` | `"foo"` |
+| Enum constant `Layer.APISIX` | `Layer.APISIX` |
+| Enum constant `DetectPoint.SERVER` | `DetectPoint.SERVER` |
+| `DownsamplingType.LATEST` / `LATEST` | `DownsamplingType.LATEST` |
+| `time()` function | `java.time.Instant.now().getEpochSecond()` |
+| `a?.b` (safe navigation) | `a != null ? a.b : null` |
+| `a ?: b` (elvis) | `a != null ? a : b` |
+
+### Filter Expression Transpilation
+
+Filter expressions are simpler — they are boolean closures:
+
+**Input**: `{ tags -> tags.job_name == 'apisix-monitoring' }`
+
+**Output**:
+```java
+public class MalFilter_apisix implements MalFilter {
+    @Override
+    public boolean test(Map<String, String> tags) {
+        return "apisix-monitoring".equals(tags.get("job_name"));
+    }
+}
+```
+
+---
+
+## Step 4: Same-FQCN Expression.java Replacement
+
+**File**: `oap-libs-for-graalvm/meter-analyzer-for-graalvm/.../dsl/Expression.java`
+
+Simplified — no DelegatingScript, no ExpandoMetaClass, no ExpressionDelegate:
+
+```java
+public class Expression {
+    private final String metricName;
+    private final String literal;
+    private final MalExpression expression;  // Pure Java
+
+    public Result run(Map<String, SampleFamily> sampleFamilies) {
+        SampleFamily sf = expression.run(sampleFamilies);
+        if (sf == SampleFamily.EMPTY) return Result.fail("EMPTY");
+        return Result.success(sf);
+    }
+
+    // parse() still provides ExpressionParsingContext for static analysis
+    // (scopeType, functionName, etc.) — this is unchanged
+}
+```
+
+---
+
+## Step 5: Update DSL.java and FilterExpression.java
+
+### DSL.java (already exists, update)
+
+Change from loading `DelegatingScript` to loading `MalExpression`:
+
+```java
+public static Expression parse(String metricName, String expression) {
+    MalExpression malExpr = loadFromManifest(metricName);  // Class.forName + newInstance
+    return new Expression(metricName, expression, malExpr);
+}
+```
+
+Manifest: `META-INF/mal-expressions.txt` (replaces `mal-groovy-scripts.txt`):
+```
+meter_apisix_endpoint_http_status=org.apache.skywalking.oap.server.core.source.oal.rt.mal.MalExpr_meter_apisix_endpoint_http_status
+```
+
+### FilterExpression.java (already exists, update)
+
+Change from loading Groovy `Script` → `Closure<Boolean>` to loading `MalFilter`:
+
+```java
+public class FilterExpression {
+    private final MalFilter filter;
+
+    public FilterExpression(String literal) {
+        this.filter = loadFromManifest(literal);  // Class.forName + newInstance
+    }
+
+    public Map<String, SampleFamily> filter(Map<String, SampleFamily> sampleFamilies) {
+        // Apply filter.test(labels) to each sample family
+    }
+}
+```
+
+---
+
+## Step 6: Update Precompiler
+
+Replace `compileMAL()` in `Precompiler.java` to use the transpiler instead of Groovy
+compilation:
+
+```java
+private static void compileMAL(String outputDir, ...) {
+    MalToJavaTranspiler transpiler = new MalToJavaTranspiler(outputDir);
+
+    for (Rule rule : allRules) {
+        for (MetricsRule mr : rule.getMetricsRules()) {
+            String metricName = formatMetricName(rule, mr.getName());
+            String expression = formatExp(rule.getExpPrefix(), rule.getExpSuffix(), mr.getExp());
+            transpiler.transpile(metricName, expression);
+        }
+        if (rule.getFilter() != null) {
+            transpiler.transpileFilter(rule.getName(), rule.getFilter());
+        }
+    }
+
+    transpiler.writeManifest();   // mal-expressions.txt
+    transpiler.compileAll();      // javac on generated .java files
+}
+```
+
+The Javassist meter class generation is still run via `MetricConvert` pipeline (unchanged
+from Phase 2). Only Groovy compilation is replaced by transpilation.
+
+---
+
+## Same-FQCN Replacements (Phase 3 — additions/updates)
+
+| Upstream Class | Replacement Location | Phase 3 Change |
+|---|---|---|
+| `SampleFamily` | `meter-analyzer-for-graalvm/` | **New.** Closure parameters → functional interfaces |
+| `Expression` | `meter-analyzer-for-graalvm/` | **New.** No Groovy: uses `MalExpression` instead of `DelegatingScript` |
+| `DSL` (MAL) | `meter-analyzer-for-graalvm/` | **Updated.** Loads `MalExpression` instead of Groovy `DelegatingScript` |
+| `FilterExpression` | `meter-analyzer-for-graalvm/` | **Updated.** Loads `MalFilter` instead of Groovy `Closure<Boolean>` |
+
+---
+
+## Files Created (Phase 3)
+
+| File | Purpose |
+|------|---------|
+| `.../dsl/MalExpression.java` | Interface for generated MAL expression classes |
+| `.../dsl/MalFilter.java` | Interface for generated MAL filter classes |
+| `.../dsl/SampleFamilyFunctions.java` | Functional interfaces: TagFunction, SampleFilter, ForEachFunction, DecorateFunction, PropertiesExtractor |
+| `.../meter-analyzer-for-graalvm/SampleFamily.java` | Same-FQCN: Closure → functional interfaces |
+| `.../meter-analyzer-for-graalvm/Expression.java` | Same-FQCN: no Groovy, uses MalExpression |
+| `.../precompiler/MalToJavaTranspiler.java` | AST-walking transpiler: Groovy AST → Java source |
+| Generated `MalExpr_*.java` files | ~1250 pure Java expression classes |
+| Generated `MalFilter_*.java` files | ~29 pure Java filter classes |
+
+## Files Modified (Phase 3)
+
+| File | Change |
+|------|--------|
+| `Precompiler.java` | `compileMAL()` uses transpiler instead of Groovy compilation |
+| `meter-analyzer-for-graalvm/pom.xml` | Add SampleFamily, Expression to shade excludes |
+| `meter-analyzer-for-graalvm/DSL.java` | Load MalExpression instead of DelegatingScript |
+| `meter-analyzer-for-graalvm/FilterExpression.java` | Load MalFilter instead of Groovy Closure |
+
+---
+
+## Verification (Phase 3)
+
+```bash
+# 1. Rebuild with transpiler
+make compile
+
+# 2. Run ALL existing tests (1303 UTs validate identical MAL behavior)
+make test
+
+# 3. Boot JVM distro
+make shutdown && make boot
+
+# 4. Verify no Groovy at runtime (after LAL is also transpiled)
+jar tf oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/libs/*.jar | grep groovy
+# Should find NOTHING
+
+# 5. Attempt native-image build (no more Groovy substitution error)
+make native-image
 ```

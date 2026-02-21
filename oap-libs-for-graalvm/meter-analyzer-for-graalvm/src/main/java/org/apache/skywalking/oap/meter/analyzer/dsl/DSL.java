@@ -17,7 +17,6 @@
 
 package org.apache.skywalking.oap.meter.analyzer.dsl;
 
-import groovy.util.DelegatingScript;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,17 +28,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * GraalVM replacement for upstream MAL DSL.
- * Original: skywalking/oap-server/analyzer/meter-analyzer/src/main/java/.../dsl/DSL.java
- * Repackaged into meter-analyzer-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
- *
- * Change: Complete rewrite. Loads pre-compiled Groovy DelegatingScript classes from
- * META-INF/mal-groovy-scripts.txt manifest instead of GroovyShell runtime compilation.
- * Why: Groovy runtime compilation is incompatible with GraalVM native image.
+ * Same-FQCN replacement for upstream MAL DSL.
+ * Loads transpiled MalExpression classes from mal-expressions.txt manifest
+ * instead of Groovy DelegatingScript classes — no Groovy runtime needed.
  */
 @Slf4j
 public final class DSL {
-    private static final String MANIFEST_PATH = "META-INF/mal-groovy-scripts.txt";
+    private static final String MANIFEST_PATH = "META-INF/mal-expressions.txt";
     private static volatile Map<String, String> SCRIPT_MAP;
     private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
@@ -54,22 +49,22 @@ public final class DSL {
         String className = scriptMap.get(metricName);
         if (className == null) {
             throw new IllegalStateException(
-                "Pre-compiled MAL script not found for metric: " + metricName
-                    + ". Available: " + scriptMap.keySet());
+                "Transpiled MAL expression not found for metric: " + metricName
+                    + ". Available: " + scriptMap.size() + " expressions");
         }
 
         try {
-            Class<?> scriptClass = Class.forName(className);
-            DelegatingScript script = (DelegatingScript) scriptClass.getDeclaredConstructor().newInstance();
+            Class<?> exprClass = Class.forName(className);
+            MalExpression malExpr = (MalExpression) exprClass.getDeclaredConstructor().newInstance();
             int count = LOADED_COUNT.incrementAndGet();
-            log.debug("Loaded pre-compiled MAL script [{}/{}]: {}", count, scriptMap.size(), metricName);
-            return new Expression(metricName, expression, script);
+            log.debug("Loaded transpiled MAL expression [{}/{}]: {}", count, scriptMap.size(), metricName);
+            return new Expression(metricName, expression, malExpr);
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(
-                "Pre-compiled MAL script class not found: " + className, e);
+                "Transpiled MAL expression class not found: " + className, e);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(
-                "Failed to instantiate pre-compiled MAL script: " + className, e);
+                "Failed to instantiate transpiled MAL expression: " + className, e);
         }
     }
 
@@ -84,7 +79,7 @@ public final class DSL {
             Map<String, String> map = new HashMap<>();
             try (InputStream is = DSL.class.getClassLoader().getResourceAsStream(MANIFEST_PATH)) {
                 if (is == null) {
-                    log.warn("MAL script manifest not found: {}", MANIFEST_PATH);
+                    log.warn("MAL expression manifest not found: {}", MANIFEST_PATH);
                     SCRIPT_MAP = map;
                     return map;
                 }
@@ -96,16 +91,19 @@ public final class DSL {
                         if (line.isEmpty()) {
                             continue;
                         }
-                        String[] parts = line.split("=", 2);
-                        if (parts.length == 2) {
-                            map.put(parts[0], parts[1]);
+                        // mal-expressions.txt format: one FQCN per line
+                        // Class name convention: ...mal.MalExpr_<metricName>
+                        String simpleName = line.substring(line.lastIndexOf('.') + 1);
+                        if (simpleName.startsWith("MalExpr_")) {
+                            String metric = simpleName.substring("MalExpr_".length());
+                            map.put(metric, line);
                         }
                     }
                 }
             } catch (IOException e) {
-                throw new IllegalStateException("Failed to load MAL script manifest", e);
+                throw new IllegalStateException("Failed to load MAL expression manifest", e);
             }
-            log.info("Loaded {} pre-compiled MAL scripts from manifest", map.size());
+            log.info("Loaded {} transpiled MAL expressions from manifest", map.size());
             SCRIPT_MAP = map;
             return map;
         }

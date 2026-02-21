@@ -36,6 +36,7 @@
              Do not hardcode — always build via `make`. -->
         <skywalking.version>10.4.0-SNAPSHOT</skywalking.version>
         <graalvm.version>25.0.0</graalvm.version>
+        <graalvm.buildtools.version>0.10.4</graalvm.buildtools.version>
         <lombok.version>1.18.40</lombok.version>
         <maven-checkstyle-plugin.version>3.1.0</maven-checkstyle-plugin.version>
         <checkstyle.version>6.18</checkstyle.version>
