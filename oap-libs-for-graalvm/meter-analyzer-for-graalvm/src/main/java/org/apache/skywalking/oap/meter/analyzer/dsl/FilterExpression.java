@@ -79,7 +79,7 @@ public class FilterExpression {
         try {
             Map<String, SampleFamily> result = new HashMap<>();
             for (Map.Entry<String, SampleFamily> entry : sampleFamilies.entrySet()) {
-                SampleFamily afterFilter = entry.getValue().filter(filterClosure);
+                SampleFamily afterFilter = entry.getValue().filter(tags -> filterClosure.call(tags));
                 if (!Objects.equals(afterFilter, SampleFamily.EMPTY)) {
                     result.put(entry.getKey(), afterFilter);
                 }

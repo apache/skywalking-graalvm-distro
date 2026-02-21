@@ -197,6 +197,9 @@ public class Precompiler {
         // ---- LAL pre-compilation ----
         compileLAL(outputDir);
 
+        // ---- GraalVM native-image metadata generation ----
+        generateNativeImageConfig(outputDir);
+
         log.info("Precompiler: done");
     }
 
@@ -299,6 +302,9 @@ public class Precompiler {
             DSL.getScriptRegistry().size(),
             FilterExpression.getScriptRegistry().size());
 
+        // ---- MAL-to-Java transpilation ----
+        transpileMAL(outputDir);
+
         // ---- Serialize config data as JSON for runtime loaders ----
         serializeMALConfigData(outputDir, rulesByPath);
     }
@@ -387,6 +393,69 @@ public class Precompiler {
             log.warn("Failed to load rules from {}", path, e);
         }
         return loadedRules;
+    }
+
+    /**
+     * Transpile MAL expressions and filters from Groovy to pure Java classes.
+     * Runs after MetricConvert pipeline — uses expression strings captured by DSL
+     * and filter literals captured by FilterExpression.
+     */
+    private static void transpileMAL(String outputDir) throws Exception {
+        MalToJavaTranspiler transpiler = new MalToJavaTranspiler();
+        int exprCount = 0;
+        int filterCount = 0;
+
+        // Transpile expressions: scriptName → expression string
+        for (Map.Entry<String, String> entry : DSL.getExpressionRegistry().entrySet()) {
+            String scriptName = entry.getKey();
+            String expression = entry.getValue();
+            String className = "MalExpr_" + scriptName;
+            try {
+                String source = transpiler.transpileExpression(className, expression);
+                transpiler.registerExpression(className, source);
+                exprCount++;
+            } catch (Exception e) {
+                log.warn("Failed to transpile MAL expression: {} = {}", scriptName, expression, e);
+            }
+        }
+
+        // Transpile filters: literal → Groovy class (we need literal for transpiler)
+        int filterIdx = 0;
+        for (String literal : FilterExpression.getScriptRegistry().keySet()) {
+            String className = "MalFilter_" + filterIdx++;
+            try {
+                String source = transpiler.transpileFilter(className, literal);
+                transpiler.registerFilter(className, literal, source);
+                filterCount++;
+            } catch (Exception e) {
+                log.warn("Failed to transpile MAL filter: {}", literal, e);
+            }
+        }
+
+        // Compile generated Java sources.
+        // Transpiled code targets GraalVM APIs (Java functional interfaces in SampleFamily,
+        // public ExpressionParsingContext.get()). Prepend meter-analyzer-for-graalvm classes
+        // to javac classpath so they take precedence over upstream meter-analyzer.
+        File javaSourceDir = new File(outputDir, "generated-mal-sources");
+        File javaOutputDir = new File(outputDir);
+        String classpath = resolveClasspath();
+        File graalvmMeterClasses = findGraalvmMeterClasses(outputDir);
+        if (graalvmMeterClasses != null) {
+            classpath = graalvmMeterClasses.getAbsolutePath() + File.pathSeparator + classpath;
+            log.info("MAL transpilation: prepended {} to javac classpath",
+                graalvmMeterClasses.getAbsolutePath());
+        } else {
+            log.warn("MAL transpilation: meter-analyzer-for-graalvm classes not found; "
+                + "transpiled sources may fail to compile");
+        }
+        transpiler.compileAll(javaSourceDir, javaOutputDir, classpath);
+
+        // Write transpiled manifests (alongside existing Groovy manifests)
+        transpiler.writeExpressionManifest(new File(outputDir));
+        transpiler.writeFilterManifest(new File(outputDir));
+
+        log.info("MAL transpilation: {} expressions, {} filters transpiled to Java",
+            exprCount, filterCount);
     }
 
     /**
@@ -677,5 +746,261 @@ public class Precompiler {
 
     private static void writeManifest(Path path, List<String> lines) throws IOException {
         Files.write(path, lines, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Generate GraalVM native-image metadata (reflect-config.json and resource-config.json)
+     * from the manifests already produced by the precompiler.
+     *
+     * This gives native-image 100% coverage of all pre-compiled classes — unlike the tracing
+     * agent which only captures code paths exercised during a traced run.
+     */
+    private static void generateNativeImageConfig(String outputDir) throws IOException {
+        Path nativeImageDir = Path.of(outputDir,
+            "META-INF", "native-image", "org.apache.skywalking", "oap-graalvm-distro");
+        Files.createDirectories(nativeImageDir);
+
+        generateReflectConfig(outputDir, nativeImageDir);
+        generateResourceConfig(nativeImageDir);
+    }
+
+    /**
+     * Generate reflect-config.json from all manifest files.
+     *
+     * Annotation-scanned classes get full reflection access (fields, methods, constructors)
+     * because AnnotationScan, StreamAnnotationListener, etc. inspect annotations and fields.
+     *
+     * Script/metric/dispatcher classes get constructor-only access since they are loaded
+     * via Class.forName() + getDeclaredConstructor().newInstance().
+     */
+    private static void generateReflectConfig(String outputDir, Path nativeImageDir) throws IOException {
+        Path metaInf = Path.of(outputDir, "META-INF");
+        Path annotationScanDir = metaInf.resolve("annotation-scan");
+
+        List<Map<String, Object>> entries = new ArrayList<>();
+
+        // Annotation-scanned classes — full reflection access
+        String[] fullAccessManifests = {
+            "ScopeDeclaration.txt", "Stream.txt", "Disable.txt", "MultipleDisable.txt",
+            "SourceDispatcher.txt", "ISourceDecorator.txt"
+        };
+        for (String manifest : fullAccessManifests) {
+            Path file = annotationScanDir.resolve(manifest);
+            if (Files.exists(file)) {
+                for (String className : readClassNames(file)) {
+                    entries.add(fullAccessEntry(className));
+                }
+            }
+        }
+
+        // MeterFunction manifest — key=value format, full access (MeterSystem inspects annotations)
+        Path meterFunctionFile = annotationScanDir.resolve("MeterFunction.txt");
+        if (Files.exists(meterFunctionFile)) {
+            for (String className : readValueFromKeyValue(meterFunctionFile)) {
+                entries.add(fullAccessEntry(className));
+            }
+        }
+
+        // OAL metrics and dispatchers — constructor-only
+        addConstructorEntries(entries, metaInf.resolve("oal-metrics-classes.txt"));
+        addConstructorEntries(entries, metaInf.resolve("oal-dispatcher-classes.txt"));
+
+        // MAL Groovy scripts — key=value format, constructor-only
+        Path malScripts = metaInf.resolve("mal-groovy-scripts.txt");
+        if (Files.exists(malScripts)) {
+            for (String className : readValueFromKeyValue(malScripts)) {
+                entries.add(constructorOnlyEntry(className));
+            }
+        }
+
+        // MAL filter scripts — Properties format, constructor-only
+        Path filterScripts = metaInf.resolve("mal-filter-scripts.properties");
+        if (Files.exists(filterScripts)) {
+            Properties props = new Properties();
+            try (InputStream is = Files.newInputStream(filterScripts)) {
+                props.load(is);
+            }
+            List<String> filterClasses = new ArrayList<>(props.stringPropertyNames().stream()
+                .map(k -> props.getProperty(k))
+                .sorted()
+                .collect(Collectors.toList()));
+            for (String className : filterClasses) {
+                entries.add(constructorOnlyEntry(className));
+            }
+        }
+
+        // MAL transpiled expressions — one FQCN per line, constructor-only
+        addConstructorEntries(entries, metaInf.resolve("mal-expressions.txt"));
+
+        // MAL transpiled filters — Properties format, constructor-only
+        Path transpiledFilters = metaInf.resolve("mal-filter-expressions.properties");
+        if (Files.exists(transpiledFilters)) {
+            Properties tProps = new Properties();
+            try (InputStream is = Files.newInputStream(transpiledFilters)) {
+                tProps.load(is);
+            }
+            for (String className : tProps.stringPropertyNames().stream()
+                    .map(tProps::getProperty).sorted().collect(Collectors.toList())) {
+                entries.add(constructorOnlyEntry(className));
+            }
+        }
+
+        // LAL scripts — key=value format, constructor-only
+        Path lalScripts = metaInf.resolve("lal-scripts-by-hash.txt");
+        if (Files.exists(lalScripts)) {
+            for (String className : readValueFromKeyValue(lalScripts)) {
+                entries.add(constructorOnlyEntry(className));
+            }
+        }
+
+        // MAL meter classes — key=value format, constructor-only
+        Path meterClasses = metaInf.resolve("mal-meter-classes.txt");
+        if (Files.exists(meterClasses)) {
+            for (String className : readValueFromKeyValue(meterClasses)) {
+                entries.add(constructorOnlyEntry(className));
+            }
+        }
+
+        // Write reflect-config.json
+        ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+        mapper.writeValue(nativeImageDir.resolve("reflect-config.json").toFile(), entries);
+        log.info("Generated reflect-config.json with {} entries", entries.size());
+    }
+
+    /**
+     * Generate resource-config.json for all META-INF resources in the generated JAR.
+     */
+    private static void generateResourceConfig(Path nativeImageDir) throws IOException {
+        Map<String, Object> resourceConfig = new LinkedHashMap<>();
+        Map<String, Object> resources = new LinkedHashMap<>();
+        List<Map<String, String>> includes = new ArrayList<>();
+
+        includes.add(Map.of("pattern", "META-INF/annotation-scan/.*\\.txt"));
+        includes.add(Map.of("pattern", "META-INF/oal-.*\\.txt"));
+        includes.add(Map.of("pattern", "META-INF/mal-.*\\.txt"));
+        includes.add(Map.of("pattern", "META-INF/mal-.*\\.properties"));
+        includes.add(Map.of("pattern", "META-INF/lal-.*\\.txt"));
+        includes.add(Map.of("pattern", "META-INF/config-data/.*\\.json"));
+
+        resources.put("includes", includes);
+        resourceConfig.put("resources", resources);
+
+        ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+        mapper.writeValue(nativeImageDir.resolve("resource-config.json").toFile(), resourceConfig);
+        log.info("Generated resource-config.json with {} resource patterns", includes.size());
+    }
+
+    private static Map<String, Object> fullAccessEntry(String className) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("name", className);
+        entry.put("allDeclaredFields", true);
+        entry.put("allDeclaredMethods", true);
+        entry.put("allDeclaredConstructors", true);
+        return entry;
+    }
+
+    private static Map<String, Object> constructorOnlyEntry(String className) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("name", className);
+        entry.put("methods", List.of(Map.of("name", "<init>", "parameterTypes", List.of())));
+        return entry;
+    }
+
+    /**
+     * Read class names from a manifest file (one class name per line).
+     */
+    private static List<String> readClassNames(Path file) throws IOException {
+        return Files.readAllLines(file, StandardCharsets.UTF_8).stream()
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Read values from a key=value manifest file. Returns sorted unique values.
+     */
+    private static List<String> readValueFromKeyValue(Path file) throws IOException {
+        return Files.readAllLines(file, StandardCharsets.UTF_8).stream()
+            .map(String::trim)
+            .filter(s -> !s.isEmpty() && s.contains("="))
+            .map(s -> s.substring(s.indexOf('=') + 1))
+            .distinct()
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Read class names from a one-per-line manifest and add constructor-only entries.
+     */
+    private static void addConstructorEntries(List<Map<String, Object>> entries, Path file) throws IOException {
+        if (Files.exists(file)) {
+            for (String className : readClassNames(file)) {
+                entries.add(constructorOnlyEntry(className));
+            }
+        }
+    }
+
+    /**
+     * Resolve the runtime classpath for javac compilation.
+     * exec-maven-plugin creates a URLClassLoader with project dependencies;
+     * extract URLs from it. Falls back to java.class.path system property.
+     */
+    @SuppressWarnings("deprecation")
+    /**
+     * Locate meter-analyzer-for-graalvm compiled classes directory.
+     * Tries multiple strategies: basedir property (set by surefire), outputDir traversal,
+     * and user.dir (CWD). Returns the directory if found, null otherwise.
+     */
+    private static File findGraalvmMeterClasses(String outputDir) {
+        String relPath = "oap-libs-for-graalvm/meter-analyzer-for-graalvm/target/classes";
+
+        // Strategy 1: basedir (set by surefire) → build-tools/precompiler/
+        String basedir = System.getProperty("basedir");
+        if (basedir != null) {
+            File candidate = new File(new File(basedir).getParentFile().getParentFile(), relPath);
+            if (candidate.isDirectory()) {
+                return candidate;
+            }
+        }
+
+        // Strategy 2: outputDir traversal (works when outputDir = target/generated-classes)
+        File candidate = new File(outputDir).getParentFile()  // target/
+            .getParentFile()  // precompiler/
+            .getParentFile()  // build-tools/
+            .getParentFile(); // project root
+        candidate = new File(candidate, relPath);
+        if (candidate.isDirectory()) {
+            return candidate;
+        }
+
+        // Strategy 3: user.dir may be project root
+        candidate = new File(System.getProperty("user.dir"), relPath);
+        if (candidate.isDirectory()) {
+            return candidate;
+        }
+
+        return null;
+    }
+
+    private static String resolveClasspath() {
+        Set<String> paths = new java.util.LinkedHashSet<>();
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        while (cl != null) {
+            if (cl instanceof java.net.URLClassLoader) {
+                for (java.net.URL url : ((java.net.URLClassLoader) cl).getURLs()) {
+                    try {
+                        paths.add(new File(url.toURI()).getAbsolutePath());
+                    } catch (Exception e) {
+                        paths.add(url.getPath());
+                    }
+                }
+            }
+            cl = cl.getParent();
+        }
+        if (!paths.isEmpty()) {
+            return String.join(File.pathSeparator, paths);
+        }
+        return System.getProperty("java.class.path", "");
     }
 }

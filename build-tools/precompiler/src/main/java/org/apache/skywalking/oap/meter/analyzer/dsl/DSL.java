@@ -56,6 +56,7 @@ public final class DSL {
     private static final Map<String, String> SCRIPT_REGISTRY = new LinkedHashMap<>();
     private static final Map<String, Integer> METRIC_OCCURRENCE = new HashMap<>();
     private static final Map<String, String> EXPRESSION_HASHES = new LinkedHashMap<>();
+    private static final Map<String, String> EXPRESSION_REGISTRY = new LinkedHashMap<>();
 
     public static void setTargetDirectory(File dir) {
         TARGET_DIRECTORY = dir;
@@ -69,11 +70,17 @@ public final class DSL {
         return Collections.unmodifiableMap(EXPRESSION_HASHES);
     }
 
+    /** Returns scriptName → expression string mapping for transpiler. */
+    public static Map<String, String> getExpressionRegistry() {
+        return Collections.unmodifiableMap(EXPRESSION_REGISTRY);
+    }
+
     public static void reset() {
         TARGET_DIRECTORY = null;
         SCRIPT_REGISTRY.clear();
         METRIC_OCCURRENCE.clear();
         EXPRESSION_HASHES.clear();
+        EXPRESSION_REGISTRY.clear();
     }
 
     /**
@@ -137,6 +144,7 @@ public final class DSL {
         if (metricName != null && TARGET_DIRECTORY != null) {
             SCRIPT_REGISTRY.put(scriptName, script.getClass().getName());
             EXPRESSION_HASHES.put(scriptName, sha256(expression));
+            EXPRESSION_REGISTRY.put(scriptName, expression);
             log.debug("Compiled MAL script: {} -> {}", scriptName, script.getClass().getName());
         }
 
