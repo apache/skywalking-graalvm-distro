@@ -39,6 +39,7 @@ import org.apache.skywalking.apm.network.common.v3.KeyStringValuePair;
 import org.apache.skywalking.apm.network.logging.v3.LogData;
 import org.apache.skywalking.oap.log.analyzer.dsl.Binding;
 import org.apache.skywalking.oap.log.analyzer.dsl.LALPrecompiledExtension;
+import org.apache.skywalking.oap.log.analyzer.dsl.LalExpression;
 import org.apache.skywalking.oap.log.analyzer.dsl.spec.LALDelegatingScript;
 import org.apache.skywalking.oap.log.analyzer.dsl.spec.filter.FilterSpec;
 import org.apache.skywalking.oap.log.analyzer.module.LogAnalyzerModule;
@@ -172,24 +173,24 @@ abstract class LALScriptComparisonBase {
         return (DelegatingScript) sh.parse(dsl, "test_groovy");
     }
 
-    // ── Path B: Pre-compiled class lookup ──
+    // ── Path B: Pre-compiled LalExpression lookup ──
 
-    private DelegatingScript loadPrecompiled(final String dsl) {
+    private LalExpression loadPrecompiled(final String dsl) {
         final Map<String, String> manifest = loadManifest();
         final String hash = sha256(dsl);
         final String className = manifest.get(hash);
         if (className == null) {
             throw new AssertionError(
-                "Pre-compiled LAL script not found for hash: " + hash
-                    + ". Available: " + manifest.size() + " scripts. "
+                "Pre-compiled LAL expression not found for hash: " + hash
+                    + ". Available: " + manifest.size() + " expressions. "
                     + "Manifest keys: " + manifest.keySet());
         }
         try {
-            final Class<?> scriptClass = Class.forName(className);
-            return (DelegatingScript) scriptClass.getDeclaredConstructor().newInstance();
+            final Class<?> exprClass = Class.forName(className);
+            return (LalExpression) exprClass.getDeclaredConstructor().newInstance();
         } catch (final Exception e) {
             throw new AssertionError(
-                "Failed to load pre-compiled LAL class: " + className, e);
+                "Failed to load pre-compiled LAL expression: " + className, e);
         }
     }
 
@@ -219,10 +220,10 @@ abstract class LALScriptComparisonBase {
                                               final LogData logData,
                                               final Map<String, Object> parsedMap) {
         final DelegatingScript scriptA = compileGroovy(dsl);
-        final DelegatingScript scriptB = loadPrecompiled(dsl);
+        final LalExpression exprB = loadPrecompiled(dsl);
 
-        final EvalResult resultA = evaluateWithParsedMap(scriptA, logData, parsedMap);
-        final EvalResult resultB = evaluateWithParsedMap(scriptB, logData, parsedMap);
+        final EvalResult resultA = evaluateGroovy(scriptA, logData, null, parsedMap);
+        final EvalResult resultB = evaluateExpression(exprB, logData, null, parsedMap);
 
         assertResultsMatch(resultA, resultB);
     }
@@ -231,69 +232,80 @@ abstract class LALScriptComparisonBase {
                                        final LogData logData,
                                        final Message extraLog) {
         final DelegatingScript scriptA = compileGroovy(dsl);
-        final DelegatingScript scriptB = loadPrecompiled(dsl);
+        final LalExpression exprB = loadPrecompiled(dsl);
 
-        final EvalResult resultA = evaluate(scriptA, logData, extraLog);
-        final EvalResult resultB = evaluate(scriptB, logData, extraLog);
+        final EvalResult resultA = evaluateGroovy(scriptA, logData, extraLog, null);
+        final EvalResult resultB = evaluateExpression(exprB, logData, extraLog, null);
 
         assertResultsMatch(resultA, resultB);
     }
 
-    private EvalResult evaluate(final DelegatingScript script,
-                                final LogData logData,
-                                final Message extraLog) {
+    // ── Path A evaluation: Groovy DelegatingScript ──
+
+    private EvalResult evaluateGroovy(final DelegatingScript script,
+                                      final LogData logData,
+                                      final Message extraLog,
+                                      final Map<String, Object> parsedMap) {
         try {
             final FilterSpec filterSpec = new FilterSpec(mockManager, config);
             Whitebox.setInternalState(filterSpec, "sinkListenerFactories",
                 Collections.emptyList());
             script.setDelegate(filterSpec);
 
-            final Binding binding = new Binding();
-            binding.log(logData.toBuilder().build());
-            if (extraLog != null) {
-                binding.extraLog(extraLog);
-            }
-            final List<SampleFamily> metricsContainer = new ArrayList<>();
-            binding.metricsContainer(metricsContainer);
-            binding.logContainer(new AtomicReference<>());
-
-            // Mock RecordStreamProcessor for sampledTrace
+            final Binding binding = createBinding(logData, extraLog, parsedMap);
             mockRecordStreamProcessor();
 
             filterSpec.bind(binding);
             script.run();
 
-            return new EvalResult(binding, metricsContainer, null);
+            return new EvalResult(binding,
+                binding.metricsContainer().orElse(null), null);
         } catch (final Exception e) {
             return new EvalResult(null, null, e);
         }
     }
 
-    private EvalResult evaluateWithParsedMap(final DelegatingScript script,
-                                             final LogData logData,
-                                             final Map<String, Object> parsedMap) {
+    // ── Path B evaluation: Transpiled LalExpression ──
+
+    private EvalResult evaluateExpression(final LalExpression expression,
+                                          final LogData logData,
+                                          final Message extraLog,
+                                          final Map<String, Object> parsedMap) {
         try {
             final FilterSpec filterSpec = new FilterSpec(mockManager, config);
             Whitebox.setInternalState(filterSpec, "sinkListenerFactories",
                 Collections.emptyList());
-            script.setDelegate(filterSpec);
 
-            final Binding binding = new Binding();
-            binding.log(logData.toBuilder().build());
-            binding.parsed(parsedMap);
-            final List<SampleFamily> metricsContainer = new ArrayList<>();
-            binding.metricsContainer(metricsContainer);
-            binding.logContainer(new AtomicReference<>());
-
+            final Binding binding = createBinding(logData, extraLog, parsedMap);
             mockRecordStreamProcessor();
 
             filterSpec.bind(binding);
-            script.run();
+            expression.execute(filterSpec, binding);
 
-            return new EvalResult(binding, metricsContainer, null);
+            return new EvalResult(binding,
+                binding.metricsContainer().orElse(null), null);
         } catch (final Exception e) {
             return new EvalResult(null, null, e);
         }
+    }
+
+    // ── Shared Binding setup ──
+
+    private static Binding createBinding(final LogData logData,
+                                         final Message extraLog,
+                                         final Map<String, Object> parsedMap) {
+        final Binding binding = new Binding();
+        binding.log(logData.toBuilder().build());
+        if (extraLog != null) {
+            binding.extraLog(extraLog);
+        }
+        if (parsedMap != null) {
+            binding.parsed(parsedMap);
+        }
+        final List<SampleFamily> metricsContainer = new ArrayList<>();
+        binding.metricsContainer(metricsContainer);
+        binding.logContainer(new AtomicReference<>());
+        return binding;
     }
 
     private static void mockRecordStreamProcessor() {
@@ -359,8 +371,9 @@ abstract class LALScriptComparisonBase {
         }
 
         // Compare metrics container
-        assertEquals(a.metrics.size(), b.metrics.size(),
-            "metrics container size differs");
+        final int metricsA = a.metrics != null ? a.metrics.size() : 0;
+        final int metricsB = b.metrics != null ? b.metrics.size() : 0;
+        assertEquals(metricsA, metricsB, "metrics container size differs");
 
         // Compare databaseSlowStatement if set
         try {
@@ -432,10 +445,10 @@ abstract class LALScriptComparisonBase {
             }
             final Map<String, String> map = new HashMap<>();
             try (InputStream is = LALScriptComparisonBase.class.getClassLoader()
-                    .getResourceAsStream("META-INF/lal-scripts-by-hash.txt")) {
+                    .getResourceAsStream("META-INF/lal-expressions.txt")) {
                 if (is == null) {
                     throw new AssertionError(
-                        "Manifest META-INF/lal-scripts-by-hash.txt not found");
+                        "Manifest META-INF/lal-expressions.txt not found");
                 }
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(is, StandardCharsets.UTF_8))) {

@@ -17,7 +17,6 @@
 
 package org.apache.skywalking.oap.log.analyzer.dsl;
 
-import groovy.util.DelegatingScript;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,70 +40,71 @@ import org.apache.skywalking.oap.server.library.module.ModuleStartException;
  * Original: skywalking/oap-server/analyzer/log-analyzer/src/main/java/.../dsl/DSL.java
  * Repackaged into log-analyzer-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
  *
- * Change: Complete rewrite. Loads pre-compiled LAL @CompileStatic Groovy script classes from
- * META-INF/lal-scripts-by-hash.txt manifest (keyed by SHA-256 hash) instead of GroovyShell runtime compilation.
+ * Change: Complete rewrite. Loads pre-compiled LAL transpiled Java classes from
+ * META-INF/lal-expressions.txt manifest (keyed by SHA-256 hash) instead of GroovyShell runtime compilation.
  * Why: Groovy runtime compilation is incompatible with GraalVM native image.
  */
 @Slf4j
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public class DSL {
-    private static final String MANIFEST_PATH = "META-INF/lal-scripts-by-hash.txt";
-    private static volatile Map<String, String> SCRIPT_MAP;
+    private static final String MANIFEST_PATH = "META-INF/lal-expressions.txt";
+    private static volatile Map<String, String> EXPRESSION_MAP;
     private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
-    private final DelegatingScript script;
+    private final LalExpression expression;
     private final FilterSpec filterSpec;
+    private Binding binding;
 
     public static DSL of(final ModuleManager moduleManager,
                          final LogAnalyzerModuleConfig config,
                          final String dsl) throws ModuleStartException {
-        Map<String, String> scriptMap = loadManifest();
+        Map<String, String> exprMap = loadManifest();
         String dslHash = sha256(dsl);
-        String className = scriptMap.get(dslHash);
+        String className = exprMap.get(dslHash);
         if (className == null) {
             throw new ModuleStartException(
-                "Pre-compiled LAL script not found for DSL hash: " + dslHash
-                    + ". Available: " + scriptMap.size() + " scripts.");
+                "Pre-compiled LAL expression not found for DSL hash: " + dslHash
+                    + ". Available: " + exprMap.size() + " expressions.");
         }
 
         try {
-            Class<?> scriptClass = Class.forName(className);
-            DelegatingScript script = (DelegatingScript) scriptClass.getDeclaredConstructor().newInstance();
+            Class<?> exprClass = Class.forName(className);
+            LalExpression expression = (LalExpression) exprClass.getDeclaredConstructor().newInstance();
             FilterSpec filterSpec = new FilterSpec(moduleManager, config);
-            script.setDelegate(filterSpec);
             int count = LOADED_COUNT.incrementAndGet();
-            log.debug("Loaded pre-compiled LAL script [{}/{}]: {}", count, scriptMap.size(), className);
-            return new DSL(script, filterSpec);
+            log.debug("Loaded pre-compiled LAL expression [{}/{}]: {}", count, exprMap.size(), className);
+            return new DSL(expression, filterSpec);
         } catch (ClassNotFoundException e) {
             throw new ModuleStartException(
-                "Pre-compiled LAL script class not found: " + className, e);
+                "Pre-compiled LAL expression class not found: " + className, e);
         } catch (ReflectiveOperationException e) {
             throw new ModuleStartException(
-                "Failed to instantiate pre-compiled LAL script: " + className, e);
+                "Failed to instantiate pre-compiled LAL expression: " + className, e);
         }
     }
 
     public void bind(final Binding binding) {
+        this.binding = binding;
         this.filterSpec.bind(binding);
     }
 
     public void evaluate() {
-        script.run();
+        expression.execute(filterSpec, binding);
     }
 
     private static Map<String, String> loadManifest() {
-        if (SCRIPT_MAP != null) {
-            return SCRIPT_MAP;
+        if (EXPRESSION_MAP != null) {
+            return EXPRESSION_MAP;
         }
         synchronized (DSL.class) {
-            if (SCRIPT_MAP != null) {
-                return SCRIPT_MAP;
+            if (EXPRESSION_MAP != null) {
+                return EXPRESSION_MAP;
             }
             Map<String, String> map = new HashMap<>();
             try (InputStream is = DSL.class.getClassLoader().getResourceAsStream(MANIFEST_PATH)) {
                 if (is == null) {
-                    log.warn("LAL script manifest not found: {}", MANIFEST_PATH);
-                    SCRIPT_MAP = map;
+                    log.warn("LAL expression manifest not found: {}", MANIFEST_PATH);
+                    EXPRESSION_MAP = map;
                     return map;
                 }
                 try (BufferedReader reader = new BufferedReader(
@@ -122,10 +122,10 @@ public class DSL {
                     }
                 }
             } catch (IOException e) {
-                throw new IllegalStateException("Failed to load LAL script manifest", e);
+                throw new IllegalStateException("Failed to load LAL expression manifest", e);
             }
-            log.info("Loaded {} pre-compiled LAL scripts from manifest", map.size());
-            SCRIPT_MAP = map;
+            log.info("Loaded {} pre-compiled LAL expressions from manifest", map.size());
+            EXPRESSION_MAP = map;
             return map;
         }
     }

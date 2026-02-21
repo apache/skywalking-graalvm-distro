@@ -42,23 +42,30 @@ The unified precompiler (`build-tools/precompiler`) handles LAL alongside OAL an
    - `ImportCustomizer` for `ProcessRegistry`
    - Script base class: `LALDelegatingScript`
 3. Exports compiled `.class` files to the output directory
-4. Writes two manifest files:
+4. Writes three manifest files:
 
-**`META-INF/lal-scripts-by-hash.txt`** — SHA-256 hash → class name:
+**`META-INF/lal-expressions.txt`** — SHA-256 hash → transpiled Java class (used at runtime):
 ```
-a1b2c3d4...=org.apache.skywalking.oap.server.core.analysis.lal.script.LALScript0001
-e5f6a7b8...=org.apache.skywalking.oap.server.core.analysis.lal.script.LALScript0002
+a1b2c3d4...=org.apache.skywalking.oap.server.core.source.oal.rt.lal.LalExpr_0
+e5f6a7b8...=org.apache.skywalking.oap.server.core.source.oal.rt.lal.LalExpr_1
 ...
 ```
 
-**`META-INF/lal-scripts.txt`** — rule name → class name:
+**`META-INF/lal-scripts-by-hash.txt`** — SHA-256 hash → Groovy class (build-time artifact):
 ```
-default=org.apache.skywalking.oap.server.core.analysis.lal.script.LALScript0001
-nginx-access-log=org.apache.skywalking.oap.server.core.analysis.lal.script.LALScript0002
+a1b2c3d4...=network_profiling_slow_trace
 ...
 ```
 
-The hash-based manifest enables runtime lookup by DSL content (independent of rule naming), while the name-based manifest enables verification that all expected rules are covered.
+**`META-INF/lal-scripts.txt`** — rule name → Groovy class (build-time artifact):
+```
+default=default
+nginx-access-log=nginx_access_log
+...
+```
+
+The `lal-expressions.txt` manifest is the runtime manifest for the transpiled Java expressions.
+The other two manifests are build-time artifacts for verification and debugging.
 
 ---
 
@@ -168,9 +175,14 @@ of reading YAML from the filesystem.
 
 | Upstream Class | Upstream Location | Replacement Location | What Changed |
 |---|---|---|---|
-| `DSL` (LAL) | `analyzer/log-analyzer/.../dsl/DSL.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Complete rewrite. Loads pre-compiled `@CompileStatic` Groovy script classes from `META-INF/lal-scripts-by-hash.txt` manifest (keyed by SHA-256 hash) instead of `GroovyShell.parse()` runtime compilation. |
+| `DSL` (LAL) | `analyzer/log-analyzer/.../dsl/DSL.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Complete rewrite. Loads transpiled `LalExpression` from `META-INF/lal-expressions.txt` manifest (keyed by SHA-256 hash). No Groovy runtime. |
 | `LogAnalyzerModuleConfig` | `analyzer/log-analyzer/.../provider/LogAnalyzerModuleConfig.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `@Setter` at class level. Enables reflection-free config loading via Lombok setters. |
 | `LALConfigs` | `analyzer/log-analyzer/.../provider/LALConfigs.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Complete rewrite of static `load()` method. Loads pre-compiled LAL config data from `META-INF/config-data/{path}.json` instead of filesystem YAML files via `ResourceUtils.getPathFiles()`. |
+| `AbstractSpec` | `analyzer/log-analyzer/.../dsl/spec/AbstractSpec.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `abort()` no-arg overload for transpiled code. |
+| `FilterSpec` | `analyzer/log-analyzer/.../dsl/spec/filter/FilterSpec.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `Consumer` overloads: `json()`, `text(Consumer)`, `extractor(Consumer)`, `sink(Consumer)`, `filter(Runnable)`. |
+| `ExtractorSpec` | `analyzer/log-analyzer/.../dsl/spec/extractor/ExtractorSpec.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `Consumer` overloads: `metrics(Consumer)`, `slowSql(Consumer)`, `sampledTrace(Consumer)`. |
+| `SinkSpec` | `analyzer/log-analyzer/.../dsl/spec/sink/SinkSpec.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `Consumer` overloads: `sampler(Consumer)`, `enforcer()`, `dropper()`. |
+| `SamplerSpec` | `analyzer/log-analyzer/.../dsl/spec/sink/SamplerSpec.java` | `oap-libs-for-graalvm/log-analyzer-for-graalvm/` | Added `rateLimit(String, Consumer)`, `possibility(int, Consumer)` for String-keyed samplers. |
 
 All replacements are repackaged into `log-analyzer-for-graalvm` via `maven-shade-plugin` — the original `.class` files are excluded from the shaded JAR.
 
@@ -221,79 +233,125 @@ Expected: 19 comparison tests across 5 test classes, all passing.
 
 ---
 
-# Phase 3: Eliminate Groovy — Pure Java LAL Transpiler (Deferred)
+# Phase 3: Pure Java LAL Transpiler — COMPLETE
 
-## Context
+## Summary
 
-LAL uses `@CompileStatic` Groovy, which generates standard Java bytecode without
-dynamic MOP. However, the Groovy runtime library is still required at runtime for
-base classes (`DelegatingScript`, `Closure`, `Binding`, `Script`). Since MAL's
-Phase 3 eliminates Groovy from runtime entirely, LAL must follow the same approach
-to fully remove the Groovy dependency.
+LAL transpilation is complete. All 10 LAL scripts (6 unique after SHA-256 dedup)
+are transpiled from Groovy AST to pure Java source at build time, compiled to
+`.class` files, and loaded at runtime via `LalExpression` interface — no Groovy
+runtime needed.
 
-**Priority**: LAL transpilation is deferred until after MAL transpilation is complete
-and validated. There are only 10 LAL scripts (6 unique after SHA-256 dedup), compared
-to 1250+ MAL expressions. LAL can be tackled separately.
+**Approach**: Both options from the plan were combined:
+- **Option A (Transpiler)**: `LalToJavaTranspiler` converts Groovy AST to Java source
+- **Option B (Groovy Stubs)**: `groovy-stubs` module provides minimal `groovy.lang.*`
+  types for class loading (no `org.codehaus.groovy.*`)
 
 ---
 
-## Approach
+## What Was Built
 
-The same transpiler pattern used for MAL applies to LAL, but LAL scripts are more
-complex — they are full programs with nested spec calls rather than method chains:
+### 1. LalExpression Interface
+`oap-libs-for-graalvm/log-analyzer-for-graalvm/.../dsl/LalExpression.java`
 
+```java
+@FunctionalInterface
+public interface LalExpression {
+    void execute(FilterSpec filterSpec, Binding binding);
+}
+```
+
+### 2. Groovy Stubs Module
+`oap-libs-for-graalvm/groovy-stubs/` — Minimal stub classes:
+- `groovy.lang.Binding`, `Closure`, `GString`, `GroovyObject`, `GroovyObjectSupport`
+- `groovy.lang.Script`, `groovy.util.DelegatingScript`
+- `groovy.lang.DelegatesTo`, `MetaClass`, `MissingPropertyException`, `GroovyRuntimeException`
+
+Key: **No `org.codehaus.groovy.*` packages** — prevents GraalVM `GroovyIndyInterfaceFeature` from activating.
+
+### 3. Spec Class Consumer Overloads
+Same-FQCN replacements in `oap-libs-for-graalvm/log-analyzer-for-graalvm/`:
+- `AbstractSpec` — `abort()` no-arg
+- `FilterSpec` — `json()` no-arg, `text(Consumer)`, `extractor(Consumer)`, `sink(Consumer)`, `filter(Runnable)`
+- `ExtractorSpec` — `metrics(Consumer)`, `slowSql(Consumer)`, `sampledTrace(Consumer)`
+- `SinkSpec` — `sampler(Consumer)`, `enforcer()`, `dropper()`
+- `SamplerSpec` — `rateLimit(String, Consumer)`, `possibility(int, Consumer)`
+
+### 4. LalToJavaTranspiler
+`build-tools/precompiler/.../LalToJavaTranspiler.java` (~650 lines)
+
+Groovy AST → Java source transpilation:
+- Statement-based emission with delegation context tracking
+- If/else if/else chains
+- Property access via `getAt()`
+- Cast handling (`as String/Long/Boolean/Integer`)
+- GString interpolation → string concatenation
+- Null-safe navigation (`?.` → ternary null checks)
+- Static method calls (`ProcessRegistry`)
+- Map expression handling (named args)
+- Embedded helper methods (`getAt`, `toLong`, `toInt`, `toBoolean`, `isTruthy`)
+- JavaCompiler batch compilation
+- Manifest writing (`META-INF/lal-expressions.txt`)
+
+### 5. Runtime DSL.java
+Updated `oap-libs-for-graalvm/log-analyzer-for-graalvm/.../dsl/DSL.java`:
+- Loads `LalExpression` from `META-INF/lal-expressions.txt` (not `DelegatingScript`)
+- `evaluate()` calls `expression.execute(filterSpec, binding)` (not `script.run()`)
+
+### 6. Dual-Path Tests Updated
+`LALScriptComparisonBase.java` updated:
+- Path A: Fresh Groovy compilation → `DelegatingScript.run()`
+- Path B: Transpiled `LalExpression` from manifest → `expression.execute(filterSpec, binding)`
+- 19 tests across 5 classes, all passing
+
+---
+
+## Generated Code Example
+
+Input (network-profiling-slow-trace, Groovy):
 ```groovy
 filter {
-    if (tag("LOG_KIND") == "NET_PROFILING_SAMPLED_TRACE") {
-        json {
-            tag("address", parsed.address)
+    json{}
+    extractor{
+        if (tag("LOG_KIND") == "NET_PROFILING_SAMPLED_TRACE") {
+            sampledTrace {
+                latency parsed.latency as Long
+                componentId 49  // simplified
+            }
         }
-        sampledTrace {
-            // ...
-        }
-    } else {
-        abort {}
     }
 }
 ```
 
-### Option A (Recommended): Transpile LAL to Java
-
-Generate pure Java classes that implement the same logic:
-
+Output (LalExpr_0.java):
 ```java
-public class LalScript_envoy_als implements LalExpression {
+public class LalExpr_0 implements LalExpression {
+    private static Object getAt(Object obj, String key) { ... }
+    private static long toLong(Object obj) { ... }
+
     @Override
-    public void run(FilterSpec filterSpec, Binding binding) {
-        filterSpec.filter(() -> {
-            if ("NET_PROFILING_SAMPLED_TRACE".equals(binding.getTag("LOG_KIND"))) {
-                filterSpec.json(() -> {
-                    binding.tag("address", binding.getParsed().get("address"));
+    public void execute(FilterSpec filterSpec, Binding binding) {
+        filterSpec.json();
+        filterSpec.extractor(ext -> {
+            if ("NET_PROFILING_SAMPLED_TRACE".equals(filterSpec.tag("LOG_KIND"))) {
+                ext.sampledTrace(st -> {
+                    st.latency(toLong(getAt(binding.parsed(), "latency")));
+                    st.componentId(49);
                 });
-                filterSpec.sampledTrace(() -> { ... });
-            } else {
-                filterSpec.abort();
             }
         });
     }
 }
 ```
 
-### Option B: Minimal Groovy Stubs
-
-Keep LAL as `@CompileStatic` pre-compiled bytecode but provide minimal stubs for
-the few Groovy base classes needed (`DelegatingScript`, `Closure`, `Binding`).
-This avoids the full Groovy runtime while keeping the pre-compiled bytecode working.
-
 ---
 
-## Implementation (when ready)
+## Remaining: Groovy Runtime Removal
 
-1. Create `LalExpression` interface
-2. Create `LalToJavaTranspiler` (similar to `MalToJavaTranspiler`)
-3. Handle LAL-specific patterns: `filter {}`, `json {}`, `text { regexp }`,
-   `extractor {}`, `sink {}`, `sampledTrace {}`, `slowSql {}`, `abort {}`
-4. Replace LAL `DSL.java` to load `LalExpression` instead of `DelegatingScript`
-5. Update precompiler `compileLAL()` to use transpiler
-6. Run comparison tests (19 tests across 5 classes)
-7. Remove Groovy from runtime classpath
+The groovy-stubs module exists but is not yet wired as a Groovy replacement on
+the runtime classpath. Real Groovy (`groovy-5.0.3.jar`) is still in the distro.
+Removing it requires:
+
+1. Add `groovy-stubs` as runtime dependency in `oap-graalvm-native/pom.xml`
+2. Exclude real Groovy from runtime dependencies (keep as test-only)
+3. Verify native-image build without `org.codehaus.groovy.*` on classpath

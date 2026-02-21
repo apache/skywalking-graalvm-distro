@@ -33,6 +33,7 @@
     <description>Repackaged upstream OAP libraries with GraalVM-compatible replacement classes baked in</description>
 
     <modules>
+        <module>groovy-stubs</module>
         <module>server-core-for-graalvm</module>
         <module>library-module-for-graalvm</module>
         <module>library-util-for-graalvm</module>

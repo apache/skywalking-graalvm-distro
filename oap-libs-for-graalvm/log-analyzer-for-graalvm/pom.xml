@@ -65,6 +65,16 @@
                                 <exclude>org/apache/skywalking/oap/log/analyzer/dsl/DSL$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/log/analyzer/provider/LogAnalyzerModuleConfig.class</exclude>
                                 <exclude>org/apache/skywalking/oap/log/analyzer/provider/LALConfigs.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/AbstractSpec.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/AbstractSpec$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/filter/FilterSpec.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/filter/FilterSpec$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/extractor/ExtractorSpec.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/extractor/ExtractorSpec$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SinkSpec.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SinkSpec$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SamplerSpec.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SamplerSpec$*.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

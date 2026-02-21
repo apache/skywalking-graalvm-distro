@@ -480,9 +480,10 @@ public class Precompiler {
             }
         }
 
-        // Load all LAL configs
+        // Load all LAL configs and collect DSL text for transpilation
         List<LALConfigs> allConfigs = LALConfigs.load("lal", lalFileNames);
         int totalRules = 0;
+        Map<String, String> hashToDsl = new LinkedHashMap<>();
 
         for (LALConfigs configs : allConfigs) {
             if (configs.getRules() == null) {
@@ -493,6 +494,10 @@ public class Precompiler {
                     org.apache.skywalking.oap.log.analyzer.dsl.DSL.compile(
                         rule.getName(), rule.getDsl());
                     totalRules++;
+                    // Capture DSL text keyed by hash for transpilation
+                    String hash = org.apache.skywalking.oap.log.analyzer.dsl.DSL.sha256(
+                        rule.getDsl());
+                    hashToDsl.putIfAbsent(hash, rule.getDsl());
                 } catch (Exception e) {
                     log.warn("Failed to compile LAL rule: {}", rule.getName(), e);
                 }
@@ -520,8 +525,86 @@ public class Precompiler {
             totalRules,
             org.apache.skywalking.oap.log.analyzer.dsl.DSL.getScriptRegistry().size());
 
+        // ---- LAL-to-Java transpilation ----
+        transpileLAL(outputDir, hashToDsl);
+
         // ---- Serialize LAL config data as JSON for runtime loader ----
         serializeLALConfigData(outputDir, lalFileMap);
+    }
+
+    /**
+     * Transpile LAL scripts from Groovy to pure Java classes implementing LalExpression.
+     * Runs after Groovy compilation — uses captured DSL text keyed by SHA-256 hash.
+     */
+    private static void transpileLAL(String outputDir,
+                                     Map<String, String> hashToDsl) throws Exception {
+        LalToJavaTranspiler transpiler = new LalToJavaTranspiler();
+        int count = 0;
+
+        for (Map.Entry<String, String> entry : hashToDsl.entrySet()) {
+            String hash = entry.getKey();
+            String dslText = entry.getValue();
+            String className = "LalExpr_" + count;
+            try {
+                String source = transpiler.transpile(className, dslText);
+                transpiler.register(className, hash, source);
+                count++;
+            } catch (Exception e) {
+                log.warn("Failed to transpile LAL script (hash={}): {}",
+                    hash, dslText.substring(0, Math.min(80, dslText.length())), e);
+            }
+        }
+
+        // Compile generated Java sources
+        File javaSourceDir = new File(outputDir, "generated-lal-sources");
+        File javaOutputDir = new File(outputDir);
+        String classpath = resolveClasspath();
+        File graalvmLogClasses = findGraalvmLogAnalyzerClasses(outputDir);
+        if (graalvmLogClasses != null) {
+            classpath = graalvmLogClasses.getAbsolutePath() + File.pathSeparator + classpath;
+            log.info("LAL transpilation: prepended {} to javac classpath",
+                graalvmLogClasses.getAbsolutePath());
+        } else {
+            log.warn("LAL transpilation: log-analyzer-for-graalvm classes not found; "
+                + "transpiled sources may fail to compile");
+        }
+        transpiler.compileAll(javaSourceDir, javaOutputDir, classpath);
+
+        // Write transpiled manifest
+        transpiler.writeManifest(new File(outputDir));
+
+        log.info("LAL transpilation: {} scripts transpiled to Java", count);
+    }
+
+    /**
+     * Locate log-analyzer-for-graalvm compiled classes directory.
+     */
+    private static File findGraalvmLogAnalyzerClasses(String outputDir) {
+        String relPath = "oap-libs-for-graalvm/log-analyzer-for-graalvm/target/classes";
+
+        String basedir = System.getProperty("basedir");
+        if (basedir != null) {
+            File candidate = new File(new File(basedir).getParentFile().getParentFile(), relPath);
+            if (candidate.isDirectory()) {
+                return candidate;
+            }
+        }
+
+        File candidate = new File(outputDir).getParentFile()
+            .getParentFile()
+            .getParentFile()
+            .getParentFile();
+        candidate = new File(candidate, relPath);
+        if (candidate.isDirectory()) {
+            return candidate;
+        }
+
+        candidate = new File(System.getProperty("user.dir"), relPath);
+        if (candidate.isDirectory()) {
+            return candidate;
+        }
+
+        return null;
     }
 
     /**
@@ -849,6 +932,14 @@ public class Precompiler {
         Path lalScripts = metaInf.resolve("lal-scripts-by-hash.txt");
         if (Files.exists(lalScripts)) {
             for (String className : readValueFromKeyValue(lalScripts)) {
+                entries.add(constructorOnlyEntry(className));
+            }
+        }
+
+        // LAL transpiled expressions — key=value format, constructor-only
+        Path lalExpressions = metaInf.resolve("lal-expressions.txt");
+        if (Files.exists(lalExpressions)) {
+            for (String className : readValueFromKeyValue(lalExpressions)) {
                 entries.add(constructorOnlyEntry(className));
             }
         }
