@@ -21,9 +21,13 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import groovy.lang.Binding;
+import groovy.lang.Closure;
+import groovy.lang.ExpandoMetaClass;
 import groovy.lang.GString;
+import groovy.lang.GroovyObjectSupport;
 import groovy.lang.GroovyShell;
 import groovy.util.DelegatingScript;
+import io.vavr.Function2;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -39,13 +43,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.skywalking.oap.meter.analyzer.dsl.DownsamplingType;
 import org.apache.skywalking.oap.meter.analyzer.dsl.Expression;
 import org.apache.skywalking.oap.meter.analyzer.dsl.ExpressionParsingContext;
+import org.apache.skywalking.oap.meter.analyzer.dsl.MalExpression;
 import org.apache.skywalking.oap.meter.analyzer.dsl.Result;
 import org.apache.skywalking.oap.meter.analyzer.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamily;
 import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyBuilder;
+import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyFunctions.DecorateFunction;
+import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyFunctions.ForEachFunction;
+import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyFunctions.PropertiesExtractor;
+import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyFunctions.SampleFilter;
+import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyFunctions.TagFunction;
 import org.apache.skywalking.oap.meter.analyzer.dsl.registry.ProcessRegistry;
 import org.apache.skywalking.oap.meter.analyzer.dsl.tagOpt.K8sRetagType;
 import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule;
@@ -69,6 +81,7 @@ import org.yaml.snakeyaml.Yaml;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Base class for MAL comparison tests.
@@ -89,13 +102,17 @@ abstract class MALScriptComparisonBase {
     private static Map<String, String> MANIFEST;
     private static Map<String, String> EXPRESSION_HASHES;
 
+    /** Thread-local for Groovy adapter (Path A): passes sample data to ExpressionDelegate. */
+    private static final ThreadLocal<Map<String, SampleFamily>> GROOVY_DATA = new ThreadLocal<>();
+
     @BeforeAll
     static void initMeterEntity() {
         MeterEntity.setNamingControl(
             new NamingControl(512, 512, 512, new EndpointNameGrouping()));
-        MANIFEST = loadManifest();
+        MANIFEST = loadTranspiledManifest();
         EXPRESSION_HASHES = loadKeyValueManifest(
             "META-INF/mal-groovy-expression-hashes.txt");
+        extendSampleFamily();
     }
 
     @AfterAll
@@ -190,7 +207,7 @@ abstract class MALScriptComparisonBase {
             Instant.parse("2024-01-01T00:00:00Z").toEpochMilli());
         ImmutableMap<String, SampleFamily> input2 = buildInputForSamples(
             sampleNames, requiredLabels, 200.0,
-            Instant.parse("2024-01-01T00:02:00Z").toEpochMilli());
+            Instant.parse("2024-01-01T00:00:10Z").toEpochMilli());
 
         Expression precompiledExpr = loadPrecompiled(metricName, expression);
         runAndCompare(metricName, groovyExpr, precompiledExpr,
@@ -244,11 +261,18 @@ abstract class MALScriptComparisonBase {
         if (groovyResult.isSuccess()) {
             assertSamplesMatch(metricName,
                 groovyResult.getData(), precompiledResult.getData());
+        } else {
+            fail(metricName + ": both paths returned EMPTY — test input likely"
+                + " missing required tag values or labels"
+                + " (groovy=" + groovyResult.getError()
+                + ", precompiled=" + precompiledResult.getError() + ")");
         }
     }
 
     // ---------------------------------------------------------------
     // Path A: Fresh Groovy compilation (upstream DSL.parse replica)
+    // Wraps the DelegatingScript in a MalExpression adapter so it can
+    // be passed to the replacement Expression(metricName, literal, MalExpression).
     // ---------------------------------------------------------------
 
     @SuppressWarnings("rawtypes")
@@ -283,18 +307,31 @@ abstract class MALScriptComparisonBase {
 
         GroovyShell sh = new GroovyShell(new Binding(), cc);
         DelegatingScript script = (DelegatingScript) sh.parse(expression);
-        return new Expression(metricName, expression, script);
+
+        // Replicate upstream Expression.empower(): set delegate + extend Number
+        script.setDelegate(new GroovyExpressionDelegate(metricName, expression));
+        extendNumber(Number.class);
+
+        // Wrap DelegatingScript as MalExpression adapter
+        MalExpression adapter = data -> {
+            GROOVY_DATA.set(data);
+            try {
+                return (SampleFamily) script.run();
+            } finally {
+                GROOVY_DATA.remove();
+            }
+        };
+        return new Expression(metricName, expression, adapter);
     }
 
     // ---------------------------------------------------------------
-    // Path B: Pre-compiled class from manifest
+    // Path B: Transpiled MalExpression from manifest
     // ---------------------------------------------------------------
 
     /**
-     * Load pre-compiled class from manifest matching the given metric name
-     * and expression. Uses expression hash to resolve combination patterns
-     * where multiple expressions share the same metric name (within a file
-     * or across files like otel/telegraf/zabbix).
+     * Load transpiled MalExpression class from manifest matching the given
+     * metric name and expression. Uses expression hash to resolve combination
+     * patterns where multiple expressions share the same metric name.
      */
     private static Expression loadPrecompiled(final String metricName,
                                               final String expression) {
@@ -304,7 +341,7 @@ abstract class MALScriptComparisonBase {
         String className = MANIFEST.get(metricName);
         if (className != null
                 && expHash.equals(EXPRESSION_HASHES.get(metricName))) {
-            return loadScriptClass(metricName, className, expression);
+            return loadMalExpressionClass(metricName, className, expression);
         }
 
         // Try combination suffixes: metricName_1, metricName_2, ...
@@ -315,7 +352,7 @@ abstract class MALScriptComparisonBase {
                 break;
             }
             if (expHash.equals(EXPRESSION_HASHES.get(suffixed))) {
-                return loadScriptClass(metricName, className, expression);
+                return loadMalExpressionClass(metricName, className, expression);
             }
         }
 
@@ -324,18 +361,213 @@ abstract class MALScriptComparisonBase {
                 + " (expression hash: " + expHash + ")");
     }
 
-    private static Expression loadScriptClass(final String metricName,
-                                               final String className,
-                                               final String expression) {
+    private static Expression loadMalExpressionClass(final String metricName,
+                                                      final String className,
+                                                      final String expression) {
         try {
-            Class<?> scriptClass = Class.forName(className);
-            DelegatingScript script =
-                (DelegatingScript) scriptClass.getDeclaredConstructor().newInstance();
-            return new Expression(metricName, expression, script);
+            Class<?> exprClass = Class.forName(className);
+            MalExpression malExpr =
+                (MalExpression) exprClass.getDeclaredConstructor().newInstance();
+            return new Expression(metricName, expression, malExpr);
         } catch (Exception e) {
             throw new AssertionError(
-                "Failed to load pre-compiled class for " + metricName, e);
+                "Failed to load transpiled class for " + metricName, e);
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Groovy adapter helpers (replicate upstream Expression internals)
+    // ---------------------------------------------------------------
+
+    /**
+     * Replicates upstream Expression.ExpressionDelegate.
+     * Resolves sample name references via propertyMissing() from GROOVY_DATA thread-local.
+     */
+    @RequiredArgsConstructor
+    @SuppressWarnings("unused")
+    private static class GroovyExpressionDelegate extends GroovyObjectSupport {
+        public static final DownsamplingType AVG = DownsamplingType.AVG;
+        public static final DownsamplingType SUM = DownsamplingType.SUM;
+        public static final DownsamplingType LATEST = DownsamplingType.LATEST;
+        public static final DownsamplingType SUM_PER_MIN = DownsamplingType.SUM_PER_MIN;
+        public static final DownsamplingType MAX = DownsamplingType.MAX;
+        public static final DownsamplingType MIN = DownsamplingType.MIN;
+
+        private final String metricName;
+        private final String literal;
+
+        public SampleFamily propertyMissing(String sampleName) {
+            ExpressionParsingContext.get().ifPresent(ctx -> {
+                if (!ctx.getSamples().contains(sampleName)) {
+                    ctx.getSamples().add(sampleName);
+                }
+            });
+            Map<String, SampleFamily> sampleFamilies = GROOVY_DATA.get();
+            if (sampleFamilies == null) {
+                return SampleFamily.EMPTY;
+            }
+            if (sampleFamilies.containsKey(sampleName)) {
+                SampleFamily sf = sampleFamilies.get(sampleName);
+                sf.context.setMetricName(this.metricName);
+                return sf;
+            }
+            return SampleFamily.EMPTY;
+        }
+
+        public Number time() {
+            return Instant.now().getEpochSecond();
+        }
+    }
+
+    /**
+     * Replicates upstream Expression.extendNumber().
+     * Registers ExpandoMetaClass operations so Number + SampleFamily works in Groovy.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void extendNumber(Class clazz) {
+        ExpandoMetaClass expando = new ExpandoMetaClass(clazz, true, false);
+        expando.registerInstanceMethod("plus",
+            new NumberClosure((n, s) -> s.plus(n)));
+        expando.registerInstanceMethod("minus",
+            new NumberClosure((n, s) -> s.minus(n).negative()));
+        expando.registerInstanceMethod("multiply",
+            new NumberClosure((n, s) -> s.multiply(n)));
+        expando.registerInstanceMethod("div",
+            new NumberClosure((n, s) -> s.newValue(v -> n.doubleValue() / v)));
+        expando.initialize();
+    }
+
+    /** Minimal NumberClosure for Groovy adapter (same as upstream). */
+    private static class NumberClosure extends Closure<SampleFamily> {
+        private final Function2<Number, SampleFamily, SampleFamily> fn;
+
+        NumberClosure(Function2<Number, SampleFamily, SampleFamily> fn) {
+            super(null);
+            this.fn = fn;
+        }
+
+        @Override
+        public SampleFamily call(Object arguments) {
+            return fn.apply((Number) this.getDelegate(), (SampleFamily) arguments);
+        }
+
+        @Override
+        public Class[] getParameterTypes() {
+            return new Class[]{SampleFamily.class};
+        }
+    }
+
+    /**
+     * Register Closure-accepting overloads on SampleFamily via ExpandoMetaClass.
+     * This bridges Groovy script calls (tag(Closure), filter(Closure), etc.) to
+     * the Java functional interface methods (tag(TagFunction), filter(SampleFilter), etc.)
+     * on the GraalVM replacement SampleFamily.
+     *
+     * Only affects Groovy's method dispatch — transpiled Java code calls the
+     * functional interface methods directly via invokevirtual, bypassing MetaClass.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void extendSampleFamily() {
+        ExpandoMetaClass emc = new ExpandoMetaClass(SampleFamily.class, true, false);
+
+        // tag(Closure) → tag(TagFunction)
+        emc.registerInstanceMethod("tag", new Closure<SampleFamily>(null) {
+            @Override
+            public SampleFamily call(Object arguments) {
+                SampleFamily self = (SampleFamily) getDelegate();
+                Closure<?> cl = (Closure<?>) arguments;
+                return self.tag((TagFunction) tags -> {
+                    Object result = cl.call(tags);
+                    return result instanceof Map ? (Map<String, String>) result : tags;
+                });
+            }
+
+            @Override
+            public Class[] getParameterTypes() {
+                return new Class[]{Closure.class};
+            }
+        });
+
+        // filter(Closure) → filter(SampleFilter)
+        emc.registerInstanceMethod("filter", new Closure<SampleFamily>(null) {
+            @Override
+            public SampleFamily call(Object arguments) {
+                SampleFamily self = (SampleFamily) getDelegate();
+                Closure<?> cl = (Closure<?>) arguments;
+                return self.filter((SampleFilter) labels -> {
+                    Object result = cl.call(labels);
+                    return result instanceof Boolean ? (Boolean) result : false;
+                });
+            }
+
+            @Override
+            public Class[] getParameterTypes() {
+                return new Class[]{Closure.class};
+            }
+        });
+
+        // forEach(List, Closure) → forEach(List, ForEachFunction)
+        emc.registerInstanceMethod("forEach", new Closure<SampleFamily>(null) {
+            @Override
+            public SampleFamily call(Object... args) {
+                SampleFamily self = (SampleFamily) getDelegate();
+                List<String> array = (List<String>) args[0];
+                Closure<?> cl = (Closure<?>) args[1];
+                return self.forEach(array, (ForEachFunction) (element, labels) ->
+                    cl.call(element, labels));
+            }
+
+            @Override
+            public Class[] getParameterTypes() {
+                return new Class[]{List.class, Closure.class};
+            }
+        });
+
+        // decorate(Closure) → decorate(DecorateFunction)
+        emc.registerInstanceMethod("decorate", new Closure<SampleFamily>(null) {
+            @Override
+            public SampleFamily call(Object arguments) {
+                SampleFamily self = (SampleFamily) getDelegate();
+                Closure<?> cl = (Closure<?>) arguments;
+                return self.decorate((DecorateFunction) entity -> cl.call(entity));
+            }
+
+            @Override
+            public Class[] getParameterTypes() {
+                return new Class[]{Closure.class};
+            }
+        });
+
+        // instance(List, String, List, String, Layer, Closure) →
+        //   instance(List, String, List, String, Layer, PropertiesExtractor)
+        emc.registerInstanceMethod("instance", new Closure<SampleFamily>(null) {
+            @Override
+            public SampleFamily call(Object... args) {
+                SampleFamily self = (SampleFamily) getDelegate();
+                List<String> serviceKeys = (List<String>) args[0];
+                String serviceDelimiter = (String) args[1];
+                List<String> instanceKeys = (List<String>) args[2];
+                String instanceDelimiter = (String) args[3];
+                Layer layer = (Layer) args[4];
+                Closure<?> cl = (Closure<?>) args[5];
+                PropertiesExtractor pe = cl == null ? null : labels -> {
+                    Object r = cl.call(labels);
+                    return r instanceof Map ? (Map<String, String>) r : null;
+                };
+                return self.instance(serviceKeys, serviceDelimiter,
+                    instanceKeys, instanceDelimiter, layer, pe);
+            }
+
+            @Override
+            public Class[] getParameterTypes() {
+                return new Class[]{
+                    List.class, String.class, List.class, String.class,
+                    Layer.class, Closure.class
+                };
+            }
+        });
+
+        emc.initialize();
     }
 
     private static String sha256(final String input) {
@@ -366,9 +598,9 @@ abstract class MALScriptComparisonBase {
                                           final long timestamp) {
         String[] les = {
             "0.005", "0.01", "0.025", "0.05", "0.1", "0.25",
-            "0.5", "1", "2.5", "5", "10", "+Inf"
+            "0.5", "1", "2.5", "5", "10"
         };
-        double[] vals = {10, 25, 50, 80, 120, 180, 220, 260, 285, 295, 299, 300};
+        double[] vals = {10, 25, 50, 80, 120, 180, 220, 260, 285, 295, 299};
         Sample[] samples = new Sample[les.length];
         for (int i = 0; i < les.length; i++) {
             samples[i] = Sample.builder()
@@ -526,8 +758,33 @@ abstract class MALScriptComparisonBase {
     // Manifest loader
     // ---------------------------------------------------------------
 
-    private static Map<String, String> loadManifest() {
-        return loadKeyValueManifest("META-INF/mal-groovy-scripts.txt");
+    /** Load transpiled manifest: one FQCN per line, metric extracted from class name. */
+    private static Map<String, String> loadTranspiledManifest() {
+        Map<String, String> map = new HashMap<>();
+        try (InputStream is = MALScriptComparisonBase.class
+                .getClassLoader()
+                .getResourceAsStream("META-INF/mal-expressions.txt")) {
+            if (is == null) {
+                return map;
+            }
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (!line.isEmpty()) {
+                        String simpleName = line.substring(line.lastIndexOf('.') + 1);
+                        if (simpleName.startsWith("MalExpr_")) {
+                            String metric = simpleName.substring("MalExpr_".length());
+                            map.put(metric, line);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            throw new AssertionError("Failed to load transpiled manifest", e);
+        }
+        return map;
     }
 
     private static Map<String, String> loadKeyValueManifest(

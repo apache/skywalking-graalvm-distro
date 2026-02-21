@@ -50,7 +50,7 @@ class MongodbNodeTest extends MALScriptComparisonBase {
     private static final long TS1 =
         Instant.parse("2024-01-01T00:00:00Z").toEpochMilli();
     private static final long TS2 =
-        Instant.parse("2024-01-01T00:02:00Z").toEpochMilli();
+        Instant.parse("2024-01-01T00:00:10Z").toEpochMilli();
 
     @TestFactory
     Stream<DynamicTest> allMetricsGroovyVsPrecompiled() {

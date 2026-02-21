@@ -72,6 +72,13 @@ public class Expression {
      */
     public Result run(final Map<String, SampleFamily> sampleFamilies) {
         try {
+            // Set metricName on all SampleFamilies for CounterWindow keying.
+            // Replicates upstream ExpressionDelegate.propertyMissing() behavior.
+            for (SampleFamily s : sampleFamilies.values()) {
+                if (s != SampleFamily.EMPTY) {
+                    s.context.setMetricName(metricName);
+                }
+            }
             SampleFamily sf = expression.run(sampleFamilies);
             if (sf == SampleFamily.EMPTY) {
                 if (ExpressionParsingContext.get().isEmpty()) {

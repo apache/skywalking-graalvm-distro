@@ -118,7 +118,7 @@ class SpringMicrometerTest extends MALScriptComparisonBase {
         Rule rule = loadRule(YAML_PATH);
         String expression = findMetricExp(rule, "meter_http_server_requests_count");
         long ts1 = Instant.parse("2024-01-01T00:00:00Z").toEpochMilli();
-        long ts2 = Instant.parse("2024-01-01T00:02:00Z").toEpochMilli();
+        long ts2 = Instant.parse("2024-01-01T00:00:10Z").toEpochMilli();
 
         Expression e = compileWithGroovy("verify_increase", expression);
         e.run(ImmutableMap.of("http_server_requests_count",

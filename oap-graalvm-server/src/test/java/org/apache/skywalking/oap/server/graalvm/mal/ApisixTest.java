@@ -50,7 +50,7 @@ class ApisixTest extends MALScriptComparisonBase {
     private static final long TS1 =
         Instant.parse("2024-01-01T00:00:00Z").toEpochMilli();
     private static final long TS2 =
-        Instant.parse("2024-01-01T00:02:00Z").toEpochMilli();
+        Instant.parse("2024-01-01T00:00:10Z").toEpochMilli();
 
     @TestFactory
     Stream<DynamicTest> allMetricsGroovyVsPrecompiled() {
@@ -223,9 +223,9 @@ class ApisixTest extends MALScriptComparisonBase {
             final ImmutableMap<String, String> unmatched) {
         String[] les = {
             "0.005", "0.01", "0.025", "0.05", "0.1", "0.25",
-            "0.5", "1", "2.5", "5", "10", "+Inf"
+            "0.5", "1", "2.5", "5", "10"
         };
-        double[] vals = {10, 25, 50, 80, 120, 180, 220, 260, 285, 295, 299, 300};
+        double[] vals = {10, 25, 50, 80, 120, 180, 220, 260, 285, 295, 299};
 
         // 2 sets (matched + unmatched) * 12 buckets each, with type="request"
         Sample[] samples = new Sample[les.length * 2];

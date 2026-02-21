@@ -388,7 +388,7 @@ public class SampleFamily {
 
     /**
      * Tag transformation using a Java functional interface.
-     * Replaces upstream tag(Closure) — no Groovy Closure needed.
+     * Used by transpiled MalExpression code — no Groovy Closure needed.
      */
     @SuppressWarnings(value = "unchecked")
     public SampleFamily tag(TagFunction fn) {
@@ -411,7 +411,7 @@ public class SampleFamily {
 
     /**
      * Sample filtering using a Java functional interface.
-     * Replaces upstream filter(Closure) — no Groovy Closure needed.
+     * Used by transpiled MalExpression code — no Groovy Closure needed.
      */
     public SampleFamily filter(SampleFilter filter) {
         if (this == EMPTY) {
@@ -538,7 +538,7 @@ public class SampleFamily {
     }
 
     public SampleFamily instance(List<String> serviceKeys, List<String> instanceKeys, Layer layer) {
-        return instance(serviceKeys, Const.POINT, instanceKeys, Const.POINT, layer, null);
+        return instance(serviceKeys, Const.POINT, instanceKeys, Const.POINT, layer, (PropertiesExtractor) null);
     }
 
     public SampleFamily endpoint(List<String> serviceKeys, List<String> endpointKeys, String delimiter, Layer layer) {
@@ -607,7 +607,7 @@ public class SampleFamily {
 
     /**
      * ForEach iteration using a Java functional interface.
-     * Replaces upstream forEach(List, Closure) — no Groovy Closure needed.
+     * Used by transpiled MalExpression code — no Groovy Closure needed.
      */
     public SampleFamily forEach(List<String> array, ForEachFunction each) {
         if (this == EMPTY) {
@@ -715,7 +715,7 @@ public class SampleFamily {
 
     /**
      * Decorate the service meter entity using a Java functional interface.
-     * Replaces upstream decorate(Closure) — no Groovy Closure needed.
+     * Used by transpiled MalExpression code — no Groovy Closure needed.
      */
     public SampleFamily decorate(DecorateFunction fn) {
         ExpressionParsingContext.get().ifPresent(ctx -> {
