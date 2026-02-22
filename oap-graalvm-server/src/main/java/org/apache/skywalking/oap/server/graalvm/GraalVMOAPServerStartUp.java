@@ -128,6 +128,14 @@ import org.apache.skywalking.oap.server.ai.pipeline.AIPipelineProvider;
 public class GraalVMOAPServerStartUp {
 
     public static void main(String[] args) {
+        // Ensure Log4j2 finds its config from the filesystem config/ directory.
+        // In JVM mode config/ is on the classpath; native images have no classpath.
+        if (System.getProperty("log4j2.configurationFile") == null) {
+            java.io.File log4jConfig = new java.io.File("config/log4j2.xml");
+            if (log4jConfig.isFile()) {
+                System.setProperty("log4j2.configurationFile", log4jConfig.toURI().toString());
+            }
+        }
         start();
     }
 

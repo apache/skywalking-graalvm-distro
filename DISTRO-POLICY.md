@@ -64,23 +64,24 @@ All `.oal` scripts are known. Run OAL engine at build time, export `.class` file
 - LAL uses `GroovyShell` + `@CompileStatic` + `LALPrecompiledExtension` for log analysis scripts (10 rules).
 
 ### Approach (this repo)
-Run full MAL/LAL initialization at build time via `build-tools/precompiler` (unified tool). Export Javassist-generated `.class` files + compiled Groovy script bytecode. At runtime, load from manifests.
+Run full MAL/LAL initialization at build time via `build-tools/precompiler` (unified tool). Export Javassist-generated `.class` files. Transpile all Groovy expressions to pure Java at build time — zero Groovy at runtime.
 
 **Details**: [MAL-IMMIGRATION.md](MAL-IMMIGRATION.md) | [LAL-IMMIGRATION.md](LAL-IMMIGRATION.md)
 
 ### What Was Built
-- **Unified precompiler** (`build-tools/precompiler`): Replaced separate `oal-exporter` and `mal-compiler` modules. Compiles all 71 MAL YAML rule files (meter-analyzer-config, otel-rules, log-mal-rules, envoy-metrics-rules, telegraf-rules, zabbix-rules) producing 1209 meter classes and 1250 Groovy scripts.
-- **Manifests**: `META-INF/mal-groovy-manifest.txt` (script→class mapping), `META-INF/mal-groovy-expression-hashes.txt` (SHA-256 for combination pattern resolution), `META-INF/mal-meter-classes.txt` (Javassist-generated classes), `META-INF/annotation-scan/MeterFunction.txt` (16 function classes).
+- **Unified precompiler** (`build-tools/precompiler`): Replaced separate `oal-exporter` and `mal-compiler` modules. Compiles all 71 MAL YAML rule files (meter-analyzer-config, otel-rules, log-mal-rules, envoy-metrics-rules, telegraf-rules, zabbix-rules) producing 1209 meter classes.
+- **MAL-to-Java transpiler**: 1250+ MAL expressions transpiled from Groovy AST to pure Java `MalExpression` implementations. 29 filter expressions transpiled to `MalFilter` implementations. Zero Groovy at runtime.
+- **LAL-to-Java transpiler**: 10 LAL scripts (6 unique) transpiled to pure Java `LalExpression` implementations. Spec classes enhanced with `Consumer` overloads for transpiled code.
+- **Groovy stubs module**: Minimal `groovy.lang.*` types (Binding, Closure, etc.) for class loading. No `org.codehaus.groovy.*` — prevents GraalVM `GroovyIndyInterfaceFeature` from activating.
+- **Manifests**: `META-INF/mal-expressions.txt` (transpiled Java classes), `META-INF/mal-groovy-expression-hashes.txt` (SHA-256 for combination pattern resolution), `META-INF/mal-meter-classes.txt` (Javassist-generated classes), `META-INF/lal-expressions.txt` (transpiled LAL classes), `META-INF/annotation-scan/MeterFunction.txt` (16 function classes).
 - **Combination pattern**: Multiple YAML files from different data sources (otel, telegraf, zabbix) may define metrics with the same name. Deterministic suffixes (`_1`, `_2`) with expression hash tracking enable unambiguous resolution.
-- **Same-FQCN replacements**: `DSL.java` (MAL), `DSL.java` (LAL), `FilterExpression.java`, `MeterSystem.java` — all load pre-compiled classes from manifests instead of runtime compilation.
-- **Comparison test suite**: 73 test classes, 1281 assertions covering all 71 YAML files. Each test validates pre-compiled classes produce identical results to fresh Groovy compilation.
+- **Same-FQCN replacements**: `DSL.java` (MAL), `DSL.java` (LAL), `FilterExpression.java`, `MeterSystem.java`, `Expression.java`, `SampleFamily.java` — all use pure Java, no Groovy.
+- **Comparison test suite**: 73 MAL test classes (1281 assertions) + 5 LAL test classes (19 assertions) covering all 79 YAML files. Tests require data flow through full pipeline (no vacuous agreements). Dual-path: fresh Groovy compilation (Path A) vs transpiled Java (Path B).
 
-### Key finding: MAL cannot use @CompileStatic
-MAL expressions rely on `propertyMissing()` for sample name resolution and `ExpandoMetaClass` on `Number` for arithmetic operators — fundamentally dynamic Groovy features. Pre-compilation uses standard dynamic Groovy (same `CompilerConfiguration` as upstream). LAL already uses `@CompileStatic`.
-
-### Risks
-- Dynamic Groovy MOP may not work in GraalVM native image (Phase 3 concern)
-- If `ExpandoMetaClass` fails in native image: fallback to upstream DSL changes
+### Groovy Elimination: COMPLETE
+- MAL: `MalExpression` interface replaces `DelegatingScript`. `SampleFamily` uses Java functional interfaces (`TagFunction`, `SampleFilter`, `ForEachFunction`, `DecorateFunction`, `PropertiesExtractor`) instead of `groovy.lang.Closure`.
+- LAL: `LalExpression` interface replaces `DelegatingScript`. Spec classes have `Consumer` overloads.
+- No `groovy.lang.Closure` in any production source code. Groovy is test-only dependency.
 
 ---
 
@@ -314,13 +315,27 @@ keys) that replacement loader classes use instead of filesystem YAML access.
 - [x] Dependency versions centralized in root `pom.xml`
 
 ### Phase 3: Native Image Build
+
+**Groovy elimination — COMPLETE:**
+- [x] MAL-to-Java transpiler: 1250+ expressions → pure Java `MalExpression` (no Groovy MOP/ExpandoMetaClass)
+- [x] LAL-to-Java transpiler: 10 scripts → pure Java `LalExpression` (no DelegatingScript)
+- [x] `SampleFamily` Closure parameters → Java functional interfaces (zero `groovy.lang.Closure` in production)
+- [x] Groovy stubs module for class loading (no `org.codehaus.groovy.*`)
+- [x] Resolve HierarchyDefinitionService Groovy blocker (same-FQCN replacement with Java-backed closures)
+- [x] Test quality: 1303 tests require actual data flow (no vacuous empty-result agreements)
+
+**Groovy runtime removal — COMPLETE:**
+- [x] Wire groovy-stubs as runtime dependency, exclude real Groovy from runtime classpath
+- [x] Real Groovy (`groovy-5.0.3.jar`) moved to test-only scope; `groovy-stubs-1.0.0-SNAPSHOT.jar` on runtime classpath
+- [x] JVM distro `libs/` verified: only groovy-stubs, no real Groovy JAR
+
+**Native image build — TODO:**
 - [ ] `native-image-maven-plugin` configuration in `oap-graalvm-native`
 - [ ] Run tracing agent to capture reflection/resource/JNI metadata
-- [ ] `reflect-config.json` for OAL-generated classes (`Class.forName()` calls)
+- [ ] `reflect-config.json` for pre-compiled classes (OAL, MAL, LAL, meter classes — generate from manifests)
 - [ ] `resource-config.json` for runtime config files loaded via `ResourceUtils.read()`
 - [ ] Configure gRPC/Netty/Protobuf for native image
 - [ ] GraalVM Feature class for SkyWalking-specific registrations
-- [x] Resolve HierarchyDefinitionService Groovy blocker (same-FQCN replacement with Java-backed closures)
 - [ ] Verify OTEL and Envoy ServiceLoader SPI work in native image (GraalVM supports META-INF/services natively)
 - [ ] Get OAP server booting as native image with BanyanDB
 
@@ -336,6 +351,7 @@ keys) that replacement loader classes use instead of filesystem YAML access.
 
 ## Upstream Changes Tracker
 - [x] OAL engine: build-time class export works via existing debug API (no upstream change needed)
-- [x] MAL: No upstream changes needed — pre-compilation uses same dynamic Groovy `CompilerConfiguration` as upstream
-- [ ] Dynamic Groovy MOP in native image: may need upstream DSL changes if `ExpandoMetaClass` fails (Phase 3 concern)
+- [x] MAL: No upstream changes needed — transpiled to pure Java, bypasses Groovy entirely
+- [x] LAL: No upstream changes needed — transpiled to pure Java, bypasses Groovy entirely
+- [x] Dynamic Groovy MOP: RESOLVED — transpiled to pure Java, no ExpandoMetaClass/MOP at runtime
 - [ ] Other findings during implementation

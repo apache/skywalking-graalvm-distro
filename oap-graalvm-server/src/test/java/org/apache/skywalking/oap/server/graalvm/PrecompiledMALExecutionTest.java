@@ -18,7 +18,6 @@
 package org.apache.skywalking.oap.server.graalvm;
 
 import com.google.common.collect.ImmutableMap;
-import groovy.util.DelegatingScript;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -27,6 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.apache.skywalking.oap.meter.analyzer.dsl.DSL;
 import org.apache.skywalking.oap.meter.analyzer.dsl.Expression;
+import org.apache.skywalking.oap.meter.analyzer.dsl.MalExpression;
 import org.apache.skywalking.oap.meter.analyzer.dsl.Result;
 import org.apache.skywalking.oap.meter.analyzer.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamily;
@@ -43,14 +43,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies that pre-compiled MAL Groovy scripts can actually execute at runtime.
- * Tests the full pipeline: load pre-compiled class → wrap in Expression →
+ * Verifies that transpiled MAL expressions can execute at runtime.
+ * Tests the full pipeline: load transpiled MalExpression class → wrap in Expression →
  * run with SampleFamily data → verify result.
- *
- * This catches issues with:
- * - Groovy's dynamic MOP (propertyMissing, DelegatingScript)
- * - ExpandoMetaClass on Number (arithmetic operators)
- * - Closure-based method chaining (.sum(), .service(), .instance(), etc.)
  */
 class PrecompiledMALExecutionTest {
 
@@ -166,48 +161,47 @@ class PrecompiledMALExecutionTest {
     }
 
     /**
-     * Test loading ALL pre-compiled scripts into Expression objects.
-     * Verifies that every script in the manifest can be instantiated and
-     * empower() (setDelegate + ExpandoMetaClass) succeeds.
+     * Test loading ALL transpiled MalExpression classes into Expression objects.
+     * Verifies that every class in the manifest can be instantiated.
      */
     @Test
-    void allPrecompiledScriptsCanBeWrappedInExpression() throws Exception {
-        Map<String, String> manifest = loadManifest("META-INF/mal-groovy-scripts.txt");
-        assertFalse(manifest.isEmpty(), "Manifest should not be empty");
+    void allTranspiledExpressionsCanBeWrappedInExpression() throws Exception {
+        Map<String, String> manifest = loadTranspiledManifest();
+        assertFalse(manifest.isEmpty(), "Transpiled manifest should not be empty");
 
         int successCount = 0;
         for (Map.Entry<String, String> entry : manifest.entrySet()) {
             String metricName = entry.getKey();
             String className = entry.getValue();
 
-            // Load the pre-compiled class
-            Class<?> scriptClass = Class.forName(className);
-            DelegatingScript script = (DelegatingScript) scriptClass.getDeclaredConstructor().newInstance();
+            Class<?> exprClass = Class.forName(className);
+            MalExpression malExpr =
+                (MalExpression) exprClass.getDeclaredConstructor().newInstance();
 
-            // Wrap in Expression — this calls empower() which sets up
-            // the delegate and ExpandoMetaClass on Number
-            Expression e = new Expression(metricName, "pre-compiled", script);
+            Expression e = new Expression(metricName, "transpiled", malExpr);
             assertNotNull(e, "Expression wrapping should succeed for: " + metricName);
             successCount++;
         }
 
         assertTrue(successCount == manifest.size(),
-            "All " + manifest.size() + " scripts should wrap successfully, got " + successCount);
+            "All " + manifest.size() + " transpiled expressions should wrap successfully, got " + successCount);
     }
 
-    private static Map<String, String> loadManifest(String resourcePath) throws Exception {
+    private static Map<String, String> loadTranspiledManifest() throws Exception {
         Map<String, String> map = new HashMap<>();
-        try (InputStream is = PrecompiledMALExecutionTest.class.getClassLoader().getResourceAsStream(resourcePath)) {
-            assertNotNull(is, "Manifest not found: " + resourcePath);
+        try (InputStream is = PrecompiledMALExecutionTest.class.getClassLoader()
+                .getResourceAsStream("META-INF/mal-expressions.txt")) {
+            assertNotNull(is, "Transpiled manifest not found");
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(is, StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
                     if (!line.isEmpty()) {
-                        String[] parts = line.split("=", 2);
-                        if (parts.length == 2) {
-                            map.put(parts[0], parts[1]);
+                        String simpleName = line.substring(line.lastIndexOf('.') + 1);
+                        if (simpleName.startsWith("MalExpr_")) {
+                            String metric = simpleName.substring("MalExpr_".length());
+                            map.put(metric, line);
                         }
                     }
                 }

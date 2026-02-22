@@ -58,6 +58,7 @@
                             <artifact>org.apache.skywalking:library-util</artifact>
                             <excludes>
                                 <exclude>org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.class</exclude>
+                                <exclude>org/apache/skywalking/oap/server/library/util/ResourceUtils.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

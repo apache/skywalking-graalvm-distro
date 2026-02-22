@@ -52,6 +52,24 @@
             <artifactId>log-analyzer</artifactId>
         </dependency>
 
+        <!-- GraalVM replacement modules: build-order only.
+             The precompiler's exec:java transpiles MAL/LAL to Java and compiles with javac.
+             Transpiled sources reference public APIs in these replacement modules
+             (e.g. ExpressionParsingContext.get() is public in meter-analyzer-for-graalvm
+             but package-private in upstream meter-analyzer). Maven must build these
+             modules first so their target/classes directories exist when
+             findGraalvmMeterClasses() / findGraalvmLogAnalyzerClasses() look for them. -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>meter-analyzer-for-graalvm</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>log-analyzer-for-graalvm</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Receiver plugins containing OALDefine subclasses -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>

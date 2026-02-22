@@ -36,6 +36,13 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>oap-graalvm-server</artifactId>
         </dependency>
+        <!-- Override transitive groovy (compile) from server-core to test scope.
+             Runtime uses groovy-stubs instead. -->
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.graalvm.sdk</groupId>
             <artifactId>nativeimage</artifactId>

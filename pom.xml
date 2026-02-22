@@ -424,6 +424,11 @@
                 <artifactId>health-checker-for-graalvm</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>groovy-stubs</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Lombok -->
             <dependency>
@@ -435,8 +440,10 @@
 
             <!--
               Transitive deps of provided-scope upstream JARs that are
-              still needed at runtime (Groovy for pre-compiled MAL scripts,
-              commons-text for MetricConvert, joda-time for alarm formatting).
+              still needed at runtime (commons-text for MetricConvert,
+              joda-time for alarm formatting).
+              Groovy is test-only — all MAL/LAL scripts are transpiled to Java;
+              groovy-stubs provides minimal groovy.lang.* types for class loading.
             -->
             <dependency>
                 <groupId>org.apache.groovy</groupId>

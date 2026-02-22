@@ -67,6 +67,7 @@
                                 <exclude>org/apache/skywalking/oap/server/core/config/HierarchyDefinitionService.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/config/HierarchyDefinitionService$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/hierarchy/HierarchyService.class</exclude>
+                                <exclude>org/apache/skywalking/oap/server/core/logging/LoggingConfigWatcher.class</exclude>
                             </excludes>
                         </filter>
                     </filters>
