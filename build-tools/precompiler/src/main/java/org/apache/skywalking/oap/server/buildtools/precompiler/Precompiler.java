@@ -21,14 +21,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.ClassPath;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -36,11 +39,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
@@ -195,6 +201,16 @@ public class Precompiler {
         // These are instantiated via getDeclaredConstructor().newInstance() at runtime
         writeManifest(annotationScanDir.resolve("StorageBuilders.txt"),
             scanStorageBuilders(allClasses));
+
+        // ---- Armeria HTTP handler scanning ----
+        writeManifest(annotationScanDir.resolve("ArmeriaHandlers.txt"),
+            scanArmeriaHandlers(allClasses));
+
+        // ---- GraphQL resolver and type scanning ----
+        writeManifest(annotationScanDir.resolve("GraphQLResolvers.txt"),
+            scanGraphQLResolvers(allClasses));
+        writeManifest(annotationScanDir.resolve("GraphQLTypes.txt"),
+            scanGraphQLTypes(allClasses));
 
         // ---- MAL pre-compilation ----
         compileMAL(outputDir, allClasses);
@@ -791,6 +807,262 @@ public class Precompiler {
     }
 
     /**
+     * Scan for Armeria HTTP handler classes — classes with methods annotated with
+     * {@code @Post}, {@code @Get}, or {@code @Path} from {@code com.linecorp.armeria.server.annotation}.
+     * Also collects classes referenced in {@code @ExceptionHandler} and {@code @RequestConverter}.
+     * Armeria's annotatedService().build(handler) uses reflection to discover these annotations;
+     * without reflection metadata, routes are silently not registered (returning 404).
+     */
+    private static List<String> scanArmeriaHandlers(
+        ImmutableSet<ClassPath.ClassInfo> allClasses) {
+
+        // Load Armeria annotation classes if available
+        Class<? extends Annotation> postAnno = loadAnnotation("com.linecorp.armeria.server.annotation.Post");
+        Class<? extends Annotation> getAnno = loadAnnotation("com.linecorp.armeria.server.annotation.Get");
+        Class<? extends Annotation> pathAnno = loadAnnotation("com.linecorp.armeria.server.annotation.Path");
+
+        if (postAnno == null && getAnno == null && pathAnno == null) {
+            log.warn("Armeria annotations not found on classpath, skipping HTTP handler scan");
+            return Collections.emptyList();
+        }
+
+        Set<String> result = new HashSet<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            try {
+                Class<?> aClass = classInfo.load();
+                if (aClass.isInterface() || Modifier.isAbstract(aClass.getModifiers())) {
+                    continue;
+                }
+                // Check if any method has Armeria routing annotations
+                for (Method method : aClass.getDeclaredMethods()) {
+                    if ((postAnno != null && method.isAnnotationPresent(postAnno))
+                        || (getAnno != null && method.isAnnotationPresent(getAnno))
+                        || (pathAnno != null && method.isAnnotationPresent(pathAnno))) {
+                        result.add(aClass.getName());
+                        // Also collect @ExceptionHandler referenced classes
+                        collectExceptionHandlerClasses(aClass, result);
+                        break;
+                    }
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+            }
+        }
+
+        // Also scan for ExceptionHandlerFunction implementations (instantiated by Armeria via reflection)
+        Class<?> ehfInterface = loadClass("com.linecorp.armeria.server.annotation.ExceptionHandlerFunction");
+        if (ehfInterface != null) {
+            for (ClassPath.ClassInfo classInfo : allClasses) {
+                try {
+                    Class<?> aClass = classInfo.load();
+                    if (!aClass.isInterface()
+                        && !Modifier.isAbstract(aClass.getModifiers())
+                        && ehfInterface.isAssignableFrom(aClass)) {
+                        result.add(aClass.getName());
+                    }
+                } catch (NoClassDefFoundError | Exception ignored) {
+                }
+            }
+        }
+
+        List<String> sorted = new ArrayList<>(result);
+        Collections.sort(sorted);
+        log.info("Scanned Armeria HTTP handlers: {} classes", sorted.size());
+        return sorted;
+    }
+
+    /**
+     * Collect classes referenced by @ExceptionHandler annotation on the handler class.
+     * Also scans @RequestConverter classes referenced on methods.
+     */
+    private static void collectExceptionHandlerClasses(Class<?> handlerClass, Set<String> result) {
+        try {
+            Class<? extends Annotation> ehAnno = loadAnnotation(
+                "com.linecorp.armeria.server.annotation.ExceptionHandler");
+            if (ehAnno == null) {
+                return;
+            }
+            // Check class-level @ExceptionHandler
+            for (Annotation anno : handlerClass.getAnnotations()) {
+                if (ehAnno.isInstance(anno)) {
+                    try {
+                        Method valueMethod = anno.getClass().getMethod("value");
+                        Class<?>[] handlerClasses = (Class<?>[]) valueMethod.invoke(anno);
+                        for (Class<?> hc : handlerClasses) {
+                            result.add(hc.getName());
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        } catch (NoClassDefFoundError | Exception ignored) {
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Class<? extends Annotation> loadAnnotation(String fqcn) {
+        try {
+            Class<?> c = Class.forName(fqcn);
+            if (c.isAnnotation()) {
+                return (Class<? extends Annotation>) c;
+            }
+        } catch (ClassNotFoundException | NoClassDefFoundError ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Scan for GraphQL resolver classes — implementations of
+     * {@code graphql.kickstart.tools.GraphQLQueryResolver} or
+     * {@code graphql.kickstart.tools.GraphQLMutationResolver}.
+     * graphql-java-tools reflects on methods to map GraphQL schema operations to Java methods.
+     */
+    private static List<String> scanGraphQLResolvers(
+        ImmutableSet<ClassPath.ClassInfo> allClasses) {
+
+        Class<?> queryResolver = loadClass("graphql.kickstart.tools.GraphQLQueryResolver");
+        Class<?> mutationResolver = loadClass("graphql.kickstart.tools.GraphQLMutationResolver");
+
+        if (queryResolver == null && mutationResolver == null) {
+            log.warn("GraphQL resolver interfaces not found on classpath, skipping resolver scan");
+            return Collections.emptyList();
+        }
+
+        List<String> result = new ArrayList<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            try {
+                Class<?> aClass = classInfo.load();
+                if (aClass.isInterface() || Modifier.isAbstract(aClass.getModifiers())) {
+                    continue;
+                }
+                if ((queryResolver != null && queryResolver.isAssignableFrom(aClass))
+                    || (mutationResolver != null && mutationResolver.isAssignableFrom(aClass))) {
+                    result.add(aClass.getName());
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+            }
+        }
+        Collections.sort(result);
+        log.info("Scanned GraphQL resolvers: {} classes", result.size());
+        return result;
+    }
+
+    /**
+     * Scan GraphQL schema files (.graphqls) for type/input/enum definitions and match
+     * them to Java classes on the classpath by simple name.
+     * graphql-java-tools (kickstart) maps schema type names to Java class simple names;
+     * reflection is used to access fields/getters for field resolution.
+     */
+    private static List<String> scanGraphQLTypes(
+        ImmutableSet<ClassPath.ClassInfo> allClasses) {
+
+        // Build simple name → FQCN index for all SkyWalking classes
+        Map<String, String> simpleNameIndex = new HashMap<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            simpleNameIndex.put(classInfo.getSimpleName(), classInfo.getName());
+        }
+
+        // Parse .graphqls files from classpath
+        Set<String> graphqlTypeNames = new HashSet<>();
+        Pattern typePattern = Pattern.compile("^\\s*(type|input|enum)\\s+(\\w+)");
+
+        String[] schemaFiles = listGraphQLSchemaFiles();
+        for (String schemaFile : schemaFiles) {
+            try (InputStream is = Precompiler.class.getClassLoader().getResourceAsStream(schemaFile);
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    Matcher m = typePattern.matcher(line);
+                    if (m.find()) {
+                        graphqlTypeNames.add(m.group(2));
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse GraphQL schema file: {}", schemaFile, e);
+            }
+        }
+
+        // Remove root types that are resolvers, not DTOs
+        graphqlTypeNames.remove("Query");
+        graphqlTypeNames.remove("Mutation");
+        graphqlTypeNames.remove("Subscription");
+
+        // Match schema type names to Java classes
+        List<String> result = new ArrayList<>();
+        Set<String> unmatched = new HashSet<>();
+        for (String typeName : graphqlTypeNames) {
+            String fqcn = simpleNameIndex.get(typeName);
+            if (fqcn != null) {
+                result.add(fqcn);
+            } else {
+                unmatched.add(typeName);
+            }
+        }
+        Collections.sort(result);
+        if (!unmatched.isEmpty()) {
+            log.info("GraphQL types not matched to Java classes (may be scalars or external): {}",
+                unmatched.stream().sorted().collect(Collectors.joining(", ")));
+        }
+        log.info("Scanned GraphQL types: {} matched from {} schema types",
+            result.size(), graphqlTypeNames.size());
+        return result;
+    }
+
+    /**
+     * List all query-protocol/*.graphqls files from the classpath.
+     * Scans both filesystem directories and JAR entries since the schema files
+     * are packaged inside the query-graphql-plugin JAR.
+     */
+    private static String[] listGraphQLSchemaFiles() {
+        Set<String> files = new HashSet<>();
+        try {
+            java.util.Enumeration<java.net.URL> urls =
+                Precompiler.class.getClassLoader().getResources("query-protocol");
+            while (urls.hasMoreElements()) {
+                java.net.URL url = urls.nextElement();
+                if ("file".equals(url.getProtocol())) {
+                    // Filesystem directory
+                    File dir = new File(url.toURI());
+                    File[] children = dir.listFiles();
+                    if (children != null) {
+                        for (File f : children) {
+                            if (f.getName().endsWith(".graphqls")) {
+                                files.add("query-protocol/" + f.getName());
+                            }
+                        }
+                    }
+                } else if ("jar".equals(url.getProtocol())) {
+                    // JAR entry: jar:file:/path/to/jar.jar!/query-protocol
+                    String jarPath = url.getPath();
+                    String jarFile = jarPath.substring(5, jarPath.indexOf('!'));
+                    try (java.util.jar.JarFile jar = new java.util.jar.JarFile(jarFile)) {
+                        java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
+                        while (entries.hasMoreElements()) {
+                            String name = entries.nextElement().getName();
+                            if (name.startsWith("query-protocol/") && name.endsWith(".graphqls")) {
+                                files.add(name);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to enumerate query-protocol/ directory", e);
+        }
+        if (files.isEmpty()) {
+            log.warn("No .graphqls files found in query-protocol/");
+        }
+        return files.toArray(new String[0]);
+    }
+
+    private static Class<?> loadClass(String fqcn) {
+        try {
+            return Class.forName(fqcn);
+        } catch (ClassNotFoundException | NoClassDefFoundError ignored) {
+        }
+        return null;
+    }
+
+    /**
      * Serialize MAL config data (Rules and MeterConfigs) as JSON for runtime loaders.
      * At runtime, replacement loader classes deserialize from these JSON files instead
      * of reading YAML from the filesystem.
@@ -919,6 +1191,34 @@ public class Precompiler {
                     entries.add(fullAccessEntry(className));
                 }
             }
+        }
+
+        // Armeria HTTP handlers — full access (Armeria reflects on @Post/@Get/@Path method annotations)
+        String[] httpHandlerManifests = {
+            "ArmeriaHandlers.txt", "GraphQLResolvers.txt", "GraphQLTypes.txt"
+        };
+        for (String manifest : httpHandlerManifests) {
+            Path file = annotationScanDir.resolve(manifest);
+            if (Files.exists(file)) {
+                for (String className : readClassNames(file)) {
+                    entries.add(fullAccessEntry(className));
+                }
+            }
+        }
+
+        // Config POJOs deserialized by Jackson/SnakeYAML at runtime — full access
+        String[] configPojos = {
+            "org.apache.skywalking.oap.log.analyzer.provider.LALConfigs",
+            "org.apache.skywalking.oap.log.analyzer.provider.LALConfig",
+            "org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig",
+            "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rule",
+            "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule",
+            "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuInitializer$MenuData",
+            "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuItemSetting",
+            "org.apache.skywalking.oap.server.receiver.telegraf.provider.handler.pojo.TelegrafData"
+        };
+        for (String className : configPojos) {
+            entries.add(fullAccessEntry(className));
         }
 
         // MeterFunction manifest — key=value format, full access (MeterSystem inspects annotations)

@@ -1,0 +1,86 @@
+[
+  {
+    "name": "org.apache.logging.log4j.core.config.plugins.visitors.PluginAttributeVisitor",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.plugins.visitors.PluginBuilderAttributeVisitor",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.plugins.visitors.PluginConfigurationVisitor",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.plugins.visitors.PluginElementVisitor",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.plugins.visitors.PluginNodeVisitor",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.plugins.visitors.PluginValueVisitor",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.LoggerConfig",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.LoggerConfig$RootLogger",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.config.AppenderRef",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.appender.ConsoleAppender",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.appender.ConsoleAppender$Builder",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.appender.AbstractOutputStreamAppender$Builder",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.appender.AbstractAppender$Builder",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.filter.AbstractFilterable$Builder",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.layout.PatternLayout",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.logging.log4j.core.layout.PatternLayout$Builder",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  }
+]

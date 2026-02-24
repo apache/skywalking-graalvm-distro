@@ -45,12 +45,19 @@
                 <include>application.yml</include>
             </includes>
         </fileSet>
+        <!-- config/ — native-specific log4j2.xml (console-only, avoids RollingFile reflection chain) -->
+        <fileSet>
+            <directory>${project.basedir}/src/main/resources</directory>
+            <outputDirectory>config</outputDirectory>
+            <includes>
+                <include>log4j2.xml</include>
+            </includes>
+        </fileSet>
         <!-- config/ — production configs from dist-material (same as upstream apm-dist) -->
         <fileSet>
             <directory>${project.basedir}/../skywalking/dist-material</directory>
             <outputDirectory>config</outputDirectory>
             <includes>
-                <include>log4j2.xml</include>
                 <include>alarm-settings.yml</include>
             </includes>
         </fileSet>

@@ -108,6 +108,56 @@
             <artifactId>agent-analyzer</artifactId>
         </dependency>
 
+        <!-- Query plugins (GraphQL resolvers, HTTP handlers, adapter types) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>query-graphql-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>status-query-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>promql-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>logql-plugin</artifactId>
+        </dependency>
+
+        <!-- Health checker (HealthCheckerHttpService) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>server-health-checker</artifactId>
+        </dependency>
+
+        <!-- Receiver plugins with HTTP handlers -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-management-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-trace-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-log-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-event-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-telegraf-receiver-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>aws-firehose-receiver</artifactId>
+        </dependency>
+
         <!-- Jackson for config data JSON serialization -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
