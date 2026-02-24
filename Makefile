@@ -19,7 +19,7 @@ SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*
 MVN := ./mvnw
 MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
 
-.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image trace-agent
+.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-dist trace-agent docker-native
 
 all: build
 
@@ -60,9 +60,15 @@ build-distro:
 
 # Show the distribution directory
 dist: build-distro
-	@echo "Distribution created at:"
+	@echo "JVM distribution created at:"
 	@echo "  oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/"
 	@echo "  oap-graalvm-server/target/oap-graalvm-jvm-distro.tar.gz"
+
+# Show the native distribution directory
+native-dist: native-image
+	@echo "Native distribution created at:"
+	@ls -d oap-graalvm-native/target/oap-graalvm-native-*-native-dist/oap-native/ 2>/dev/null
+	@ls oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz 2>/dev/null
 
 # Full build: skywalking first, then distro
 build: build-skywalking build-distro
@@ -97,6 +103,12 @@ trace-agent: build-distro docker-up
 	SW_CLUSTER=standalone \
 	JAVA_OPTS="-Xms256M -Xmx4096M -agentlib:native-image-agent=config-merge-dir=oap-graalvm-native/src/main/resources/META-INF/native-image/org.apache.skywalking/oap-graalvm-native" \
 	  oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/bin/oapService.sh
+
+# Build Docker image with native binary (requires prior: make native-image)
+docker-native:
+	docker build -f docker/Dockerfile.native \
+		--build-arg DIST=$$(ls oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz) \
+		-t skywalking-oap-native .
 
 # Build distro and boot OAP with BanyanDB
 boot: build-distro docker-up

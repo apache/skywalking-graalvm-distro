@@ -1,0 +1,20 @@
+# IDE and OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Git
+.git/
+
+# Exclude everything except the native distro tarball and docker context
+skywalking/
+build-tools/
+oap-graalvm-server/
+oap-libs-for-graalvm/
+
+# Allow native distro tarball through
+!oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz

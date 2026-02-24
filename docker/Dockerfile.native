@@ -1,0 +1,47 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Packages a pre-built native binary into a minimal runtime image.
+#
+# Prerequisites (host or CI):
+#   make build-skywalking   # install upstream JARs to .m2
+#   make native-image       # build native binary + distro tarball
+#
+# Usage:
+#   docker build -f docker/Dockerfile.native \
+#     --build-arg DIST=oap-graalvm-native/target/oap-graalvm-native-1.0.0-SNAPSHOT-native-dist.tar.gz \
+#     -t skywalking-oap-native .
+#
+#   docker run -e SW_STORAGE_BANYANDB_TARGETS=host.docker.internal:17912 skywalking-oap-native
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        zlib1g ca-certificates fontconfig \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV OAP_HOME=/skywalking
+WORKDIR $OAP_HOME
+
+ARG DIST
+COPY ${DIST} /tmp/native-dist.tar.gz
+RUN tar -xzf /tmp/native-dist.tar.gz --strip-components=1 -C . \
+    && rm /tmp/native-dist.tar.gz \
+    && mkdir -p logs \
+    && chmod +x oap-server
+
+EXPOSE 12800 11800 1234
+
+ENTRYPOINT ["./oap-server"]

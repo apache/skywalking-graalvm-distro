@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
  *
  * <p>Upstream uses {@code LambdaMetafactory.metafactory()} to create setter
  * wrappers at runtime, which fails in GraalVM native images (cannot define
- * classes at runtime). This replacement uses {@link MethodHandle#invoke()}
+ * classes at runtime). This replacement uses {@link MethodHandle}
  * directly, which is supported by GraalVM.
  */
 @Slf4j
