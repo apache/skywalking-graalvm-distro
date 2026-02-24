@@ -50,10 +50,32 @@
                 <include>application.yml</include>
             </includes>
         </fileSet>
+        <!-- config/ — patched version.properties (graal-distro suffix).
+             Placed in config/ which is first on the classpath, ensuring it takes
+             precedence over the original version.properties in server-starter JAR. -->
+        <fileSet>
+            <directory>${project.build.outputDirectory}</directory>
+            <outputDirectory>config</outputDirectory>
+            <includes>
+                <include>version.properties</include>
+            </includes>
+        </fileSet>
+        <!-- config/ — production configs from dist-material (same as upstream apm-dist).
+             These override server-starter versions: dist-material has production-ready
+             logging (RollingFile, INFO level) and alarm rules. -->
+        <fileSet>
+            <directory>${project.basedir}/../skywalking/dist-material</directory>
+            <outputDirectory>config</outputDirectory>
+            <includes>
+                <include>log4j2.xml</include>
+                <include>alarm-settings.yml</include>
+            </includes>
+        </fileSet>
         <!-- config/ — upstream resource files loaded at runtime.
              OAL/MAL/LAL scripts are NOT included — they are pre-compiled at build time
              and loaded from manifests + pre-compiled .class files in JARs.
-             Only runtime config files (loaded via ResourceUtils.read()) are packaged. -->
+             Only runtime config files (loaded via ResourceUtils.read()) are packaged.
+             log4j2.xml and alarm-settings.yml come from dist-material above. -->
         <fileSet>
             <directory>${project.basedir}/../skywalking/oap-server/server-starter/src/main/resources</directory>
             <outputDirectory>config</outputDirectory>
@@ -61,16 +83,12 @@
                 <!-- BanyanDB storage config (loaded by BanyanDBConfigLoader) -->
                 <include>bydb.yml</include>
                 <include>bydb-topn.yml</include>
-                <!-- Logging -->
-                <include>log4j2.xml</include>
                 <!-- UI dashboard templates (loaded by UITemplateInitializer) -->
                 <include>ui-initialized-templates/**</include>
                 <!-- Cilium rules (loaded by CiliumFetcherProvider) -->
                 <include>cilium-rules/**</include>
                 <!-- OpenAPI endpoint grouping definitions -->
                 <include>openapi-definitions/**</include>
-                <!-- Alarm rules (loaded by AlarmModuleProvider) -->
-                <include>alarm-settings.yml</include>
                 <!-- Component library definitions (loaded by ComponentLibraryCatalogService) -->
                 <include>component-libraries.yml</include>
                 <!-- Endpoint name grouping (loaded by EndpointNameGroupingRuleWatcher) -->
@@ -108,6 +126,7 @@
             <useProjectArtifact>true</useProjectArtifact>
             <excludes>
                 <exclude>org.apache.skywalking:server-core</exclude>
+                <exclude>org.apache.skywalking:server-starter</exclude>
                 <exclude>org.apache.skywalking:library-util</exclude>
                 <exclude>org.apache.skywalking:meter-analyzer</exclude>
                 <exclude>org.apache.skywalking:log-analyzer</exclude>

@@ -47,6 +47,7 @@
         <module>cilium-fetcher-for-graalvm</module>
         <module>status-query-for-graalvm</module>
         <module>health-checker-for-graalvm</module>
+        <module>server-starter-for-graalvm</module>
     </modules>
 
     <build>

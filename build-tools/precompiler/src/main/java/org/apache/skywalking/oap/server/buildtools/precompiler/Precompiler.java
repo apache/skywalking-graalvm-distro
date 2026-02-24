@@ -191,6 +191,11 @@ public class Precompiler {
         writeManifest(annotationScanDir.resolve("MeterFunction.txt"),
             scanMeterFunctions(allClasses));
 
+        // StorageBuilder scan: extract builder() class from @Stream annotations
+        // These are instantiated via getDeclaredConstructor().newInstance() at runtime
+        writeManifest(annotationScanDir.resolve("StorageBuilders.txt"),
+            scanStorageBuilders(allClasses));
+
         // ---- MAL pre-compilation ----
         compileMAL(outputDir, allClasses);
 
@@ -746,6 +751,46 @@ public class Precompiler {
     }
 
     /**
+     * Scan @Stream-annotated classes for their builder() class reference, and
+     * @MeterFunction-annotated classes for their AcceptableValue.builder() return type.
+     * These StorageBuilder classes are instantiated via getDeclaredConstructor().newInstance()
+     * at runtime and need reflection registration for native image.
+     */
+    private static List<String> scanStorageBuilders(
+        ImmutableSet<ClassPath.ClassInfo> allClasses) {
+
+        List<String> result = new ArrayList<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            try {
+                Class<?> aClass = classInfo.load();
+                // @Stream-annotated classes declare builder in annotation
+                if (aClass.isAnnotationPresent(org.apache.skywalking.oap.server.core.analysis.Stream.class)) {
+                    org.apache.skywalking.oap.server.core.analysis.Stream stream =
+                        aClass.getAnnotation(org.apache.skywalking.oap.server.core.analysis.Stream.class);
+                    Class<?> builderClass = stream.builder();
+                    if (builderClass != null && builderClass != void.class) {
+                        result.add(builderClass.getName());
+                    }
+                }
+                // @MeterFunction classes have StorageBuilder inner classes
+                if (aClass.isAnnotationPresent(MeterFunction.class)) {
+                    for (Class<?> inner : aClass.getDeclaredClasses()) {
+                        if (org.apache.skywalking.oap.server.core.storage.type.StorageBuilder.class
+                                .isAssignableFrom(inner)) {
+                            result.add(inner.getName());
+                        }
+                    }
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+            }
+        }
+        // Deduplicate (multiple @Stream classes may share the same builder)
+        result = result.stream().distinct().sorted().collect(Collectors.toList());
+        log.info("Scanned StorageBuilder classes: {} unique entries", result.size());
+        return result;
+    }
+
+    /**
      * Serialize MAL config data (Rules and MeterConfigs) as JSON for runtime loaders.
      * At runtime, replacement loader classes deserialize from these JSON files instead
      * of reading YAML from the filesystem.
@@ -883,6 +928,9 @@ public class Precompiler {
                 entries.add(fullAccessEntry(className));
             }
         }
+
+        // StorageBuilder classes — constructor-only (instantiated via getDeclaredConstructor().newInstance())
+        addConstructorEntries(entries, annotationScanDir.resolve("StorageBuilders.txt"));
 
         // OAL metrics and dispatchers — constructor-only
         addConstructorEntries(entries, metaInf.resolve("oal-metrics-classes.txt"));

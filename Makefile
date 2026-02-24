@@ -55,6 +55,7 @@ javadoc:
 # Phase 2: package oap-graalvm-server and oap-graalvm-native with assembly.
 build-distro:
 	$(MVN) clean install -pl oap-libs-for-graalvm -am -DskipTests $(MVN_ARGS)
+	$(MVN) install -f oap-libs-for-graalvm -DskipTests $(MVN_ARGS)
 	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -DskipTests $(MVN_ARGS)
 
 # Show the distribution directory

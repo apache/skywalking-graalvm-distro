@@ -117,6 +117,12 @@
                 <version>${skywalking.version}</version>
                 <scope>provided</scope>
             </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>server-starter</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -340,10 +346,10 @@
             <artifactId>ai-pipeline</artifactId>
         </dependency>
 
-        <!-- Server Starter (for ApplicationConfigLoader) -->
+        <!-- Server Starter (for ApplicationConfigLoader, version.properties excluded) -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>server-starter</artifactId>
+            <artifactId>server-starter-for-graalvm</artifactId>
         </dependency>
 
         <!-- Pre-compiled classes + manifests from build-time precompiler -->
@@ -459,6 +465,44 @@
                                     git.commit.id.short=${git.commit.id}
                                     build.time=${build.timestamp}
                                 </echo>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <!-- Copy version.properties from submodule, patch version for graal-distro.
+                         If version has -SNAPSHOT, replace it with the short commit ID.
+                         e.g. 10.4.0-SNAPSHOT -> 10.4.0-b537891-graal-distro
+                         Release versions just get the suffix: 10.4.0 -> 10.4.0-graal-distro -->
+                    <execution>
+                        <id>copy-version-properties</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <copy file="${project.basedir}/../skywalking/oap-server/server-starter/src/main/resources/version.properties"
+                                      tofile="${project.build.outputDirectory}/version.properties"
+                                      overwrite="true"/>
+                                <!-- Load the commit id from the copied file -->
+                                <loadproperties srcFile="${project.build.outputDirectory}/version.properties"
+                                                prefix="upstream."/>
+                                <!-- Extract first 7 chars of commit id -->
+                                <loadresource property="upstream.git.commit.id.short">
+                                    <string value="${upstream.git.commit.id}"/>
+                                    <filterchain>
+                                        <replaceregex pattern="^(.{7}).*$" replace="\1"/>
+                                    </filterchain>
+                                </loadresource>
+                                <!-- Replace -SNAPSHOT with -<short-commit> (only matches if -SNAPSHOT exists) -->
+                                <replaceregexp file="${project.build.outputDirectory}/version.properties"
+                                               match="^(git\.build\.version=.*)-SNAPSHOT$"
+                                               replace="\1-${upstream.git.commit.id.short}"
+                                               byline="true"/>
+                                <!-- Append -graal-distro suffix -->
+                                <replaceregexp file="${project.build.outputDirectory}/version.properties"
+                                               match="^(git\.build\.version=.+)$"
+                                               replace="\1-graal-distro"
+                                               byline="true"/>
                             </target>
                         </configuration>
                     </execution>

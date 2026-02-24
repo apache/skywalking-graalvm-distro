@@ -315,6 +315,7 @@ telemetry:
 
 configuration:
   selector: ${SW_CONFIGURATION:k8s-configmap}
+  none:
   k8s-configmap:
     period: ${SW_CONFIG_CONFIGMAP_PERIOD:60}
     namespace: ${SW_CLUSTER_K8S_NAMESPACE:default}

@@ -27,18 +27,14 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>library-util-for-graalvm</artifactId>
-    <name>Library Util for GraalVM</name>
-    <description>Repackaged library-util with GraalVM-compatible YamlConfigLoaderUtils</description>
+    <artifactId>server-starter-for-graalvm</artifactId>
+    <name>Server Starter for GraalVM</name>
+    <description>Repackaged server-starter with version.properties excluded (provided by oap-graalvm-server)</description>
 
     <dependencies>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>library-util</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
+            <artifactId>server-starter</artifactId>
         </dependency>
     </dependencies>
 
@@ -50,17 +46,14 @@
                 <configuration>
                     <artifactSet>
                         <includes>
-                            <include>org.apache.skywalking:library-util</include>
+                            <include>org.apache.skywalking:server-starter</include>
                         </includes>
                     </artifactSet>
                     <filters>
                         <filter>
-                            <artifact>org.apache.skywalking:library-util</artifact>
+                            <artifact>org.apache.skywalking:server-starter</artifact>
                             <excludes>
-                                <exclude>org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.class</exclude>
-                                <exclude>org/apache/skywalking/oap/server/library/util/ResourceUtils.class</exclude>
-                                <exclude>org/apache/skywalking/oap/server/library/util/FieldsHelper.class</exclude>
-                                <exclude>org/apache/skywalking/oap/server/library/util/FieldsHelper$*.class</exclude>
+                                <exclude>version.properties</exclude>
                             </excludes>
                         </filter>
                     </filters>

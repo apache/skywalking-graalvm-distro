@@ -18,6 +18,7 @@
 package org.apache.skywalking.oap.server.graalvm;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.core.version.Version;
 import org.apache.skywalking.oap.server.core.CoreModule;
 import org.apache.skywalking.oap.server.core.CoreModuleProvider;
 import org.apache.skywalking.oap.server.core.RunningMode;
@@ -42,6 +43,7 @@ import org.apache.skywalking.oap.server.cluster.plugin.standalone.ClusterModuleS
 import org.apache.skywalking.oap.server.cluster.plugin.kubernetes.ClusterModuleKubernetesProvider;
 // Configuration
 import org.apache.skywalking.oap.server.configuration.api.ConfigurationModule;
+import org.apache.skywalking.oap.server.configuration.api.NoneConfigurationProvider;
 import org.apache.skywalking.oap.server.configuration.configmap.ConfigmapConfigurationProvider;
 // Telemetry
 import org.apache.skywalking.oap.server.telemetry.TelemetryModule;
@@ -128,6 +130,10 @@ import org.apache.skywalking.oap.server.ai.pipeline.AIPipelineProvider;
 public class GraalVMOAPServerStartUp {
 
     public static void main(String[] args) {
+        // Expose version as system property so log4j2 patterns can use ${sys:sw.version}
+        // instead of the custom %swversion converter that requires plugin discovery.
+        System.setProperty("sw.version", Version.CURRENT.toString());
+
         // Ensure Log4j2 finds its config from the filesystem config/ directory.
         // In JVM mode config/ is on the classpath; native images have no classpath.
         if (System.getProperty("log4j2.configurationFile") == null) {
@@ -189,8 +195,13 @@ public class GraalVMOAPServerStartUp {
         }
         // Storage: BanyanDB
         manager.register(new StorageModule(), new BanyanDBStorageProvider());
-        // Configuration: Kubernetes ConfigMap
-        manager.register(new ConfigurationModule(), new ConfigmapConfigurationProvider());
+        // Configuration: Kubernetes ConfigMap or None
+        ApplicationConfiguration.ModuleConfiguration configConfig = configuration.getModuleConfiguration("configuration");
+        if (configConfig != null && configConfig.has("k8s-configmap")) {
+            manager.register(new ConfigurationModule(), new ConfigmapConfigurationProvider());
+        } else {
+            manager.register(new ConfigurationModule(), new NoneConfigurationProvider());
+        }
         // Telemetry: Prometheus
         manager.register(new TelemetryModule(), new PrometheusTelemetryProvider());
 

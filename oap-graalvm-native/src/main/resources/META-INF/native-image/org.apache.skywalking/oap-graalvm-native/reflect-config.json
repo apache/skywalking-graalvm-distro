@@ -1,0 +1,44 @@
+[
+  {
+    "name": "org.apache.skywalking.oap.log.analyzer.provider.LALConfigs",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.skywalking.oap.log.analyzer.provider.LALConfig",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rule",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuInitializer$MenuData",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuItemSetting",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  }
+]
