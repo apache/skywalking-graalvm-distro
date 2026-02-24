@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE: ghcr.io/apache/skywalking-graal-distro
+  IMAGE: ghcr.io/apache/skywalking-graalvm-distro
 
 jobs:
   license-header:
