@@ -17,6 +17,8 @@
 
 package org.apache.skywalking.oap.server.graalvm;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -24,11 +26,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.skywalking.oap.server.library.module.ModuleConfig;
 import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -42,70 +46,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class ConfigFieldAccessorTest {
 
-    /**
-     * Same provider list as ConfigInitializerGenerator. Each provider's
-     * newConfigCreator().type() discovers the config class.
-     */
-    private static final String[] PROVIDER_CLASSES = {
-        "org.apache.skywalking.oap.server.core.CoreModuleProvider",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageProvider",
-        "org.apache.skywalking.oap.server.cluster.plugin.standalone.ClusterModuleStandaloneProvider",
-        "org.apache.skywalking.oap.server.cluster.plugin.kubernetes.ClusterModuleKubernetesProvider",
-        "org.apache.skywalking.oap.server.configuration.configmap.ConfigmapConfigurationProvider",
-        "org.apache.skywalking.oap.server.telemetry.prometheus.PrometheusTelemetryProvider",
-        "org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleProvider",
-        "org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleProvider",
-        "org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.register.provider.RegisterModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.trace.provider.TraceModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.jvm.provider.JVMModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.clr.provider.CLRModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.profile.provider.ProfileModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.asyncprofiler.provider.AsyncProfilerModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.pprof.provider.PprofModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.zabbix.provider.ZabbixReceiverProvider",
-        "org.apache.skywalking.aop.server.receiver.mesh.MeshReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.envoy.EnvoyMetricReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.meter.provider.MeterReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.otel.OtelMetricReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.zipkin.ZipkinReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.browser.provider.BrowserModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.log.provider.LogModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.event.EventModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.ebpf.provider.EBPFReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.telegraf.provider.TelegrafReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.aws.firehose.AWSFirehoseReceiverModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.configuration.discovery.ConfigurationDiscoveryProvider",
-        "org.apache.skywalking.oap.server.analyzer.agent.kafka.provider.KafkaFetcherProvider",
-        "org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherProvider",
-        "org.apache.skywalking.oap.query.graphql.GraphQLQueryProvider",
-        "org.apache.skywalking.oap.query.zipkin.ZipkinQueryProvider",
-        "org.apache.skywalking.oap.query.promql.PromQLProvider",
-        "org.apache.skywalking.oap.query.logql.LogQLProvider",
-        "org.apache.skywalking.oap.query.debug.StatusQueryProvider",
-        "org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleProvider",
-        "org.apache.skywalking.oap.server.exporter.provider.ExporterProvider",
-        "org.apache.skywalking.oap.server.health.checker.provider.HealthCheckerProvider",
-        "org.apache.skywalking.oap.server.ai.pipeline.AIPipelineProvider",
-    };
+    private static final String PROVIDER_INVENTORY = "provider-inventory.properties";
 
-    private static final String[] EXTRA_CONFIG_CLASSES = {
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Global",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsNormal",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsLog",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Trace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$ZipkinTrace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsTrace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsZipkinTrace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsBrowserErrorLog",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsMin",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsHour",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsDay",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Metadata",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Property",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Stage",
-    };
 
     /**
      * Fields with custom accessors instead of standard getXxx/isXxx.
@@ -184,12 +126,23 @@ class ConfigFieldAccessorTest {
         }
     }
 
+    /**
+     * Loads ACCEPTED providers from {@code provider-inventory.properties},
+     * discovers their config classes via {@code newConfigCreator().type()},
+     * then scans inner classes of each config class for nested config types
+     * (e.g. BanyanDBStorageConfig.Global, .Trace, etc.).
+     */
     private Map<String, Class<?>> discoverConfigClasses() throws Exception {
         Map<String, Class<?>> configClasses = new LinkedHashMap<>();
 
-        for (String providerClassName : PROVIDER_CLASSES) {
+        List<String> acceptedProviders = loadAcceptedProviders();
+        assertFalse(acceptedProviders.isEmpty(),
+            PROVIDER_INVENTORY + " has no ACCEPTED providers");
+
+        for (String providerClassName : acceptedProviders) {
             Class<?> providerClass = Class.forName(providerClassName);
-            ModuleProvider provider = (ModuleProvider) providerClass.getDeclaredConstructor().newInstance();
+            ModuleProvider provider = (ModuleProvider) providerClass
+                .getDeclaredConstructor().newInstance();
             ModuleProvider.ConfigCreator<?> creator = provider.newConfigCreator();
             if (creator == null) {
                 continue;
@@ -197,15 +150,45 @@ class ConfigFieldAccessorTest {
             Class<?> configType = creator.type();
             if (configType != null) {
                 configClasses.putIfAbsent(configType.getName(), configType);
+                // Scan declared inner classes that have non-static mutable fields
+                for (Class<?> inner : configType.getDeclaredClasses()) {
+                    if (Modifier.isStatic(inner.getModifiers())
+                            && hasNonFinalInstanceFields(inner)) {
+                        configClasses.putIfAbsent(inner.getName(), inner);
+                    }
+                }
             }
         }
 
-        for (String className : EXTRA_CONFIG_CLASSES) {
-            Class<?> clazz = Class.forName(className);
-            configClasses.putIfAbsent(clazz.getName(), clazz);
-        }
-
         return configClasses;
+    }
+
+    private static boolean hasNonFinalInstanceFields(Class<?> clazz) {
+        for (Field f : clazz.getDeclaredFields()) {
+            if (!Modifier.isStatic(f.getModifiers())
+                    && !Modifier.isFinal(f.getModifiers())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> loadAcceptedProviders() throws IOException {
+        Properties props = new Properties();
+        try (InputStream is = getClass().getClassLoader()
+                .getResourceAsStream(PROVIDER_INVENTORY)) {
+            if (is != null) {
+                props.load(is);
+            }
+        }
+        List<String> accepted = new ArrayList<>();
+        for (String key : props.stringPropertyNames()) {
+            if (key.startsWith("provider.")
+                    && "ACCEPTED".equals(props.getProperty(key).trim())) {
+                accepted.add(key.substring("provider.".length()));
+            }
+        }
+        return accepted;
     }
 
     private static boolean hasSetter(Class<?> configClass, Field field) {
