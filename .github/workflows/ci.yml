@@ -40,9 +40,9 @@ jobs:
       - name: Check license headers
         uses: apache/skywalking-eyes/header@main
 
-  # ── Shared: build skywalking submodule and cache .m2/repository ──
-  build-skywalking:
-    name: Build SkyWalking Submodule
+  # ── Shared: init skywalking submodule and cache .m2/repository ──
+  init-skywalking:
+    name: Init SkyWalking Submodule
     runs-on: ubuntu-latest
     outputs:
       cache-key: ${{ steps.cache-key.outputs.key }}
@@ -69,15 +69,15 @@ jobs:
           path: ~/.m2/repository
           key: ${{ steps.cache-key.outputs.key }}
 
-      - name: Build SkyWalking submodule
+      - name: Install SkyWalking submodule to Maven cache
         if: steps.cache.outputs.cache-hit != 'true'
-        run: make build-skywalking
+        run: make init-skywalking
 
   # ── CI: compile, javadoc, test, distro ──
   ci:
     name: Build & Test
     runs-on: ubuntu-latest
-    needs: build-skywalking
+    needs: init-skywalking
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v4
@@ -94,7 +94,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ needs.build-skywalking.outputs.cache-key }}
+          key: ${{ needs.init-skywalking.outputs.cache-key }}
 
       - name: Compile & Install
         run: make compile
@@ -112,7 +112,7 @@ jobs:
   build-native:
     name: Native ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    needs: build-skywalking
+    needs: init-skywalking
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
@@ -142,7 +142,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ needs.build-skywalking.outputs.cache-key }}
+          key: ${{ needs.init-skywalking.outputs.cache-key }}
 
       - name: Build native image
         run: make native-image

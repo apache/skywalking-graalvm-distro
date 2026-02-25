@@ -19,7 +19,7 @@ SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*
 MVN := ./mvnw
 MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
 
-.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-image-macos native-dist trace-agent docker-native
+.PHONY: all clean build init-submodules init-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-image-macos native-dist trace-agent docker-native
 
 all: build
 
@@ -30,9 +30,9 @@ info:
 init-submodules:
 	cd skywalking && git submodule update --init --recursive
 
-# Build the skywalking submodule and install artifacts to local Maven repo
+# Init skywalking submodule and install artifacts to local Maven repo
 # flatten-maven-plugin resolves ${revision} in installed POMs so external projects can depend on them
-build-skywalking: init-submodules
+init-skywalking: init-submodules
 	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dgpg.skip=true
 
 # Compile + install to local repo (no tests).
@@ -71,7 +71,7 @@ native-dist: native-image
 	@ls oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz 2>/dev/null
 
 # Full build: skywalking first, then distro
-build: build-skywalking build-distro
+build: init-skywalking build-distro
 
 clean:
 	$(MVN) clean $(MVN_ARGS)

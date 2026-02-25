@@ -34,8 +34,8 @@ Requires GraalVM JDK 25.
 # Initialize submodule
 git submodule update --init --recursive
 
-# Build upstream SkyWalking (first time only)
-JAVA_HOME=/path/to/graalvm-jdk-25 make build-skywalking
+# Init upstream SkyWalking submodule and install to Maven cache (first time only)
+JAVA_HOME=/path/to/graalvm-jdk-25 make init-skywalking
 
 # Compile distro (precompiler + tests + server)
 JAVA_HOME=/path/to/graalvm-jdk-25 make build-distro
