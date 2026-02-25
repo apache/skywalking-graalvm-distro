@@ -95,11 +95,15 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 |---|---|---|---|
 | `ModuleDefine` | `library-module/.../module/ModuleDefine.java` | Added `prepare()` overload for direct provider wiring | **Yes** |
 
-### library-util-for-graalvm (0 classes, shade-only)
+### library-util-for-graalvm (1 class)
 
-No replacement Java sources. Uses shade plugin to exclude `YamlConfigLoaderUtils`,
-`ResourceUtils`, `FieldsHelper` from upstream JAR. The replacements for these live
-in `oap-graalvm-server/` (due to 30+ cross-module imports).
+| Replacement Class | Upstream Source | Change | Staleness Tracked |
+|---|---|---|---|
+| `VirtualThreads` | `library-util/.../util/VirtualThreads.java` | Direct JDK 25 API calls instead of reflection | **Yes** |
+
+Also uses shade plugin to exclude `YamlConfigLoaderUtils`, `ResourceUtils`,
+`FieldsHelper` from upstream JAR. The replacements for those live in
+`oap-graalvm-server/` (due to 30+ cross-module imports).
 
 ### Config-only replacements (added `@Setter` at class level)
 

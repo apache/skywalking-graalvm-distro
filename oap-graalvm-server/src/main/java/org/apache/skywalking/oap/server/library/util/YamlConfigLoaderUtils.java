@@ -1438,11 +1438,8 @@ public class YamlConfigLoaderUtils {
                 case "gRPCTargetPort":
                     cfg.setGRPCTargetPort((int) value);
                     break;
-                case "bufferChannelSize":
-                    cfg.setBufferChannelSize((int) value);
-                    break;
-                case "bufferChannelNum":
-                    cfg.setBufferChannelNum((int) value);
+                case "bufferSize":
+                    cfg.setBufferSize((int) value);
                     break;
                 case "enableKafkaTrace":
                     cfg.setEnableKafkaTrace((boolean) value);
@@ -1596,10 +1593,18 @@ public class YamlConfigLoaderUtils {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static void copyToRecordsNormal(
-            final BanyanDBStorageConfig.RecordsNormal cfg, final Properties src,
-            final String moduleName, final String providerName) {
+    /**
+     * Copies GroupResource fields (shardNum, segmentInterval, ttl, replicas, enableWarmStage,
+     * enableColdStage) and processes nested warm/cold Stage sections.
+     * Mirrors upstream BanyanDBConfigLoader.copyStages() logic: warm/cold are deferred
+     * until after all simple fields are set, so enableWarmStage/enableColdStage flags
+     * are available regardless of Properties iteration order.
+     */
+    private static void copyToGroupResource(
+            final BanyanDBStorageConfig.GroupResource cfg, final Properties src,
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        Properties warmProps = null;
+        Properties coldProps = null;
         final Enumeration<?> propertyNames = src.propertyNames();
         while (propertyNames.hasMoreElements()) {
             final String key = (String) propertyNames.nextElement();
@@ -1630,474 +1635,120 @@ public class YamlConfigLoaderUtils {
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
                     break;
+                case "warm":
+                    if (value instanceof Properties) {
+                        warmProps = (Properties) value;
+                    }
+                    break;
+                case "cold":
+                    if (value instanceof Properties) {
+                        coldProps = (Properties) value;
+                    }
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
                     break;
             }
         }
+        if (cfg.isEnableWarmStage() && warmProps != null) {
+            BanyanDBStorageConfig.Stage warm = new BanyanDBStorageConfig.Stage();
+            warm.setName(BanyanDBStorageConfig.StageName.warm);
+            copyProperties(warm, warmProps, moduleName, providerName);
+            cfg.getAdditionalLifecycleStages().add(warm);
+            cfg.getDefaultQueryStages().add(BanyanDBStorageConfig.StageName.warm.name());
+        }
+        if (cfg.isEnableColdStage() && coldProps != null) {
+            BanyanDBStorageConfig.Stage cold = new BanyanDBStorageConfig.Stage();
+            cold.setName(BanyanDBStorageConfig.StageName.cold);
+            cold.setClose(true);
+            copyProperties(cold, coldProps, moduleName, providerName);
+            cfg.getAdditionalLifecycleStages().add(cold);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToRecordsNormal(
+            final BanyanDBStorageConfig.RecordsNormal cfg, final Properties src,
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToRecordsLog(
             final BanyanDBStorageConfig.RecordsLog cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToTrace(
             final BanyanDBStorageConfig.Trace cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToZipkinTrace(
             final BanyanDBStorageConfig.ZipkinTrace cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToRecordsTrace(
             final BanyanDBStorageConfig.RecordsTrace cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToRecordsZipkinTrace(
             final BanyanDBStorageConfig.RecordsZipkinTrace cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToRecordsBrowserErrorLog(
             final BanyanDBStorageConfig.RecordsBrowserErrorLog cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToMetricsMin(
             final BanyanDBStorageConfig.MetricsMin cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToMetricsHour(
             final BanyanDBStorageConfig.MetricsHour cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToMetricsDay(
             final BanyanDBStorageConfig.MetricsDay cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToMetadata(
             final BanyanDBStorageConfig.Metadata cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")
     private static void copyToProperty(
             final BanyanDBStorageConfig.Property cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "shardNum":
-                    cfg.setShardNum((int) value);
-                    break;
-                case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
-                    break;
-                case "ttl":
-                    cfg.setTtl((int) value);
-                    break;
-                case "replicas":
-                    cfg.setReplicas((int) value);
-                    break;
-                case "enableWarmStage":
-                    cfg.setEnableWarmStage((boolean) value);
-                    break;
-                case "enableColdStage":
-                    cfg.setEnableColdStage((boolean) value);
-                    break;
-                case "defaultQueryStages":
-                    cfg.setDefaultQueryStages((List) value);
-                    break;
-                case "additionalLifecycleStages":
-                    cfg.setAdditionalLifecycleStages((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
+            final String moduleName, final String providerName) throws IllegalAccessException {
+        copyToGroupResource(cfg, src, moduleName, providerName);
     }
 
     @SuppressWarnings("unchecked")

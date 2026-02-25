@@ -88,7 +88,7 @@ class OapTest extends MALScriptComparisonBase {
      * # --- Metrics Aggregation (tagEqual + conditional rewrite) ---
      * metrics_aggregation{...,dimensionality="minute",level="1"} 100.0
      * metrics_aggregation{...,dimensionality="minute",level="2"} 50.0
-     * metrics_aggregation_queue_used_percentage{...,level="1",kind="metrics",metricName="test_metric"} 75.0
+     * metrics_aggregation_queue_used_percentage{...,level="1",slot="0"} 75.0
      *
      * # --- Persistence ---
      * persistence_timer_bulk_execute_latency{...le buckets...} histogram
@@ -244,8 +244,7 @@ class OapTest extends MALScriptComparisonBase {
                         .labels(ImmutableMap.<String, String>builder()
                             .putAll(scope)
                             .put("level", "1")
-                            .put("kind", "metrics")
-                            .put("metricName", "test_metric")
+                            .put("slot", "0")
                             .build())
                         .value(75.0 * scale).timestamp(timestamp).build()
                 ).build())

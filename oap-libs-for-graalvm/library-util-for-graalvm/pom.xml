@@ -61,6 +61,7 @@
                                 <exclude>org/apache/skywalking/oap/server/library/util/ResourceUtils.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/library/util/FieldsHelper.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/library/util/FieldsHelper$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/server/library/util/VirtualThreads.class</exclude>
                             </excludes>
                         </filter>
                     </filters>
