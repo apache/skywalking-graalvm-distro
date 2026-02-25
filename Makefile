@@ -19,7 +19,7 @@ SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*
 MVN := ./mvnw
 MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
 
-.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-dist trace-agent docker-native
+.PHONY: all clean build init-submodules build-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-image-macos native-dist trace-agent docker-native
 
 all: build
 
@@ -95,6 +95,18 @@ shutdown:
 # Build native image (requires GraalVM JDK)
 native-image: compile
 	$(MVN) package -pl oap-graalvm-native -Pnative -DskipTests $(MVN_ARGS)
+
+# Build Linux native image from macOS using Docker.
+# Java compilation is platform-independent (already done on host via `compile`).
+# Only the native-image step needs Linux — runs inside a GraalVM container
+# with the host .m2 cache and project dir mounted.
+native-image-macos: compile
+	docker run --rm --entrypoint bash \
+		-v $(HOME)/.m2:/root/.m2 \
+		-v $(CURDIR):/workspace \
+		-w /workspace \
+		ghcr.io/graalvm/native-image-community:25 \
+		./mvnw package -pl oap-graalvm-native -Pnative -DskipTests $(MVN_ARGS)
 
 # Run tracing agent to capture supplementary native-image metadata
 # Merges with pre-generated reflect-config.json from the precompiler
