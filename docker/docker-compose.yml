@@ -25,3 +25,21 @@ services:
       interval: 5s
       timeout: 60s
       retries: 120
+
+  oap:
+    image: skywalking-oap-native:latest
+    ports:
+      - "12800:12800"
+      - "11800:11800"
+    environment:
+      SW_STORAGE_BANYANDB_TARGETS: banyandb:17912
+      SW_CLUSTER: standalone
+      SW_CONFIGURATION: none
+    depends_on:
+      banyandb:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "sh", "-c", "nc -nz 127.0.0.1 11800" ]
+      interval: 5s
+      timeout: 60s
+      retries: 120

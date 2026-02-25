@@ -44,4 +44,4 @@ RUN tar -xzf /tmp/native-dist.tar.gz --strip-components=1 -C . \
 
 EXPOSE 12800 11800 1234
 
-ENTRYPOINT ["./oap-server"]
+ENTRYPOINT ["./oap-server", "-Dlog4j2.configurationFile=config/log4j2.xml"]

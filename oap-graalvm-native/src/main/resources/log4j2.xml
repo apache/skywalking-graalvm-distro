@@ -35,7 +35,7 @@
     <Loggers>
         <logger name="org.apache.zookeeper" level="INFO"/>
         <logger name="io.grpc.netty" level="INFO"/>
-        <Root level="INFO">
+        <Root level="${env:SW_LOG_LEVEL:-INFO}">
             <AppenderRef ref="Console"/>
         </Root>
     </Loggers>
