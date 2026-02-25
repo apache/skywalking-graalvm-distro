@@ -29,7 +29,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        zlib1g ca-certificates fontconfig \
+        zlib1g ca-certificates fontconfig netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 ENV OAP_HOME=/skywalking

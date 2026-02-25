@@ -186,6 +186,62 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Save Docker image for e2e (amd64 only)
+        if: matrix.arch == 'amd64'
+        run: |
+          docker build -f docker/Dockerfile.native \
+            --build-arg DIST=${{ steps.dist.outputs.path }} \
+            -t skywalking-oap-native:latest .
+          docker save skywalking-oap-native:latest -o /tmp/skywalking-oap-native.tar
+
+      - name: Upload Docker image artifact (amd64 only)
+        if: matrix.arch == 'amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: skywalking-oap-native-image
+          path: /tmp/skywalking-oap-native.tar
+          retention-days: 1
+
+  # ── E2E tests using pre-built native image ──
+  e2e:
+    name: E2E ${{ matrix.test.name }}
+    runs-on: ubuntu-latest
+    needs: build-native
+    timeout-minutes: 30
+    env:
+      SW_AGENT_JDK_VERSION: 17
+    strategy:
+      matrix:
+        test:
+          - name: Simple Java Agent
+            case: simple-java-agent
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: skywalking-oap-native-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load -i /tmp/skywalking-oap-native.tar
+
+      - name: Run E2E test
+        uses: apache/skywalking-infra-e2e@8c21e43e241a32a54bdf8eeceb9099eb27e5e9b4
+        with:
+          e2e-file: $GITHUB_WORKSPACE/test/e2e/cases/${{ matrix.test.case }}/e2e.yaml
+
+      - name: Upload logs on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ matrix.test.case }}
+          path: "${{ env.SW_INFRA_E2E_LOG_DIR }}"
+
   # ── Merge per-arch images into multi-arch manifest ──
   docker-manifest:
     name: Docker Manifest
