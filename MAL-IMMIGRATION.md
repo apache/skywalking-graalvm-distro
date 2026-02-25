@@ -37,7 +37,7 @@ Each MAL metric rule generates one Groovy script + one Javassist dynamic meter c
 
 ---
 
-## Step 1: MeterFunction Manifest + Same-FQCN MeterSystem
+## MeterFunction Manifest + Same-FQCN MeterSystem
 
 ### Problem
 
@@ -97,19 +97,17 @@ public MeterSystem(ModuleManager manager) {
 }
 ```
 
-At this step, `create()` still uses Javassist — this is fine for JVM mode. Step 2 eliminates it.
-
 ---
 
-## Step 2: Build-Time MAL/LAL Pre-Compilation + MeterSystem Class Generation
+## Build-Time MAL/LAL Pre-Compilation + MeterSystem Class Generation
 
-**Module**: `build-tools/mal-compiler` (skeleton exists)
+**Module**: `build-tools/precompiler` (unified tool)
 
 ### MALCompiler.java — main build tool
 
 The tool executes the full initialization pipeline at build time:
 
-#### Phase A: Initialize infrastructure
+#### Initialize infrastructure
 
 ```java
 // 1. Initialize scope registry (same as OALClassExporter)
@@ -122,7 +120,7 @@ scopeScan.scan();
 ExportingMeterSystem meterSystem = new ExportingMeterSystem(outputDir);
 ```
 
-#### Phase B: Load and compile all MAL rules
+#### Load and compile all MAL rules
 
 ```java
 // 3. Agent meter rules (meter-analyzer-config/)
@@ -144,7 +142,7 @@ for (Rule rule : logMalRules) {
 }
 ```
 
-#### Phase C: Load and compile all LAL rules
+#### Load and compile all LAL rules
 
 ```java
 // 6. LAL rules (lal/)
@@ -154,7 +152,7 @@ for (LALConfig config : flattenedConfigs) {
 }
 ```
 
-#### Phase D: Export bytecode + write manifests
+#### Export bytecode + write manifests
 
 The tool intercepts both Groovy and Javassist class generation to capture bytecode:
 
@@ -299,12 +297,7 @@ MAL expressions rely on three dynamic Groovy features:
 
 **Approach**: Pre-compile using standard dynamic Groovy (same `CompilerConfiguration` as upstream — `DelegatingScript` base class, `SecureASTCustomizer`, `ImportCustomizer`). The compiled `.class` files contain the same bytecode that `GroovyShell.parse()` would produce. At runtime, `Class.forName()` + `newInstance()` loads the pre-compiled script, and `Expression.empower()` sets up the delegate and `ExpandoMetaClass`.
 
-**GraalVM native image risk** (Phase 3 concern): Dynamic Groovy compiled classes use `invokedynamic` and Groovy's MOP (Meta-Object Protocol) for method resolution. In native image, this may need:
-- `reflect-config.json` for all compiled script classes
-- Groovy MOP runtime classes registered for reachability
-- If `ExpandoMetaClass` does not work in native image: fallback to upstream DSL changes (replace operator overloading with explicit `SampleFamily.multiply(100, sf)` calls)
-
-Phase 2 focuses on JVM mode — pre-compilation for startup speed. Phase 3 addresses native image compatibility.
+**Native image solution**: Dynamic Groovy was eliminated entirely via the MAL-to-Java transpiler (see below). All MAL expressions are transpiled to pure Java at build time — no Groovy MOP, no `ExpandoMetaClass`, no `invokedynamic` at runtime.
 
 ### LAL Groovy: Already @CompileStatic
 
@@ -312,7 +305,7 @@ LAL already uses `@CompileStatic` with `LALPrecompiledExtension` for type checki
 
 ---
 
-## Step 3: Verification Tests
+## Verification Tests
 
 ### MALCompilerTest (in `build-tools/mal-compiler/src/test/`)
 
@@ -440,28 +433,28 @@ All replacements are repackaged into their respective `-for-graalvm` modules via
 make build-distro
 
 # 2. Check generated meter classes exist
-ls build-tools/mal-compiler/target/generated-mal-classes/org/apache/skywalking/oap/server/core/analysis/meter/dynamic/
+ls build-tools/precompiler/target/generated-classes/org/apache/skywalking/oap/server/core/analysis/meter/dynamic/
 
-# 3. Check Groovy script classes exist
-ls build-tools/mal-compiler/target/generated-mal-classes/org/apache/skywalking/oap/server/core/analysis/meter/script/
+# 3. Check transpiled Java expression classes exist
+ls build-tools/precompiler/target/generated-classes/org/apache/skywalking/oap/server/core/source/oal/rt/mal/
 
 # 4. Check manifest files
-cat build-tools/mal-compiler/target/generated-mal-classes/META-INF/mal-meter-classes.txt | wc -l
-cat build-tools/mal-compiler/target/generated-mal-classes/META-INF/mal-groovy-scripts.txt | wc -l
-cat build-tools/mal-compiler/target/generated-mal-classes/META-INF/lal-scripts.txt | wc -l
+wc -l build-tools/precompiler/target/generated-classes/META-INF/mal-meter-classes.txt
+wc -l build-tools/precompiler/target/generated-classes/META-INF/mal-expressions.txt
+wc -l build-tools/precompiler/target/generated-classes/META-INF/lal-expressions.txt
 
-# 5. Check MeterFunction manifest (produced by oal-exporter)
-cat build-tools/oal-exporter/target/generated-oal-classes/META-INF/annotation-scan/MeterFunction.txt
+# 5. Check MeterFunction manifest
+cat build-tools/precompiler/target/generated-classes/META-INF/annotation-scan/MeterFunction.txt
 
 # 6. Verify tests pass
-make build-distro  # runs MALCompilerTest + MALPrecompiledRegistrationTest
+make build-distro  # runs all comparison tests (1300+ assertions)
 ```
 
 ---
 
-# Phase 3: Eliminate Groovy — Pure Java MAL Transpiler
+## Pure Java MAL Transpiler
 
-## Why: Groovy + GraalVM Native Image is Incompatible
+### Why: Groovy + GraalVM Native Image is Incompatible
 
 The first native-image build (`make native-image`) failed with:
 
@@ -490,16 +483,16 @@ that the generated Java code produces identical results to the Groovy-compiled s
 
 ---
 
-## Approach: MAL-to-Java Transpiler
+### Approach: MAL-to-Java Transpiler
 
 **Key insight**: MAL expressions are method chains on `SampleFamily` with a well-defined
 API. The precompiler already parses all 1250+ MAL rules. Instead of compiling them to
 Groovy bytecode (which needs Groovy runtime), we parse the Groovy AST at build time and
 generate equivalent Java source code. Zero Groovy at runtime.
 
-### What Changes
+### What the Transpiler Changes
 
-| Aspect | Phase 2 (Groovy pre-compilation) | Phase 3 (Java transpiler) |
+| Aspect | Before (Groovy pre-compilation) | After (Java transpiler) |
 |--------|----------------------------------|--------------------------|
 | Build output | Groovy `.class` bytecode | Pure Java `.class` files |
 | Runtime dependency | Groovy runtime (MOP, ExpandoMetaClass) | None |
@@ -511,14 +504,14 @@ generate equivalent Java source code. Zero Groovy at runtime.
 
 ### What Stays the Same
 
-- **MeterSystem Javassist generation**: Pre-compiled at build time (Phase 2), unchanged
+- **MeterSystem Javassist generation**: Pre-compiled at build time, unchanged
 - **Config data serialization**: JSON manifests for rule configs, unchanged
 - **Manifest-based loading**: Same pattern, new manifest format for Java expressions
 - **MetricConvert pipeline**: Still runs at build time for Javassist class generation
 
 ---
 
-## Step 1: Java Functional Interfaces for Closure Replacements
+### Java Functional Interfaces for Closure Replacements
 
 5 `SampleFamily` methods accept `groovy.lang.Closure` parameters. Replace with Java
 functional interfaces:
@@ -559,7 +552,7 @@ Each generated filter expression class implements this interface.
 
 ---
 
-## Step 2: Same-FQCN SampleFamily Replacement
+### Same-FQCN SampleFamily Replacement
 
 **File**: `oap-libs-for-graalvm/meter-analyzer-for-graalvm/.../dsl/SampleFamily.java`
 
@@ -588,7 +581,7 @@ identical — they don't use Groovy types.
 
 ---
 
-## Step 3: MAL-to-Java Transpiler
+### MAL-to-Java Transpiler Implementation
 
 **File**: `build-tools/precompiler/.../MalToJavaTranspiler.java`
 
@@ -675,7 +668,7 @@ public class MalFilter_apisix implements MalFilter {
 
 ---
 
-## Step 4: Same-FQCN Expression.java Replacement
+### Same-FQCN Expression.java Replacement
 
 **File**: `oap-libs-for-graalvm/meter-analyzer-for-graalvm/.../dsl/Expression.java`
 
@@ -700,7 +693,7 @@ public class Expression {
 
 ---
 
-## Step 5: Update DSL.java and FilterExpression.java
+### Updated DSL.java and FilterExpression.java
 
 ### DSL.java (already exists, update)
 
@@ -738,7 +731,7 @@ public class FilterExpression {
 
 ---
 
-## Step 6: Update Precompiler
+### Precompiler Integration
 
 Replace `compileMAL()` in `Precompiler.java` to use the transpiler instead of Groovy
 compilation:
@@ -768,9 +761,9 @@ from Phase 2). Only Groovy compilation is replaced by transpilation.
 
 ---
 
-## Same-FQCN Replacements (Phase 3 — additions/updates)
+### Same-FQCN Replacements (Transpiler)
 
-| Upstream Class | Replacement Location | Phase 3 Change |
+| Upstream Class | Replacement Location | Change |
 |---|---|---|
 | `SampleFamily` | `meter-analyzer-for-graalvm/` | **New.** Closure parameters → functional interfaces |
 | `Expression` | `meter-analyzer-for-graalvm/` | **New.** No Groovy: uses `MalExpression` instead of `DelegatingScript` |
@@ -779,7 +772,7 @@ from Phase 2). Only Groovy compilation is replaced by transpilation.
 
 ---
 
-## Files Created (Phase 3)
+### Files Created (Transpiler)
 
 | File | Purpose |
 |------|---------|
@@ -792,7 +785,7 @@ from Phase 2). Only Groovy compilation is replaced by transpilation.
 | Generated `MalExpr_*.java` files | ~1250 pure Java expression classes |
 | Generated `MalFilter_*.java` files | ~29 pure Java filter classes |
 
-## Files Modified (Phase 3)
+### Files Modified (Transpiler)
 
 | File | Change |
 |------|--------|
@@ -803,7 +796,7 @@ from Phase 2). Only Groovy compilation is replaced by transpilation.
 
 ---
 
-## Verification (Phase 3)
+### Transpiler Verification
 
 ```bash
 # 1. Rebuild with transpiler

@@ -1,4 +1,4 @@
-# Phase 2: Config Initialization Immigration — Eliminate Reflection in Config Loading
+# Config Initialization — Eliminate Reflection in Config Loading
 
 ## Context
 
@@ -39,7 +39,7 @@ Generate a replacement `YamlConfigLoaderUtils.java` with the same FQCN
 dispatches by config object type and sets fields directly — no
 `Field.setAccessible()`, no `getDeclaredField()` scan.
 
-This is the 8th same-FQCN replacement class in the distro.
+This is one of 23 same-FQCN replacement classes in the distro (see DISTRO-POLICY.md for full list).
 
 ### Field Access Strategy (per field)
 
@@ -127,7 +127,7 @@ config classes with `@Setter` added. Original upstream JARs are forced to
 
 ### Output
 - `oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java`
-  (same-FQCN replacement — 8th replacement class)
+  (same-FQCN replacement)
 
 ### Running the generator
 ```bash

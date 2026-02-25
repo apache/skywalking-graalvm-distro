@@ -34,8 +34,23 @@ Requires GraalVM JDK 25.
 # Initialize submodule
 git submodule update --init --recursive
 
-# Full build (precompiler + tests + server)
+# Build upstream SkyWalking (first time only)
+JAVA_HOME=/path/to/graalvm-jdk-25 make build-skywalking
+
+# Compile distro (precompiler + tests + server)
 JAVA_HOME=/path/to/graalvm-jdk-25 make build-distro
+
+# Build native image (requires GraalVM with native-image)
+JAVA_HOME=/path/to/graalvm-jdk-25 make native-image
+
+# Build native image for Docker on macOS (cross-compiles via Docker)
+make native-image-macos
+
+# Package into Docker image
+make docker-native
+
+# Run with docker-compose (BanyanDB + OAP native)
+docker compose -f docker/docker-compose.yml up
 ```
 
 ## Project Structure
@@ -44,16 +59,22 @@ JAVA_HOME=/path/to/graalvm-jdk-25 make build-distro
 skywalking-graalvm-distro/
 ├── skywalking/                    # Git submodule — DO NOT MODIFY
 ├── build-tools/
-│   ├── precompiler/               # Build-time OAL + MAL + LAL pre-compilation
-│   └── config-generator/          # (planned) Build-time config code generation
-├── oap-graalvm-server/
+│   ├── precompiler/               # Build-time OAL + MAL + LAL pre-compilation + reflection metadata
+│   └── config-generator/          # Build-time config code generation (YamlConfigLoaderUtils)
+├── oap-libs-for-graalvm/          # Per-JAR repackaged modules (same-FQCN replacements via shade)
+├── oap-graalvm-server/            # GraalVM-ready OAP server (JVM distro)
 │   └── src/
 │       ├── main/java/             # Same-FQCN replacement classes
-│       └── test/java/             # 1,300 comparison tests
+│       └── test/java/             # 1,300+ comparison tests
+├── oap-graalvm-native/            # Native image module (native-maven-plugin + assembly)
+├── docker/
+│   ├── Dockerfile.native          # Runtime image (debian:bookworm-slim + native binary)
+│   └── docker-compose.yml         # BanyanDB + OAP native for local testing
 ├── DISTRO-POLICY.md               # Build plan with phase tracking
 ├── OAL-IMMIGRATION.md             # OAL pre-compilation design
 ├── MAL-IMMIGRATION.md             # MAL pre-compilation design
-└── LAL-IMMIGRATION.md             # LAL pre-compilation design
+├── LAL-IMMIGRATION.md             # LAL pre-compilation design
+└── CONFIG-INIT-IMMIGRATION.md     # Config initialization design
 ```
 
 ## Documentation
@@ -62,8 +83,9 @@ skywalking-graalvm-distro/
 |---|---|
 | [DISTRO-POLICY.md](DISTRO-POLICY.md) | Build plan, module selection, phase tracking, risk assessment |
 | [OAL-IMMIGRATION.md](OAL-IMMIGRATION.md) | OAL (Observability Analysis Language) pre-compilation: Javassist class export, annotation scanning, runtime manifests |
-| [MAL-IMMIGRATION.md](MAL-IMMIGRATION.md) | MAL (Meter Analysis Language) pre-compilation: Groovy script compilation, Javassist meter classes, combination pattern |
-| [LAL-IMMIGRATION.md](LAL-IMMIGRATION.md) | LAL (Log Analysis Language) pre-compilation: static Groovy compilation, SHA-256 manifest lookup |
+| [MAL-IMMIGRATION.md](MAL-IMMIGRATION.md) | MAL (Meter Analysis Language) pre-compilation: Groovy-to-Java transpilation, Javassist meter classes, combination pattern |
+| [LAL-IMMIGRATION.md](LAL-IMMIGRATION.md) | LAL (Log Analysis Language) pre-compilation: Groovy-to-Java transpilation, SHA-256 manifest lookup |
+| [CONFIG-INIT-IMMIGRATION.md](CONFIG-INIT-IMMIGRATION.md) | Config initialization: reflection-free config loading via generated code |
 
 ## License
 Apache 2.0

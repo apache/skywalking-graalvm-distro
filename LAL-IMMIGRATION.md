@@ -233,9 +233,7 @@ Expected: 19 comparison tests across 5 test classes, all passing.
 
 ---
 
-# Phase 3: Pure Java LAL Transpiler — COMPLETE
-
-## Summary
+## Pure Java LAL Transpiler
 
 LAL transpilation is complete. All 10 LAL scripts (6 unique after SHA-256 dedup)
 are transpiled from Groovy AST to pure Java source at build time, compiled to
@@ -346,12 +344,9 @@ public class LalExpr_0 implements LalExpression {
 
 ---
 
-## Remaining: Groovy Runtime Removal
+## Groovy Runtime Removal
 
-The groovy-stubs module exists but is not yet wired as a Groovy replacement on
-the runtime classpath. Real Groovy (`groovy-5.0.3.jar`) is still in the distro.
-Removing it requires:
-
-1. Add `groovy-stubs` as runtime dependency in `oap-graalvm-native/pom.xml`
-2. Exclude real Groovy from runtime dependencies (keep as test-only)
-3. Verify native-image build without `org.codehaus.groovy.*` on classpath
+- `groovy-stubs` wired as runtime dependency
+- Real Groovy (`groovy-5.0.3.jar`) moved to test-only scope
+- Native image builds and boots without `org.codehaus.groovy.*` on classpath
+- `GroovyIndyInterfaceFeature` stays dormant (no `org.codehaus.groovy` packages)
