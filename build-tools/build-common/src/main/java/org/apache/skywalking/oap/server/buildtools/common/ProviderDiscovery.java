@@ -34,7 +34,7 @@ import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 
 /**
  * Build-time utility that discovers accepted {@link ModuleProvider} implementations
- * via {@link ServiceLoader} and filters them against {@link AcceptedModules}.
+ * via SPI descriptor files and filters them against {@link AcceptedModules}.
  */
 public final class ProviderDiscovery {
 
