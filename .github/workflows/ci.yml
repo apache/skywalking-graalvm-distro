@@ -210,11 +210,14 @@ jobs:
     timeout-minutes: 30
     env:
       SW_AGENT_JDK_VERSION: 17
+      ISTIO_VERSION: 1.24.0
     strategy:
       matrix:
         test:
           - name: Simple Java Agent
             case: simple-java-agent
+          - name: Istio ALS
+            case: istio-als
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v4
