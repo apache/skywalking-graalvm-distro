@@ -62,7 +62,6 @@ import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rules;
 import org.yaml.snakeyaml.Yaml;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.library.util.ResourceUtils;
-import org.apache.skywalking.aop.server.receiver.mesh.MeshOALDefine;
 import org.apache.skywalking.oal.v2.OALEngineV2;
 import org.apache.skywalking.oal.v2.generator.OALClassGeneratorV2;
 import org.apache.skywalking.oap.server.core.analysis.Disable;
@@ -73,24 +72,16 @@ import org.apache.skywalking.oap.server.core.analysis.SourceDispatcher;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.AcceptableValue;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.MeterFunction;
 import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
-import org.apache.skywalking.oap.server.core.oal.rt.CoreOALDefine;
-import org.apache.skywalking.oap.server.core.oal.rt.DisableOALDefine;
 import org.apache.skywalking.oap.server.core.oal.rt.OALDefine;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.ScopeDeclaration;
 import org.apache.skywalking.oap.server.core.storage.StorageBuilderFactory;
-import org.apache.skywalking.oap.server.fetcher.cilium.CiliumOALDefine;
-import org.apache.skywalking.oap.server.receiver.browser.provider.BrowserOALDefine;
-import org.apache.skywalking.oap.server.receiver.clr.provider.CLROALDefine;
-import org.apache.skywalking.oap.server.receiver.ebpf.provider.EBPFOALDefine;
-import org.apache.skywalking.oap.server.receiver.envoy.TCPOALDefine;
-import org.apache.skywalking.oap.server.receiver.jvm.provider.JVMOALDefine;
 
 /**
- * Build-time pre-compilation tool that runs the OAL engine for all 9 OALDefine
- * configurations, exports generated .class files and manifest files, and scans
- * the classpath for hardcoded annotated classes and interface implementations
- * used at runtime.
+ * Build-time pre-compilation tool that discovers all OALDefine subclasses via
+ * classpath scanning, runs the OAL engine for each, exports generated .class
+ * files and manifest files, and scans the classpath for annotated classes and
+ * interface implementations used at runtime.
  *
  * OAL script files are loaded from the skywalking submodule directly via
  * additionalClasspathElements in the exec-maven-plugin configuration.
@@ -105,17 +96,39 @@ public class Precompiler {
     private static final String DISPATCHER_PACKAGE =
         "org.apache.skywalking.oap.server.core.source.oal.rt.dispatcher.";
 
-    static final OALDefine[] ALL_DEFINES = {
-        DisableOALDefine.INSTANCE,
-        CoreOALDefine.INSTANCE,
-        JVMOALDefine.INSTANCE,
-        CLROALDefine.INSTANCE,
-        BrowserOALDefine.INSTANCE,
-        MeshOALDefine.INSTANCE,
-        EBPFOALDefine.INSTANCE,
-        TCPOALDefine.INSTANCE,
-        CiliumOALDefine.INSTANCE
-    };
+    /**
+     * Discover all OALDefine subclasses on the classpath via Guava ClassPath scanning.
+     * Each subclass follows the singleton pattern with a {@code public static final INSTANCE} field.
+     */
+    static OALDefine[] discoverOALDefines() {
+        List<OALDefine> defines = new ArrayList<>();
+        try {
+            ClassPath classPath = ClassPath.from(Precompiler.class.getClassLoader());
+            for (ClassPath.ClassInfo ci : classPath.getTopLevelClassesRecursive("org.apache.skywalking")) {
+                try {
+                    Class<?> clazz = ci.load();
+                    if (OALDefine.class.isAssignableFrom(clazz)
+                            && !Modifier.isAbstract(clazz.getModifiers())
+                            && clazz != OALDefine.class) {
+                        Field instanceField = clazz.getField("INSTANCE");
+                        OALDefine instance = (OALDefine) instanceField.get(null);
+                        defines.add(instance);
+                        log.info("Discovered OALDefine: {}", clazz.getSimpleName());
+                    }
+                } catch (NoSuchFieldException | NoClassDefFoundError
+                         | IllegalAccessException | IllegalStateException e) {
+                    // Not an OALDefine singleton or can't load — skip
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to scan classpath for OALDefine subclasses", e);
+        }
+        if (defines.isEmpty()) {
+            throw new IllegalStateException("No OALDefine subclasses found on classpath");
+        }
+        log.info("Discovered {} OALDefine subclasses", defines.size());
+        return defines.toArray(new OALDefine[0]);
+    }
 
     public static void main(String[] args) throws Exception {
         final String outputDir = args.length > 0
@@ -124,8 +137,9 @@ public class Precompiler {
 
         log.info("Precompiler: output -> {}", outputDir);
 
-        // Validate all OAL scripts are available on classpath before running
-        validateOALScripts();
+        // Discover OALDefine subclasses from classpath and validate scripts
+        OALDefine[] oalDefines = discoverOALDefines();
+        validateOALScripts(oalDefines);
 
         // Initialize DefaultScopeDefine — scan @ScopeDeclaration annotations on source
         // classes (Service, Endpoint, etc.) to populate the scope name → ID → columns
@@ -148,8 +162,8 @@ public class Precompiler {
         rtFolderInitField.setAccessible(true);
         rtFolderInitField.set(null, true);
 
-        // Run all 9 OAL defines
-        for (OALDefine define : ALL_DEFINES) {
+        // Run all discovered OAL defines
+        for (OALDefine define : oalDefines) {
             log.info("Processing: {}", define.getConfigFile());
             OALEngineV2 engine = new OALEngineV2(define);
             engine.getClassGeneratorV2().setOpenEngineDebug(true);
@@ -629,13 +643,13 @@ public class Precompiler {
     }
 
     /**
-     * Validate that all OAL script files referenced by ALL_DEFINES are
+     * Validate that all OAL script files referenced by the discovered OALDefines are
      * available on the classpath. Fails fast with a clear error if any are missing.
      */
-    private static void validateOALScripts() {
+    private static void validateOALScripts(OALDefine[] oalDefines) {
         ClassLoader cl = Precompiler.class.getClassLoader();
         List<String> missing = new ArrayList<>();
-        for (OALDefine define : ALL_DEFINES) {
+        for (OALDefine define : oalDefines) {
             String configFile = define.getConfigFile();
             if (cl.getResource(configFile) == null) {
                 missing.add(configFile + " (" + define.getClass().getSimpleName() + ")");
@@ -647,7 +661,7 @@ public class Precompiler {
                 + "Ensure the skywalking submodule resource directory is on the classpath.\n"
                 + "Missing:\n  " + String.join("\n  ", missing));
         }
-        log.info("Validated: all {} OAL scripts found on classpath", ALL_DEFINES.length);
+        log.info("Validated: all {} OAL scripts found on classpath", oalDefines.length);
     }
 
     /**
@@ -1219,6 +1233,26 @@ public class Precompiler {
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));
+        }
+
+        // ModuleConfig subclasses from all accepted providers — full access.
+        // Read from manifest generated by config-generator (see build-tools/config-generator).
+        // ModuleDefine.prepare() calls type.getDeclaredConstructor().newInstance() to create config beans,
+        // and YamlConfigLoaderUtils.copyProperties() populates them via setters/getters.
+        try (InputStream configManifest = Precompiler.class.getResourceAsStream("/META-INF/module-config-classes.txt")) {
+            if (configManifest == null) {
+                throw new IllegalStateException("META-INF/module-config-classes.txt not found on classpath. "
+                    + "Run config-generator first to produce it.");
+            }
+            List<String> moduleConfigClasses = new BufferedReader(new InputStreamReader(configManifest, StandardCharsets.UTF_8))
+                .lines()
+                .map(String::trim)
+                .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                .toList();
+            log.info("Loaded {} ModuleConfig classes from manifest", moduleConfigClasses.size());
+            for (String className : moduleConfigClasses) {
+                entries.add(fullAccessEntry(className));
+            }
         }
 
         // MeterFunction manifest — key=value format, full access (MeterSystem inspects annotations)

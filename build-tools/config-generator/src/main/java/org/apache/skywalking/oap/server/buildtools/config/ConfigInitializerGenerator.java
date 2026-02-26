@@ -18,8 +18,8 @@
 package org.apache.skywalking.oap.server.buildtools.config;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -28,92 +28,35 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
+import org.apache.skywalking.oap.server.buildtools.common.ProviderDiscovery;
 import org.apache.skywalking.oap.server.library.module.ModuleConfig;
 import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 
 /**
- * Build-time tool that scans all ModuleConfig subclasses used by the fixed
- * provider set and generates a same-FQCN replacement for YamlConfigLoaderUtils.
+ * Build-time tool that discovers all ModuleConfig subclasses from accepted
+ * providers (via SPI + AcceptedModules filter) and generates a same-FQCN
+ * replacement for YamlConfigLoaderUtils.
  *
  * <p>The generated class dispatches copyProperties() by config type, using
  * Lombok-generated setters for all fields. No VarHandle, no reflection fallback.
  * All config classes must have @Setter (class-level or per-field) via the
  * *-for-graalvm repackaged modules.
  *
- * <p>Usage: {@code mvn -pl build-tools/config-generator exec:java -Dexec.args="<output-path>"}
+ * <p>Usage: {@code mvn -pl build-tools/config-generator exec:java
+ *   -Dexec.args="<output-path> [manifest-path]"}
+ *
+ * <p>When manifest-path is provided, writes a module-config-classes.txt file
+ * listing all discovered config class FQCNs (one per line) for the precompiler's
+ * reflect-config.json generation.
  */
 public class ConfigInitializerGenerator {
 
-    /**
-     * All ModuleProvider classes from the fixed wiring in GraalVMOAPServerStartUp.
-     * Each provider's newConfigCreator() is called to discover the config type.
-     */
-    private static final String[] PROVIDER_CLASSES = {
-        "org.apache.skywalking.oap.server.core.CoreModuleProvider",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageProvider",
-        "org.apache.skywalking.oap.server.cluster.plugin.standalone.ClusterModuleStandaloneProvider",
-        "org.apache.skywalking.oap.server.cluster.plugin.kubernetes.ClusterModuleKubernetesProvider",
-        "org.apache.skywalking.oap.server.configuration.configmap.ConfigmapConfigurationProvider",
-        "org.apache.skywalking.oap.server.telemetry.prometheus.PrometheusTelemetryProvider",
-        "org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleProvider",
-        "org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleProvider",
-        "org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.register.provider.RegisterModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.trace.provider.TraceModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.jvm.provider.JVMModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.clr.provider.CLRModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.profile.provider.ProfileModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.asyncprofiler.provider.AsyncProfilerModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.pprof.provider.PprofModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.zabbix.provider.ZabbixReceiverProvider",
-        "org.apache.skywalking.aop.server.receiver.mesh.MeshReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.envoy.EnvoyMetricReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.meter.provider.MeterReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.otel.OtelMetricReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.zipkin.ZipkinReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.browser.provider.BrowserModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.log.provider.LogModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.event.EventModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.ebpf.provider.EBPFReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.telegraf.provider.TelegrafReceiverProvider",
-        "org.apache.skywalking.oap.server.receiver.aws.firehose.AWSFirehoseReceiverModuleProvider",
-        "org.apache.skywalking.oap.server.receiver.configuration.discovery.ConfigurationDiscoveryProvider",
-        "org.apache.skywalking.oap.server.analyzer.agent.kafka.provider.KafkaFetcherProvider",
-        "org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherProvider",
-        "org.apache.skywalking.oap.query.graphql.GraphQLQueryProvider",
-        "org.apache.skywalking.oap.query.zipkin.ZipkinQueryProvider",
-        "org.apache.skywalking.oap.query.promql.PromQLProvider",
-        "org.apache.skywalking.oap.query.logql.LogQLProvider",
-        "org.apache.skywalking.oap.query.debug.StatusQueryProvider",
-        "org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleProvider",
-        "org.apache.skywalking.oap.server.exporter.provider.ExporterProvider",
-        "org.apache.skywalking.oap.server.health.checker.provider.HealthCheckerProvider",
-        "org.apache.skywalking.oap.server.ai.pipeline.AIPipelineProvider",
-    };
+    // Provider discovery is now done via ServiceLoader + AcceptedModules filter.
+    // See build-tools/build-common for the accepted module+provider name list.
+    // Nested config classes (e.g., BanyanDB inner classes) are discovered
+    // automatically by scanning declared inner classes of ModuleConfig types.
 
-    /**
-     * Additional config classes used internally (e.g., BanyanDB nested configs
-     * that are passed to copyProperties by custom loaders).
-     */
-    private static final String[] EXTRA_CONFIG_CLASSES = {
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Global",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsNormal",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsLog",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Trace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$ZipkinTrace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsTrace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsZipkinTrace",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsBrowserErrorLog",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsMin",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsHour",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsDay",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Metadata",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Property",
-        "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Stage",
-    };
-
-    record FieldInfo(String name, Class<?> type, boolean hasSetter, boolean isFinal) {
+    record FieldInfo(String name, Class<?> type, boolean isFinal) {
     }
 
     record ConfigClassInfo(Class<?> configClass, String simpleName, List<FieldInfo> fields) {
@@ -122,38 +65,22 @@ public class ConfigInitializerGenerator {
     public static void main(String[] args) throws Exception {
         String outputPath = args.length > 0 ? args[0] : null;
 
-        // Discover config classes from providers
+        // Discover config classes from providers, then their nested inner classes
         Map<String, ConfigClassInfo> configClasses = new LinkedHashMap<>();
         discoverProviderConfigs(configClasses);
-        discoverExtraConfigs(configClasses);
+        discoverNestedConfigs(configClasses);
 
         System.out.println("=== Config Classes Found ===");
-        List<String> errors = new ArrayList<>();
         for (var entry : configClasses.entrySet()) {
             ConfigClassInfo info = entry.getValue();
             System.out.printf("  %s (%d fields)%n", entry.getKey(), info.fields.size());
             for (FieldInfo f : info.fields) {
-                System.out.printf("    %-40s %-20s setter=%s final=%s%n",
-                    f.name, f.type.getSimpleName(), f.hasSetter, f.isFinal);
-                // Validate: non-final fields MUST have a setter
-                if (!f.hasSetter && !f.isFinal) {
-                    errors.add(entry.getKey() + "." + f.name
-                        + " — non-final field without setter. Add @Setter to the -for-graalvm config class.");
-                }
-                // Validate: final non-collection fields cannot be set
+                System.out.printf("    %-40s %-20s final=%s%n",
+                    f.name, f.type.getSimpleName(), f.isFinal);
                 if (f.isFinal && !List.class.isAssignableFrom(f.type) && !Map.class.isAssignableFrom(f.type)) {
                     System.out.printf("      WARN: final non-collection field '%s' — will be skipped%n", f.name);
                 }
             }
-        }
-
-        if (!errors.isEmpty()) {
-            System.err.println("\n=== ERRORS: Fields without setters ===");
-            for (String err : errors) {
-                System.err.println("  " + err);
-            }
-            throw new IllegalStateException(errors.size()
-                + " config field(s) have no setter. All non-final fields must have setters.");
         }
 
         // Generate the replacement class
@@ -164,6 +91,17 @@ public class ConfigInitializerGenerator {
             Files.createDirectories(out.getParent());
             Files.writeString(out, generated);
             System.out.println("\nGenerated: " + out.toAbsolutePath());
+
+            // Write config class manifest for precompiler's reflect-config.json generation.
+            String manifestPath = args.length > 1 ? args[1] : null;
+            if (manifestPath != null) {
+                Path manifest = Path.of(manifestPath);
+                Files.createDirectories(manifest.getParent());
+                List<String> configClassNames = configClasses.keySet().stream().sorted().toList();
+                Files.write(manifest, configClassNames, StandardCharsets.UTF_8);
+                System.out.println("Generated manifest: " + manifest.toAbsolutePath()
+                    + " (" + configClassNames.size() + " config classes)");
+            }
         } else {
             System.out.println("\n=== Generated YamlConfigLoaderUtils.java ===");
             System.out.println(generated);
@@ -171,38 +109,45 @@ public class ConfigInitializerGenerator {
     }
 
     private static void discoverProviderConfigs(Map<String, ConfigClassInfo> configClasses) {
-        for (String providerClassName : PROVIDER_CLASSES) {
+        for (ModuleProvider provider : ProviderDiscovery.discoverAccepted()) {
             try {
-                Class<?> providerClass = Class.forName(providerClassName);
-                ModuleProvider provider = (ModuleProvider) providerClass.getDeclaredConstructor().newInstance();
                 ModuleProvider.ConfigCreator<?> creator = provider.newConfigCreator();
                 if (creator == null) {
-                    System.out.println("  SKIP (null ConfigCreator): " + providerClassName);
+                    System.out.println("  SKIP (null ConfigCreator): " + provider.getClass().getName());
                     continue;
                 }
                 Class<?> configType = creator.type();
                 if (configType == null) {
-                    System.out.println("  SKIP (null config type): " + providerClassName);
+                    System.out.println("  SKIP (null config type): " + provider.getClass().getName());
                     continue;
                 }
                 if (!configClasses.containsKey(configType.getName())) {
                     configClasses.put(configType.getName(), analyzeConfigClass(configType));
                 }
             } catch (Exception e) {
-                System.err.println("  ERROR scanning " + providerClassName + ": " + e.getMessage());
+                System.err.println("  ERROR scanning " + provider.getClass().getName() + ": " + e.getMessage());
             }
         }
     }
 
-    private static void discoverExtraConfigs(Map<String, ConfigClassInfo> configClasses) {
-        for (String className : EXTRA_CONFIG_CLASSES) {
-            try {
-                Class<?> clazz = Class.forName(className);
-                if (!configClasses.containsKey(clazz.getName())) {
-                    configClasses.put(clazz.getName(), analyzeConfigClass(clazz));
+    /**
+     * Discover nested config classes by scanning declared inner classes of all
+     * discovered ModuleConfig subclasses. Includes non-enum, non-interface,
+     * non-abstract inner classes (e.g., BanyanDBStorageConfig$Global, $Stage, etc.).
+     */
+    private static void discoverNestedConfigs(Map<String, ConfigClassInfo> configClasses) {
+        List<Class<?>> parentConfigs = configClasses.values().stream()
+            .map(ConfigClassInfo::configClass).toList();
+        for (Class<?> parent : parentConfigs) {
+            for (Class<?> inner : parent.getDeclaredClasses()) {
+                if (inner.isEnum() || inner.isInterface()
+                        || Modifier.isAbstract(inner.getModifiers())) {
+                    continue;
                 }
-            } catch (Exception e) {
-                System.err.println("  ERROR scanning " + className + ": " + e.getMessage());
+                if (!configClasses.containsKey(inner.getName())) {
+                    configClasses.put(inner.getName(), analyzeConfigClass(inner));
+                    System.out.println("  Discovered nested config: " + inner.getName());
+                }
             }
         }
     }
@@ -216,70 +161,17 @@ public class ConfigInitializerGenerator {
                 if (Modifier.isStatic(field.getModifiers())) {
                     continue;
                 }
-                boolean hasSetter = hasSetterMethod(configClass, field);
                 boolean isFinal = Modifier.isFinal(field.getModifiers());
-                fields.add(new FieldInfo(field.getName(), field.getType(), hasSetter, isFinal));
+                fields.add(new FieldInfo(field.getName(), field.getType(), isFinal));
             }
             clazz = clazz.getSuperclass();
         }
         return new ConfigClassInfo(configClass, configClass.getSimpleName(), fields);
     }
 
-    static boolean hasSetterMethod(Class<?> configClass, Field field) {
-        String setterName = "set" + capitalize(field.getName());
-        try {
-            configClass.getMethod(setterName, field.getType());
-            return true;
-        } catch (NoSuchMethodException e) {
-            // Also try with boxed type for primitives
-            if (field.getType().isPrimitive()) {
-                try {
-                    configClass.getMethod(setterName, box(field.getType()));
-                    return true;
-                } catch (NoSuchMethodException e2) {
-                    return false;
-                }
-            }
-            return false;
-        }
-    }
-
-    static boolean hasGetterMethod(Class<?> configClass, Field field) {
-        // Try getXxx
-        String getterName = "get" + capitalize(field.getName());
-        try {
-            Method m = configClass.getMethod(getterName);
-            return m.getReturnType() != void.class;
-        } catch (NoSuchMethodException e) {
-            // For boolean, try isXxx
-            if (field.getType() == boolean.class || field.getType() == Boolean.class) {
-                String isName = "is" + capitalize(field.getName());
-                try {
-                    Method m = configClass.getMethod(isName);
-                    return m.getReturnType() != void.class;
-                } catch (NoSuchMethodException e2) {
-                    return false;
-                }
-            }
-            return false;
-        }
-    }
-
     static String capitalize(String name) {
         if (name.isEmpty()) return name;
         return Character.toUpperCase(name.charAt(0)) + name.substring(1);
-    }
-
-    private static Class<?> box(Class<?> primitive) {
-        if (primitive == int.class) return Integer.class;
-        if (primitive == long.class) return Long.class;
-        if (primitive == boolean.class) return Boolean.class;
-        if (primitive == double.class) return Double.class;
-        if (primitive == float.class) return Float.class;
-        if (primitive == short.class) return Short.class;
-        if (primitive == byte.class) return Byte.class;
-        if (primitive == char.class) return Character.class;
-        return primitive;
     }
 
     // ======================== Code Generation ========================
@@ -312,7 +204,7 @@ public class ConfigInitializerGenerator {
                 imports.put(fqcn, fqcn);
             }
             for (FieldInfo field : entry.getValue().fields) {
-                // Only import types used in cast expressions (fields with setters or final collections)
+                // Only import types used in cast expressions (non-final fields or final collections)
                 if (field.isFinal && !List.class.isAssignableFrom(field.type)) {
                     continue;
                 }
@@ -461,11 +353,8 @@ public class ConfigInitializerGenerator {
 
         for (FieldInfo field : info.fields) {
             sb.append("                case \"").append(field.name).append("\":\n");
-            if (field.hasSetter) {
-                String setter = "set" + capitalize(field.name);
-                sb.append("                    cfg.").append(setter).append("(")
-                    .append(castExpression(field.type, "value")).append(");\n");
-            } else if (field.isFinal && List.class.isAssignableFrom(field.type)) {
+            if (field.isFinal && List.class.isAssignableFrom(field.type)) {
+                // Final list — mutate in place via getter
                 String getter = "get" + capitalize(field.name);
                 sb.append("                    cfg.").append(getter).append("().clear();\n");
                 sb.append("                    cfg.").append(getter).append("().addAll((List) value);\n");
@@ -474,9 +363,11 @@ public class ConfigInitializerGenerator {
                 sb.append("                    log.warn(\"Cannot set final field '").append(field.name)
                     .append("' in {} provider of {} module\", providerName, moduleName);\n");
             } else {
-                // Should not reach here — validation in main() catches this
-                sb.append("                    throw new UnsupportedOperationException(\"No setter for field: ")
-                    .append(field.name).append("\");\n");
+                // Non-final field — use setter. The for-graalvm modules add @Setter;
+                // javac in oap-graalvm-server catches missing setters at compile time.
+                String setter = "set" + capitalize(field.name);
+                sb.append("                    cfg.").append(setter).append("(")
+                    .append(castExpression(field.type, "value")).append(");\n");
             }
             sb.append("                    break;\n");
         }

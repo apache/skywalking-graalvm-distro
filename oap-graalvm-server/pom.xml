@@ -117,12 +117,6 @@
                 <version>${skywalking.version}</version>
                 <scope>provided</scope>
             </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>server-starter</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
         </dependencies>
     </dependencyManagement>
 

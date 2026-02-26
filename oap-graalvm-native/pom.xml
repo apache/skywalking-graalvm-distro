@@ -35,21 +35,12 @@
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>oap-graalvm-server</artifactId>
-        </dependency>
-        <!-- Override transitive server-starter (which contains a conflicting
-             version.properties) with provided scope. The repackaged
-             server-starter-for-graalvm (without version.properties) is used instead. -->
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>server-starter</artifactId>
-            <scope>provided</scope>
-        </dependency>
-        <!-- Override transitive groovy (compile) from server-core to test scope.
-             Runtime uses groovy-stubs instead. -->
-        <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy</artifactId>
-            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.groovy</groupId>
+                    <artifactId>groovy</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.graalvm.sdk</groupId>

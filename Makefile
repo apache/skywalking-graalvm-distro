@@ -53,10 +53,12 @@ javadoc:
 # Phase 1: install repackaged *-for-graalvm libs so dependency-reduced POMs
 #           are available in the local Maven repo for downstream resolution.
 # Phase 2: package oap-graalvm-server and oap-graalvm-native with assembly.
+#           -am (also-make) automatically builds build-common, precompiler,
+#           and other dependencies in the reactor.
 build-distro:
 	$(MVN) clean install -pl oap-libs-for-graalvm -am -DskipTests $(MVN_ARGS)
 	$(MVN) install -f oap-libs-for-graalvm -DskipTests $(MVN_ARGS)
-	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -DskipTests $(MVN_ARGS)
+	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -am -DskipTests $(MVN_ARGS)
 
 # Show the distribution directory
 dist: build-distro

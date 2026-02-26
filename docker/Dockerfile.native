@@ -44,4 +44,6 @@ RUN tar -xzf /tmp/native-dist.tar.gz --strip-components=1 -C . \
 
 EXPOSE 12800 11800 1234
 
-ENTRYPOINT ["./oap-server", "-Dlog4j2.configurationFile=config/log4j2.xml"]
+# JAVA_OPTS compatibility: Helm chart passes -Dmode=init / -Dmode=no-init via JAVA_OPTS.
+# GraalVM native images accept -D flags on the command line, so we forward JAVA_OPTS as args.
+ENTRYPOINT ["/bin/sh", "-c", "exec ./oap-server -Dlog4j2.configurationFile=config/log4j2.xml $JAVA_OPTS"]

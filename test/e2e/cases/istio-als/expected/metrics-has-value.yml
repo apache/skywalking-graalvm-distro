@@ -13,21 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# E2E commands run from repo root so that setup step paths
-# (skywalking/test/e2e-v2/script/...) resolve correctly for both
-# local runs and CI (apache/skywalking-infra-e2e action).
-ROOT := ../..
-
-.PHONY: simple-java-agent istio-als
-
-# Run simple-java-agent e2e test
-# Prerequisites: make docker-native (from root)
-simple-java-agent:
-	cd $(ROOT) && SW_AGENT_JDK_VERSION=$${SW_AGENT_JDK_VERSION:-17} \
-	e2e run -c test/e2e/cases/simple-java-agent/e2e.yaml
-
-# Run Istio ALS + K8s cluster + BanyanDB e2e test
-# Prerequisites: make docker-native (from root), kind, istioctl
-istio-als:
-	cd $(ROOT) && ISTIO_VERSION=$${ISTIO_VERSION:-1.24.0} \
-	e2e run -c test/e2e/cases/istio-als/e2e.yaml
+debuggingtrace: null
+type: TIME_SERIES_VALUES
+results:
+  {{- contains .results }}
+  - metric:
+      labels: []
+    values:
+      {{- contains .values }}
+      - id: {{ notEmpty .id }}
+        value: {{ .value }}
+        owner: null
+        traceid: null
+      - id: {{ notEmpty .id }}
+        value: null
+        owner: null
+        traceid: null
+      {{- end}}
+  {{- end}}
+error: null

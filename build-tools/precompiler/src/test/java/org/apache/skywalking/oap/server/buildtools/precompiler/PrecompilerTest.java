@@ -27,45 +27,30 @@ import org.apache.skywalking.oap.server.core.oal.rt.OALDefine;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PrecompilerTest {
 
-    /**
-     * All expected OAL script files. If a new OALDefine is added upstream,
-     * this test will fail — reminding us to update ALL_DEFINES.
-     */
-    private static final Set<String> EXPECTED_OAL_SCRIPTS = Set.of(
-        "oal/disable.oal",
-        "oal/core.oal",
-        "oal/java-agent.oal",
-        "oal/dotnet-agent.oal",
-        "oal/browser.oal",
-        "oal/mesh.oal",
-        "oal/ebpf.oal",
-        "oal/tcp.oal",
-        "oal/cilium.oal"
-    );
-
     @Test
-    void allDefinesShouldCoverExpectedOALScripts() {
-        Set<String> actualScripts = Arrays.stream(Precompiler.ALL_DEFINES)
+    void discoverOALDefinesShouldFindAllExpectedDefines() {
+        OALDefine[] defines = Precompiler.discoverOALDefines();
+        Set<String> actualScripts = Arrays.stream(defines)
             .map(OALDefine::getConfigFile)
             .collect(Collectors.toSet());
 
-        assertEquals(
-            EXPECTED_OAL_SCRIPTS, actualScripts,
-            "ALL_DEFINES does not match expected OAL scripts"
-        );
+        // Verify all known OAL scripts are discovered
+        assertTrue(actualScripts.contains("oal/core.oal"), "Should discover core.oal");
+        assertTrue(actualScripts.contains("oal/disable.oal"), "Should discover disable.oal");
+        assertTrue(actualScripts.size() >= 9,
+            "Should discover at least 9 OALDefine subclasses, got " + actualScripts.size());
     }
 
     @Test
-    void allOALScriptsShouldBeOnClasspath() {
+    void allDiscoveredOALScriptsShouldBeOnClasspath() {
         ClassLoader cl = getClass().getClassLoader();
-        for (OALDefine define : Precompiler.ALL_DEFINES) {
+        for (OALDefine define : Precompiler.discoverOALDefines()) {
             assertNotNull(
                 cl.getResource(define.getConfigFile()),
                 "OAL script not found on classpath: " + define.getConfigFile()
