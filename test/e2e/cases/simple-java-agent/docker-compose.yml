@@ -43,25 +43,86 @@ services:
       timeout: 60s
       retries: 120
 
+  # Init containers: copy pre-built service JARs into a shared volume
+  provider-jar:
+    image: "ghcr.io/apache/skywalking/e2e-service-provider:${SW_E2E_SERVICE_COMMIT}"
+    entrypoint: ["cp", "/app.jar", "/jars/services_provider.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+
+  consumer-jar:
+    image: "ghcr.io/apache/skywalking/e2e-service-consumer:${SW_E2E_SERVICE_COMMIT}"
+    entrypoint: ["cp", "/app.jar", "/jars/services_consumer.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+
   provider:
-    extends:
-      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
-      service: provider
+    image: "ghcr.io/apache/skywalking-java/skywalking-java:${SW_AGENT_JAVA_COMMIT}-java${SW_AGENT_JDK_VERSION}"
+    command: ["java", "-jar", "/jars/services_provider.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+    expose:
+      - 9090
     ports:
       - 9090
+    environment:
+      SW_AGENT_COLLECTOR_BACKEND_SERVICES: oap:11800
+      SW_LOGGING_OUTPUT: CONSOLE
+      SW_AGENT_NAME: e2e-service-provider
+      SW_AGENT_INSTANCE_NAME: provider1
+      SW_AGENT_COLLECTOR_GET_PROFILE_TASK_INTERVAL: 1
+      SW_AGENT_COLLECTOR_GET_AGENT_DYNAMIC_CONFIG_INTERVAL: 1
+      SW_METER_ACTIVE: 'false'
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/9090"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
     depends_on:
       oap:
         condition: service_healthy
+      provider-jar:
+        condition: service_completed_successfully
 
   consumer:
-    extends:
-      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
-      service: consumer
+    image: "ghcr.io/apache/skywalking-java/skywalking-java:${SW_AGENT_JAVA_COMMIT}-java${SW_AGENT_JDK_VERSION}"
+    command: ["java", "-jar", "/jars/services_consumer.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+    expose:
+      - 9092
     ports:
       - 9092
+    environment:
+      SW_AGENT_COLLECTOR_BACKEND_SERVICES: oap:11800
+      SW_LOGGING_OUTPUT: CONSOLE
+      PROVIDER_URL: http://provider:9090
+      SW_AGENT_NAME: e2e-service-consumer
+      SW_AGENT_INSTANCE_NAME: consumer1
+      SW_AGENT_COLLECTOR_GET_PROFILE_TASK_INTERVAL: 1
+      SW_AGENT_COLLECTOR_GET_AGENT_DYNAMIC_CONFIG_INTERVAL: 1
+      SW_METER_ACTIVE: 'false'
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/9092"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
     depends_on:
       provider:
         condition: service_healthy
+      consumer-jar:
+        condition: service_completed_successfully
+
+volumes:
+  service-jars:
 
 networks:
   e2e:
