@@ -395,11 +395,11 @@ public class ConfigInitializerGenerator {
     }
 
     private static String castExpression(Class<?> type, String varName) {
-        if (type == int.class) return "(int) " + varName;
-        if (type == long.class) return "(long) " + varName;
+        if (type == int.class) return "((Number) " + varName + ").intValue()";
+        if (type == long.class) return "((Number) " + varName + ").longValue()";
         if (type == boolean.class) return "(boolean) " + varName;
-        if (type == double.class) return "(double) " + varName;
-        if (type == float.class) return "(float) " + varName;
+        if (type == double.class) return "((Number) " + varName + ").doubleValue()";
+        if (type == float.class) return "((Number) " + varName + ").floatValue()";
         if (type == String.class) return "(String) " + varName;
         return "(" + javaClassRef(type) + ") " + varName;
     }

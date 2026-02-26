@@ -255,31 +255,31 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestHost((String) value);
                     break;
                 case "restPort":
-                    cfg.setRestPort((int) value);
+                    cfg.setRestPort(((Number) value).intValue());
                     break;
                 case "restContextPath":
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
-                    cfg.setRestAcceptQueueSize((int) value);
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
                 case "gRPCHost":
                     cfg.setGRPCHost((String) value);
                     break;
                 case "gRPCPort":
-                    cfg.setGRPCPort((int) value);
+                    cfg.setGRPCPort(((Number) value).intValue());
                     break;
                 case "maxConcurrentCallsPerConnection":
-                    cfg.setMaxConcurrentCallsPerConnection((int) value);
+                    cfg.setMaxConcurrentCallsPerConnection(((Number) value).intValue());
                     break;
                 case "maxMessageSize":
-                    cfg.setMaxMessageSize((int) value);
+                    cfg.setMaxMessageSize(((Number) value).intValue());
                     break;
                 case "gRPCThreadPoolSize":
-                    cfg.setGRPCThreadPoolSize((int) value);
+                    cfg.setGRPCThreadPoolSize(((Number) value).intValue());
                     break;
                 case "authentication":
                     cfg.setAuthentication((String) value);
@@ -297,7 +297,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setGRPCSslTrustedCAsPath((String) value);
                     break;
                 case "httpMaxRequestHeaderSize":
-                    cfg.setHttpMaxRequestHeaderSize((int) value);
+                    cfg.setHttpMaxRequestHeaderSize(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -324,25 +324,25 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestHost((String) value);
                     break;
                 case "restPort":
-                    cfg.setRestPort((int) value);
+                    cfg.setRestPort(((Number) value).intValue());
                     break;
                 case "restContextPath":
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
-                    cfg.setRestAcceptQueueSize((int) value);
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
                 case "searchableTracesTags":
                     cfg.setSearchableTracesTags((String) value);
                     break;
                 case "sampleRate":
-                    cfg.setSampleRate((int) value);
+                    cfg.setSampleRate(((Number) value).intValue());
                     break;
                 case "maxSpansPerSecond":
-                    cfg.setMaxSpansPerSecond((int) value);
+                    cfg.setMaxSpansPerSecond(((Number) value).intValue());
                     break;
                 case "enableKafkaCollector":
                     cfg.setEnableKafkaCollector((boolean) value);
@@ -360,13 +360,13 @@ public class YamlConfigLoaderUtils {
                     cfg.setKafkaConsumerConfig((String) value);
                     break;
                 case "kafkaConsumers":
-                    cfg.setKafkaConsumers((int) value);
+                    cfg.setKafkaConsumers(((Number) value).intValue());
                     break;
                 case "kafkaHandlerThreadPoolSize":
-                    cfg.setKafkaHandlerThreadPoolSize((int) value);
+                    cfg.setKafkaHandlerThreadPoolSize(((Number) value).intValue());
                     break;
                 case "kafkaHandlerThreadPoolQueueSize":
-                    cfg.setKafkaHandlerThreadPoolQueueSize((int) value);
+                    cfg.setKafkaHandlerThreadPoolQueueSize(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -390,31 +390,31 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestHost((String) value);
                     break;
                 case "restPort":
-                    cfg.setRestPort((int) value);
+                    cfg.setRestPort(((Number) value).intValue());
                     break;
                 case "restContextPath":
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
-                    cfg.setRestAcceptQueueSize((int) value);
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
                 case "lookback":
-                    cfg.setLookback((long) value);
+                    cfg.setLookback(((Number) value).longValue());
                     break;
                 case "namesMaxAge":
-                    cfg.setNamesMaxAge((int) value);
+                    cfg.setNamesMaxAge(((Number) value).intValue());
                     break;
                 case "uiQueryLimit":
-                    cfg.setUiQueryLimit((int) value);
+                    cfg.setUiQueryLimit(((Number) value).intValue());
                     break;
                 case "uiEnvironment":
                     cfg.setUiEnvironment((String) value);
                     break;
                 case "uiDefaultLookback":
-                    cfg.setUiDefaultLookback((long) value);
+                    cfg.setUiDefaultLookback(((Number) value).longValue());
                     break;
                 case "uiSearchEnabled":
                     cfg.setUiSearchEnabled((boolean) value);
@@ -438,7 +438,7 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "sampleRate":
-                    cfg.setSampleRate((int) value);
+                    cfg.setSampleRate(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -480,7 +480,7 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "port":
-                    cfg.setPort((int) value);
+                    cfg.setPort(((Number) value).intValue());
                     break;
                 case "host":
                     cfg.setHost((String) value);
@@ -507,7 +507,7 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "jfrMaxSize":
-                    cfg.setJfrMaxSize((int) value);
+                    cfg.setJfrMaxSize(((Number) value).intValue());
                     break;
                 case "memoryParserEnabled":
                     cfg.setMemoryParserEnabled((boolean) value);
@@ -531,7 +531,7 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "pprofMaxSize":
-                    cfg.setPprofMaxSize((int) value);
+                    cfg.setPprofMaxSize(((Number) value).intValue());
                     break;
                 case "memoryParserEnabled":
                     cfg.setMemoryParserEnabled((boolean) value);
@@ -585,10 +585,10 @@ public class YamlConfigLoaderUtils {
                     cfg.setGroupId((String) value);
                     break;
                 case "partitions":
-                    cfg.setPartitions((int) value);
+                    cfg.setPartitions(((Number) value).intValue());
                     break;
                 case "replicationFactor":
-                    cfg.setReplicationFactor((int) value);
+                    cfg.setReplicationFactor(((Number) value).intValue());
                     break;
                 case "enableNativeProtoLog":
                     cfg.setEnableNativeProtoLog((boolean) value);
@@ -621,10 +621,10 @@ public class YamlConfigLoaderUtils {
                     cfg.setTopicNameOfJsonLogs((String) value);
                     break;
                 case "kafkaHandlerThreadPoolSize":
-                    cfg.setKafkaHandlerThreadPoolSize((int) value);
+                    cfg.setKafkaHandlerThreadPoolSize(((Number) value).intValue());
                     break;
                 case "kafkaHandlerThreadPoolQueueSize":
-                    cfg.setKafkaHandlerThreadPoolQueueSize((int) value);
+                    cfg.setKafkaHandlerThreadPoolQueueSize(((Number) value).intValue());
                     break;
                 case "namespace":
                     cfg.setNamespace((String) value);
@@ -636,7 +636,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setMm2SourceSeparator((String) value);
                     break;
                 case "consumers":
-                    cfg.setConsumers((int) value);
+                    cfg.setConsumers(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -720,7 +720,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setEnableLogTestTool((boolean) value);
                     break;
                 case "maxQueryComplexity":
-                    cfg.setMaxQueryComplexity((int) value);
+                    cfg.setMaxQueryComplexity(((Number) value).intValue());
                     break;
                 case "enableUpdateUITemplate":
                     cfg.setEnableUpdateUITemplate((boolean) value);
@@ -750,13 +750,13 @@ public class YamlConfigLoaderUtils {
                     cfg.setUriRecognitionServerAddr((String) value);
                     break;
                 case "uriRecognitionServerPort":
-                    cfg.setUriRecognitionServerPort((int) value);
+                    cfg.setUriRecognitionServerPort(((Number) value).intValue());
                     break;
                 case "baselineServerAddr":
                     cfg.setBaselineServerAddr((String) value);
                     break;
                 case "baselineServerPort":
-                    cfg.setBaselineServerPort((int) value);
+                    cfg.setBaselineServerPort(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -780,16 +780,16 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestHost((String) value);
                     break;
                 case "restPort":
-                    cfg.setRestPort((int) value);
+                    cfg.setRestPort(((Number) value).intValue());
                     break;
                 case "restContextPath":
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
-                    cfg.setRestAcceptQueueSize((int) value);
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
                 case "buildInfoVersion":
                     cfg.setBuildInfoVersion((String) value);
@@ -831,16 +831,16 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestHost((String) value);
                     break;
                 case "restPort":
-                    cfg.setRestPort((int) value);
+                    cfg.setRestPort(((Number) value).intValue());
                     break;
                 case "restContextPath":
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
-                    cfg.setRestAcceptQueueSize((int) value);
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -864,7 +864,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setHost((String) value);
                     break;
                 case "port":
-                    cfg.setPort((int) value);
+                    cfg.setPort(((Number) value).intValue());
                     break;
                 case "sslEnabled":
                     cfg.setSslEnabled((boolean) value);
@@ -900,10 +900,10 @@ public class YamlConfigLoaderUtils {
                     cfg.setGRPCTargetHost((String) value);
                     break;
                 case "gRPCTargetPort":
-                    cfg.setGRPCTargetPort((int) value);
+                    cfg.setGRPCTargetPort(((Number) value).intValue());
                     break;
                 case "bufferSize":
-                    cfg.setBufferSize((int) value);
+                    cfg.setBufferSize(((Number) value).intValue());
                     break;
                 case "enableKafkaTrace":
                     cfg.setEnableKafkaTrace((boolean) value);
@@ -981,25 +981,25 @@ public class YamlConfigLoaderUtils {
                     cfg.setRestHost((String) value);
                     break;
                 case "restPort":
-                    cfg.setRestPort((int) value);
+                    cfg.setRestPort(((Number) value).intValue());
                     break;
                 case "restContextPath":
                     cfg.setRestContextPath((String) value);
                     break;
                 case "restMaxThreads":
-                    cfg.setRestMaxThreads((int) value);
+                    cfg.setRestMaxThreads(((Number) value).intValue());
                     break;
                 case "restIdleTimeOut":
-                    cfg.setRestIdleTimeOut((long) value);
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
                     break;
                 case "restAcceptQueueSize":
-                    cfg.setRestAcceptQueueSize((int) value);
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
                 case "gRPCHost":
                     cfg.setGRPCHost((String) value);
                     break;
                 case "gRPCPort":
-                    cfg.setGRPCPort((int) value);
+                    cfg.setGRPCPort(((Number) value).intValue());
                     break;
                 case "gRPCSslEnabled":
                     cfg.setGRPCSslEnabled((boolean) value);
@@ -1014,77 +1014,77 @@ public class YamlConfigLoaderUtils {
                     cfg.setGRPCSslTrustedCAPath((String) value);
                     break;
                 case "maxConcurrentCallsPerConnection":
-                    cfg.setMaxConcurrentCallsPerConnection((int) value);
+                    cfg.setMaxConcurrentCallsPerConnection(((Number) value).intValue());
                     break;
                 case "maxMessageSize":
-                    cfg.setMaxMessageSize((int) value);
+                    cfg.setMaxMessageSize(((Number) value).intValue());
                     break;
                 case "topNReportPeriod":
-                    cfg.setTopNReportPeriod((int) value);
+                    cfg.setTopNReportPeriod(((Number) value).intValue());
                     break;
                 case "l1FlushPeriod":
-                    cfg.setL1FlushPeriod((long) value);
+                    cfg.setL1FlushPeriod(((Number) value).longValue());
                     break;
                 case "storageSessionTimeout":
-                    cfg.setStorageSessionTimeout((long) value);
+                    cfg.setStorageSessionTimeout(((Number) value).longValue());
                     break;
                 case "downsampling":
                     cfg.getDownsampling().clear();
                     cfg.getDownsampling().addAll((List) value);
                     break;
                 case "persistentPeriod":
-                    cfg.setPersistentPeriod((int) value);
+                    cfg.setPersistentPeriod(((Number) value).intValue());
                     break;
                 case "enableDataKeeperExecutor":
                     cfg.setEnableDataKeeperExecutor((boolean) value);
                     break;
                 case "dataKeeperExecutePeriod":
-                    cfg.setDataKeeperExecutePeriod((int) value);
+                    cfg.setDataKeeperExecutePeriod(((Number) value).intValue());
                     break;
                 case "metricsDataTTL":
-                    cfg.setMetricsDataTTL((int) value);
+                    cfg.setMetricsDataTTL(((Number) value).intValue());
                     break;
                 case "recordDataTTL":
-                    cfg.setRecordDataTTL((int) value);
+                    cfg.setRecordDataTTL(((Number) value).intValue());
                     break;
                 case "gRPCThreadPoolSize":
-                    cfg.setGRPCThreadPoolSize((int) value);
+                    cfg.setGRPCThreadPoolSize(((Number) value).intValue());
                     break;
                 case "remoteTimeout":
-                    cfg.setRemoteTimeout((int) value);
+                    cfg.setRemoteTimeout(((Number) value).intValue());
                     break;
                 case "maxSizeOfNetworkAddressAlias":
-                    cfg.setMaxSizeOfNetworkAddressAlias((long) value);
+                    cfg.setMaxSizeOfNetworkAddressAlias(((Number) value).longValue());
                     break;
                 case "maxSizeOfProfileTask":
-                    cfg.setMaxSizeOfProfileTask((long) value);
+                    cfg.setMaxSizeOfProfileTask(((Number) value).longValue());
                     break;
                 case "maxSizeOfPprofTask":
-                    cfg.setMaxSizeOfPprofTask((long) value);
+                    cfg.setMaxSizeOfPprofTask(((Number) value).longValue());
                     break;
                 case "maxPageSizeOfQueryProfileSnapshot":
-                    cfg.setMaxPageSizeOfQueryProfileSnapshot((int) value);
+                    cfg.setMaxPageSizeOfQueryProfileSnapshot(((Number) value).intValue());
                     break;
                 case "maxSizeOfAnalyzeProfileSnapshot":
-                    cfg.setMaxSizeOfAnalyzeProfileSnapshot((int) value);
+                    cfg.setMaxSizeOfAnalyzeProfileSnapshot(((Number) value).intValue());
                     break;
                 case "maxDurationOfQueryEBPFProfilingData":
-                    cfg.setMaxDurationOfQueryEBPFProfilingData((int) value);
+                    cfg.setMaxDurationOfQueryEBPFProfilingData(((Number) value).intValue());
                     break;
                 case "maxThreadCountOfQueryEBPFProfilingData":
-                    cfg.setMaxThreadCountOfQueryEBPFProfilingData((int) value);
+                    cfg.setMaxThreadCountOfQueryEBPFProfilingData(((Number) value).intValue());
                     break;
                 case "activeExtraModelColumns":
                     cfg.setActiveExtraModelColumns((boolean) value);
                     break;
                 case "serviceNameMaxLength":
-                    cfg.setServiceNameMaxLength((int) value);
+                    cfg.setServiceNameMaxLength(((Number) value).intValue());
                     break;
                 case "instanceNameMaxLength":
-                    cfg.setInstanceNameMaxLength((int) value);
+                    cfg.setInstanceNameMaxLength(((Number) value).intValue());
                     break;
                 case "endpointNameMaxLength":
-                    cfg.setEndpointNameMaxLength((int) value);
+                    cfg.setEndpointNameMaxLength(((Number) value).intValue());
                     break;
                 case "searchableTracesTags":
                     cfg.setSearchableTracesTags((String) value);
@@ -1099,43 +1099,43 @@ public class YamlConfigLoaderUtils {
                     cfg.setSearchableAlarmTags((String) value);
                     break;
                 case "autocompleteTagKeysQueryMaxSize":
-                    cfg.setAutocompleteTagKeysQueryMaxSize((int) value);
+                    cfg.setAutocompleteTagKeysQueryMaxSize(((Number) value).intValue());
                     break;
                 case "autocompleteTagValuesQueryMaxSize":
-                    cfg.setAutocompleteTagValuesQueryMaxSize((int) value);
+                    cfg.setAutocompleteTagValuesQueryMaxSize(((Number) value).intValue());
                     break;
                 case "prepareThreads":
-                    cfg.setPrepareThreads((int) value);
+                    cfg.setPrepareThreads(((Number) value).intValue());
                     break;
                 case "enableEndpointNameGroupingByOpenapi":
                     cfg.setEnableEndpointNameGroupingByOpenapi((boolean) value);
                     break;
                 case "httpMaxRequestHeaderSize":
-                    cfg.setHttpMaxRequestHeaderSize((int) value);
+                    cfg.setHttpMaxRequestHeaderSize(((Number) value).intValue());
                     break;
                 case "syncPeriodHttpUriRecognitionPattern":
-                    cfg.setSyncPeriodHttpUriRecognitionPattern((int) value);
+                    cfg.setSyncPeriodHttpUriRecognitionPattern(((Number) value).intValue());
                     break;
                 case "trainingPeriodHttpUriRecognitionPattern":
-                    cfg.setTrainingPeriodHttpUriRecognitionPattern((int) value);
+                    cfg.setTrainingPeriodHttpUriRecognitionPattern(((Number) value).intValue());
                     break;
                 case "maxHttpUrisNumberPerService":
-                    cfg.setMaxHttpUrisNumberPerService((int) value);
+                    cfg.setMaxHttpUrisNumberPerService(((Number) value).intValue());
                     break;
                 case "uiMenuRefreshInterval":
-                    cfg.setUiMenuRefreshInterval((int) value);
+                    cfg.setUiMenuRefreshInterval(((Number) value).intValue());
                     break;
                 case "serviceCacheRefreshInterval":
-                    cfg.setServiceCacheRefreshInterval((int) value);
+                    cfg.setServiceCacheRefreshInterval(((Number) value).intValue());
                     break;
                 case "enableHierarchy":
                     cfg.setEnableHierarchy((boolean) value);
                     break;
                 case "maxHeapMemoryUsagePercent":
-                    cfg.setMaxHeapMemoryUsagePercent((long) value);
+                    cfg.setMaxHeapMemoryUsagePercent(((Number) value).longValue());
                     break;
                 case "maxDirectMemoryUsage":
-                    cfg.setMaxDirectMemoryUsage((long) value);
+                    cfg.setMaxDirectMemoryUsage(((Number) value).longValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1189,7 +1189,7 @@ public class YamlConfigLoaderUtils {
                     cfg.setTraceAnalysis((boolean) value);
                     break;
                 case "maxSlowSQLLength":
-                    cfg.setMaxSlowSQLLength((int) value);
+                    cfg.setMaxSlowSQLLength(((Number) value).intValue());
                     break;
                 case "configPath":
                     log.warn("Cannot set final field 'configPath' in {} provider of {} module", providerName, moduleName);
@@ -1279,16 +1279,16 @@ public class YamlConfigLoaderUtils {
                     cfg.setGRPCHost((String) value);
                     break;
                 case "gRPCPort":
-                    cfg.setGRPCPort((int) value);
+                    cfg.setGRPCPort(((Number) value).intValue());
                     break;
                 case "maxConcurrentCallsPerConnection":
-                    cfg.setMaxConcurrentCallsPerConnection((int) value);
+                    cfg.setMaxConcurrentCallsPerConnection(((Number) value).intValue());
                     break;
                 case "maxMessageSize":
-                    cfg.setMaxMessageSize((int) value);
+                    cfg.setMaxMessageSize(((Number) value).intValue());
                     break;
                 case "gRPCThreadPoolSize":
-                    cfg.setGRPCThreadPoolSize((int) value);
+                    cfg.setGRPCThreadPoolSize(((Number) value).intValue());
                     break;
                 case "gRPCSslEnabled":
                     cfg.setGRPCSslEnabled((boolean) value);
@@ -1357,22 +1357,22 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "continuousPolicyCacheTimeout":
-                    cfg.setContinuousPolicyCacheTimeout((int) value);
+                    cfg.setContinuousPolicyCacheTimeout(((Number) value).intValue());
                     break;
                 case "gRPCHost":
                     cfg.setGRPCHost((String) value);
                     break;
                 case "gRPCPort":
-                    cfg.setGRPCPort((int) value);
+                    cfg.setGRPCPort(((Number) value).intValue());
                     break;
                 case "maxConcurrentCallsPerConnection":
-                    cfg.setMaxConcurrentCallsPerConnection((int) value);
+                    cfg.setMaxConcurrentCallsPerConnection(((Number) value).intValue());
                     break;
                 case "maxMessageSize":
-                    cfg.setMaxMessageSize((int) value);
+                    cfg.setMaxMessageSize(((Number) value).intValue());
                     break;
                 case "gRPCThreadPoolSize":
-                    cfg.setGRPCThreadPoolSize((int) value);
+                    cfg.setGRPCThreadPoolSize(((Number) value).intValue());
                     break;
                 case "gRPCSslEnabled":
                     cfg.setGRPCSslEnabled((boolean) value);
@@ -1408,19 +1408,19 @@ public class YamlConfigLoaderUtils {
                     cfg.setHost((String) value);
                     break;
                 case "port":
-                    cfg.setPort((int) value);
+                    cfg.setPort(((Number) value).intValue());
                     break;
                 case "contextPath":
                     cfg.setContextPath((String) value);
                     break;
                 case "idleTimeOut":
-                    cfg.setIdleTimeOut((long) value);
+                    cfg.setIdleTimeOut(((Number) value).longValue());
                     break;
                 case "acceptQueueSize":
-                    cfg.setAcceptQueueSize((int) value);
+                    cfg.setAcceptQueueSize(((Number) value).intValue());
                     break;
                 case "maxRequestHeaderSize":
-                    cfg.setMaxRequestHeaderSize((int) value);
+                    cfg.setMaxRequestHeaderSize(((Number) value).intValue());
                     break;
                 case "firehoseAccessKey":
                     cfg.setFirehoseAccessKey((String) value);
@@ -1456,10 +1456,10 @@ public class YamlConfigLoaderUtils {
                     cfg.setPeerHost((String) value);
                     break;
                 case "peerPort":
-                    cfg.setPeerPort((int) value);
+                    cfg.setPeerPort(((Number) value).intValue());
                     break;
                 case "fetchFailureRetrySecond":
-                    cfg.setFetchFailureRetrySecond((int) value);
+                    cfg.setFetchFailureRetrySecond(((Number) value).intValue());
                     break;
                 case "sslConnection":
                     cfg.setSslConnection((boolean) value);
@@ -1516,7 +1516,7 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "checkIntervalSeconds":
-                    cfg.setCheckIntervalSeconds((long) value);
+                    cfg.setCheckIntervalSeconds(((Number) value).longValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1540,19 +1540,19 @@ public class YamlConfigLoaderUtils {
                     cfg.setTargets((String) value);
                     break;
                 case "maxBulkSize":
-                    cfg.setMaxBulkSize((int) value);
+                    cfg.setMaxBulkSize(((Number) value).intValue());
                     break;
                 case "flushInterval":
-                    cfg.setFlushInterval((int) value);
+                    cfg.setFlushInterval(((Number) value).intValue());
                     break;
                 case "flushTimeout":
-                    cfg.setFlushTimeout((int) value);
+                    cfg.setFlushTimeout(((Number) value).intValue());
                     break;
                 case "concurrentWriteThreads":
-                    cfg.setConcurrentWriteThreads((int) value);
+                    cfg.setConcurrentWriteThreads(((Number) value).intValue());
                     break;
                 case "profileTaskQueryMaxSize":
-                    cfg.setProfileTaskQueryMaxSize((int) value);
+                    cfg.setProfileTaskQueryMaxSize(((Number) value).intValue());
                     break;
                 case "user":
                     cfg.setUser((String) value);
@@ -1564,22 +1564,22 @@ public class YamlConfigLoaderUtils {
                     cfg.setSslTrustCAPath((String) value);
                     break;
                 case "asyncProfilerTaskQueryMaxSize":
-                    cfg.setAsyncProfilerTaskQueryMaxSize((int) value);
+                    cfg.setAsyncProfilerTaskQueryMaxSize(((Number) value).intValue());
                     break;
                 case "pprofTaskQueryMaxSize":
-                    cfg.setPprofTaskQueryMaxSize((int) value);
+                    cfg.setPprofTaskQueryMaxSize(((Number) value).intValue());
                     break;
                 case "resultWindowMaxSize":
-                    cfg.setResultWindowMaxSize((int) value);
+                    cfg.setResultWindowMaxSize(((Number) value).intValue());
                     break;
                 case "metadataQueryMaxSize":
-                    cfg.setMetadataQueryMaxSize((int) value);
+                    cfg.setMetadataQueryMaxSize(((Number) value).intValue());
                     break;
                 case "segmentQueryMaxSize":
-                    cfg.setSegmentQueryMaxSize((int) value);
+                    cfg.setSegmentQueryMaxSize(((Number) value).intValue());
                     break;
                 case "profileDataQueryBatchSize":
-                    cfg.setProfileDataQueryBatchSize((int) value);
+                    cfg.setProfileDataQueryBatchSize(((Number) value).intValue());
                     break;
                 case "cleanupUnusedTopNRules":
                     cfg.setCleanupUnusedTopNRules((boolean) value);
@@ -1609,16 +1609,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1651,16 +1651,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1693,16 +1693,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1735,16 +1735,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1777,16 +1777,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1819,16 +1819,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1861,16 +1861,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1903,16 +1903,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1945,16 +1945,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -1987,16 +1987,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -2029,16 +2029,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -2071,16 +2071,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -2116,13 +2116,13 @@ public class YamlConfigLoaderUtils {
                     cfg.setName((String) value);
                     break;
                 case "lruSizeMinute":
-                    cfg.setLruSizeMinute((int) value);
+                    cfg.setLruSizeMinute(((Number) value).intValue());
                     break;
                 case "lruSizeHourDay":
-                    cfg.setLruSizeHourDay((int) value);
+                    cfg.setLruSizeHourDay(((Number) value).intValue());
                     break;
                 case "countersNumber":
-                    cfg.setCountersNumber((int) value);
+                    cfg.setCountersNumber(((Number) value).intValue());
                     break;
                 case "groupByTagNames":
                     cfg.setGroupByTagNames((List) value);
@@ -2152,16 +2152,16 @@ public class YamlConfigLoaderUtils {
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "enableWarmStage":
                     cfg.setEnableWarmStage((boolean) value);
@@ -2200,16 +2200,16 @@ public class YamlConfigLoaderUtils {
                     cfg.setNodeSelector((String) value);
                     break;
                 case "shardNum":
-                    cfg.setShardNum((int) value);
+                    cfg.setShardNum(((Number) value).intValue());
                     break;
                 case "segmentInterval":
-                    cfg.setSegmentInterval((int) value);
+                    cfg.setSegmentInterval(((Number) value).intValue());
                     break;
                 case "ttl":
-                    cfg.setTtl((int) value);
+                    cfg.setTtl(((Number) value).intValue());
                     break;
                 case "replicas":
-                    cfg.setReplicas((int) value);
+                    cfg.setReplicas(((Number) value).intValue());
                     break;
                 case "close":
                     cfg.setClose((boolean) value);
