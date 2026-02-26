@@ -1,0 +1,2523 @@
+[
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.DestinationRule"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.DestinationRuleList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.EnvoyFilter"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.EnvoyFilterList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.Gateway"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.GatewayList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.ServiceEntry"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.ServiceEntryList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.Sidecar"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.SidecarList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.VirtualService"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.VirtualServiceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.WorkloadEntry"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.WorkloadEntryList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.WorkloadGroup"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1alpha3.WorkloadGroupList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.DestinationRule"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.DestinationRuleList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.Gateway"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.GatewayList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.ServiceEntry"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.ServiceEntryList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.Sidecar"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.SidecarList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.VirtualService"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.VirtualServiceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.WorkloadEntry"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.networking.v1beta1.WorkloadEntryList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.security.v1beta1.AuthorizationPolicy"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.security.v1beta1.AuthorizationPolicyList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.security.v1beta1.PeerAuthentication"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.security.v1beta1.PeerAuthenticationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.security.v1beta1.RequestAuthentication"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.istio.api.security.v1beta1.RequestAuthenticationList"
+  },
+  {
+    "name": "io.fabric8.istio.client.IstioExtensionAdapter"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIGroup"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIGroupList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIResourceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIService"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIServiceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AuthInfo"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AuthProviderConfig"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Binding"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Cluster"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ComponentStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ComponentStatusList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Config"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ConfigMap"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.ConfigMapBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ConfigMapList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Context"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.CreateOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.DeleteOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Endpoints"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EndpointsList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Event"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EventList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ExecConfig"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ExecEnvVar"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.FieldsV1"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GetOptions"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.HasMetadata"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.KubernetesList"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.KubernetesResource"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.KubernetesResourceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LimitRange"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LimitRangeList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ListMeta"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ListOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ManagedFieldsEntry"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamedAuthInfo"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamedCluster"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamedContext"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamedExtension"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Namespace"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamespaceList"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.Namespaced"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Node"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ObjectMeta"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.OwnerReference"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PatchOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolume"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeClaim"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeClaimList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Pod"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.PodBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodExecOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodTemplate"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodTemplateList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Preferences"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ReplicationController"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.ReplicationControllerBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ReplicationControllerList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ResourceQuota"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ResourceQuotaList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Secret"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SecretList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Service"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServiceAccount"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServiceAccountList"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.ServiceBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServiceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Status"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.UpdateOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admission.v1.AdmissionReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admission.v1beta1.AdmissionReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1.MutatingWebhookConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1.MutatingWebhookConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1.ValidatingWebhookConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1.ValidatingWebhookConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1alpha1.ValidatingAdmissionPolicy"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1alpha1.ValidatingAdmissionPolicyBinding"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1alpha1.ValidatingAdmissionPolicyBindingList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1alpha1.ValidatingAdmissionPolicyList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1beta1.MutatingWebhookConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1beta1.MutatingWebhookConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1beta1.ValidatingWebhookConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.admissionregistration.v1beta1.ValidatingWebhookConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apiextensions.v1.ConversionReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apiextensions.v1beta1.CustomResourceDefinition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apiextensions.v1beta1.CustomResourceDefinitionList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.ControllerRevision"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.ControllerRevisionList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.DaemonSet"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.DaemonSetList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.Deployment"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.apps.DeploymentBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.DeploymentList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.ReplicaSet"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.apps.ReplicaSetBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.ReplicaSetList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.StatefulSet"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.apps.StatefulSetBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.apps.StatefulSetList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authentication.TokenReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authentication.v1alpha1.SelfSubjectReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1.LocalSubjectAccessReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1.SelfSubjectAccessReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1.SelfSubjectRulesReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1.SubjectAccessReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1beta1.LocalSubjectAccessReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1beta1.SelfSubjectAccessReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1beta1.SelfSubjectRulesReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.authorization.v1beta1.SubjectAccessReview"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v1.HorizontalPodAutoscaler"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v1.HorizontalPodAutoscalerList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v1.Scale"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v2.HorizontalPodAutoscaler"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v2.HorizontalPodAutoscalerList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v2beta1.HorizontalPodAutoscaler"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v2beta1.HorizontalPodAutoscalerList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v2beta2.HorizontalPodAutoscaler"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.autoscaling.v2beta2.HorizontalPodAutoscalerList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.batch.v1.CronJob"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.batch.v1.CronJobList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.batch.v1.Job"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.batch.v1.JobBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.batch.v1.JobList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.batch.v1beta1.CronJob"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.batch.v1beta1.CronJobList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.certificates.v1.CertificateSigningRequest"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.certificates.v1.CertificateSigningRequestBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.certificates.v1.CertificateSigningRequestList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.certificates.v1beta1.CertificateSigningRequest"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.certificates.v1beta1.CertificateSigningRequestBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.certificates.v1beta1.CertificateSigningRequestList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.coordination.v1.Lease"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.coordination.v1.LeaseList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.discovery.v1.EndpointSlice"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.discovery.v1.EndpointSliceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.discovery.v1beta1.EndpointSlice"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.discovery.v1beta1.EndpointSliceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.events.v1.Event"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.events.v1.EventList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.events.v1beta1.Event"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.events.v1beta1.EventList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.DaemonSet"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.DaemonSetList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.Deployment"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.extensions.DeploymentBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.DeploymentList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.DeploymentRollback"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.Ingress"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.IngressList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.NetworkPolicy"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.NetworkPolicyList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.ReplicaSet"
+  },
+  {
+    "name": "io.fabric8.kubernetes.api.model.extensions.ReplicaSetBuilder"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.extensions.ReplicaSetList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1alpha1.FlowSchema"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1alpha1.FlowSchemaList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1alpha1.PriorityLevelConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1alpha1.PriorityLevelConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta1.FlowSchema"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta1.FlowSchemaList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta1.PriorityLevelConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta1.PriorityLevelConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta2.FlowSchema"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta2.FlowSchemaList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta2.PriorityLevelConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta2.PriorityLevelConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta3.FlowSchema"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta3.FlowSchemaList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta3.PriorityLevelConfiguration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.flowcontrol.v1beta3.PriorityLevelConfigurationList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.GRPCRoute"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.GRPCRouteList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.Gateway"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.GatewayClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.GatewayClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.GatewayList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.HTTPRoute"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.HTTPRouteList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.ReferenceGrant"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.ReferenceGrantList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.TCPRoute"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.TCPRouteList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.TLSRoute"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.TLSRouteList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.UDPRoute"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1alpha2.UDPRouteList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.Gateway"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.GatewayClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.GatewayClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.GatewayList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.HTTPRoute"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.HTTPRouteList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.ReferenceGrant"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.gatewayapi.v1beta1.ReferenceGrantList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.metrics.v1beta1.NodeMetrics"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.metrics.v1beta1.NodeMetricsList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.metrics.v1beta1.PodMetrics"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.metrics.v1beta1.PodMetricsList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1.Ingress"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1.IngressClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1.IngressClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1.IngressList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1.NetworkPolicy"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1.NetworkPolicyList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1alpha1.ClusterCIDR"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1alpha1.ClusterCIDRList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1beta1.Ingress"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1beta1.IngressClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1beta1.IngressClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.networking.v1beta1.IngressList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.node.v1.RuntimeClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.node.v1.RuntimeClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.node.v1alpha1.RuntimeClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.node.v1alpha1.RuntimeClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.node.v1beta1.RuntimeClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.node.v1beta1.RuntimeClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1.Eviction"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1.PodDisruptionBudget"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1.PodDisruptionBudgetList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1beta1.Eviction"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1beta1.PodDisruptionBudget"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1beta1.PodDisruptionBudgetList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1beta1.PodSecurityPolicy"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.policy.v1beta1.PodSecurityPolicyList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.ClusterRole"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.ClusterRoleBinding"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.ClusterRoleList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.Role"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.RoleBinding"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.RoleBindingList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.rbac.RoleList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.PodScheduling"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.PodSchedulingList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.ResourceClaim"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.ResourceClaimList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.ResourceClaimTemplate"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.ResourceClaimTemplateList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.ResourceClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.resource.v1alpha1.ResourceClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.scheduling.v1.PriorityClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.scheduling.v1.PriorityClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.scheduling.v1beta1.PriorityClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.scheduling.v1beta1.PriorityClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.CSIDriver"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.CSIDriverList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.CSINode"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.CSINodeList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.CSIStorageCapacity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.CSIStorageCapacityList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.StorageClass"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.StorageClassList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.VolumeAttachment"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.VolumeAttachmentList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.v1beta1.CSIDriver"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.v1beta1.CSIDriverList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.v1beta1.CSINode"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.v1beta1.CSINodeList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.v1beta1.CSIStorageCapacity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.storage.v1beta1.CSIStorageCapacityList"
+  },
+  {
+    "methods": [
+      {
+        "name": "submitList",
+        "parameterTypes": [
+          "io.fabric8.kubernetes.api.model.ListOptions"
+        ]
+      }
+    ],
+    "name": "io.fabric8.kubernetes.client.dsl.internal.BaseOperation"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "io.fabric8.kubernetes.client.http.HttpClient",
+          "io.fabric8.kubernetes.client.Config",
+          "io.fabric8.kubernetes.client.KubernetesClientBuilder$ExecutorSupplier",
+          "io.fabric8.kubernetes.client.utils.KubernetesSerialization"
+        ]
+      }
+    ],
+    "name": "io.fabric8.kubernetes.client.impl.KubernetesClientImpl"
+  },
+  {
+    "name": "io.fabric8.kubernetes.client.jdkhttp.JdkHttpClientFactory"
+  },
+  {
+    "methods": [
+      {
+        "name": "unmarshal",
+        "parameterTypes": [
+          "java.io.InputStream",
+          "java.lang.Class"
+        ]
+      }
+    ],
+    "name": "io.fabric8.kubernetes.client.utils.KubernetesSerialization"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIResource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIServiceCondition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIServiceSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.APIServiceStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AWSElasticBlockStoreVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Affinity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AnyType"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AttachedVolume"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AzureDiskVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AzureFilePersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AzureFileVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.CSIPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.CSIVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Capabilities"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.CephFSPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.CephFSVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.CinderPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.CinderVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ClaimSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ClientIPConfig"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ComponentCondition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Condition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ConfigMapEnvSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ConfigMapKeySelector"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ConfigMapNodeConfigSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ConfigMapProjection"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ConfigMapVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Container"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ContainerImage"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ContainerPort"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ContainerState"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ContainerStateRunning"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ContainerStateTerminated"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ContainerStateWaiting"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ContainerStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.DaemonEndpoint"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.DefaultKubernetesResourceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.DeletionPropagation"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.DownwardAPIProjection"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.DownwardAPIVolumeFile"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.DownwardAPIVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Duration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EmptyDirVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EndpointAddress"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EndpointPort"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EndpointSubset"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EnvFromSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EnvVar"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EnvVarSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EphemeralContainer"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EphemeralVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EventSeries"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.EventSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ExecAction"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.FCVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.FlexPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.FlexVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.FlockerVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GCEPersistentDiskVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GRPCAction"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GenericKubernetesResource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GenericKubernetesResourceList"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GitRepoVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GlusterfsPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GlusterfsVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GroupKind"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GroupVersionForDiscovery"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GroupVersionKind"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.GroupVersionResource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.HTTPGetAction"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.HTTPHeader"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.HasMetadataComparator"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.HostAlias"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.HostPathVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ISCSIPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ISCSIVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.IntOrString"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.KeyToPath"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.KubeSchema"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LabelSelector"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LabelSelectorRequirement"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Lifecycle"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LifecycleHandler"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LimitRangeItem"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LimitRangeSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LoadBalancerIngress"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LoadBalancerStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LocalObjectReference"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.LocalVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.MicroTime"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.MicroTimeSerDes"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NFSVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamespaceCondition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamespaceSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NamespaceStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeAddress"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeAffinity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeCondition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeConfigSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeConfigStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeDaemonEndpoints"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeSelector"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeSelectorRequirement"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeSelectorTerm"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.NodeSystemInfo"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ObjectFieldSelector"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ObjectReference"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Patch"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeClaimCondition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeClaimSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeClaimStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeClaimTemplate"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeClaimVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PersistentVolumeStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PhotonPersistentDiskVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodAffinity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodAffinityTerm"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodAntiAffinity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodCondition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodDNSConfig"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodDNSConfigOption"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodIP"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodOS"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodReadinessGate"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodResourceClaim"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodSchedulingGate"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodSecurityContext"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PodTemplateSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PortStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PortworxVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Preconditions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.PreferredSchedulingTerm"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Probe"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ProjectedVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Quantity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.QuobyteVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.RBDPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.RBDVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ReplicationControllerCondition"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ReplicationControllerSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ReplicationControllerStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ResourceClaim"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ResourceFieldSelector"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ResourceQuotaSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ResourceQuotaStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ResourceRequirements"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.RootPaths"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SELinuxOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ScaleIOPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ScaleIOVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ScopeSelector"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ScopedResourceSelectorRequirement"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SeccompProfile"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SecretEnvSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SecretKeySelector"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SecretProjection"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SecretReference"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SecretVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SecurityContext"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServerAddressByClientCIDR"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServiceAccountTokenProjection"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServicePort"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServiceReference"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServiceSpec"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ServiceStatus"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.SessionAffinityConfig"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.StatusCause"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.StatusDetails"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.StorageOSPersistentVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.StorageOSVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Sysctl"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.TCPSocketAction"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Taint"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Toleration"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.TopologySelectorLabelRequirement"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.TopologySelectorTerm"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.TopologySpreadConstraint"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.TypeMeta"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.TypedLocalObjectReference"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.TypedObjectReference"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.ValidationSchema"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Volume"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.VolumeDevice"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.VolumeMount"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.VolumeNodeAffinity"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.VolumeProjection"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.VsphereVirtualDiskVolumeSource"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.WatchEvent"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.WeightedPodAffinityTerm"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.WindowsSecurityContextOptions"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.runtime.RawExtension"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.version.Info"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Quantity$Deserializer"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Quantity$Serializer"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.MicroTimeSerDes$Deserializer"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.MicroTimeSerDes$Serializer"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.AnyType$Serializer"
+  },
+  {
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "name": "io.fabric8.kubernetes.api.model.Duration$Serializer"
+  }
+]

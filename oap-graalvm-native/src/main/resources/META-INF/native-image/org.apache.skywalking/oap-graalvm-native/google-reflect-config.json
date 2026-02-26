@@ -1,0 +1,42 @@
+[
+  {
+    "fields": [
+      {
+        "name": "listeners"
+      },
+      {
+        "name": "value"
+      },
+      {
+        "name": "waiters"
+      }
+    ],
+    "name": "com.google.common.util.concurrent.AbstractFuture"
+  },
+  {
+    "fields": [
+      {
+        "name": "next"
+      },
+      {
+        "name": "thread"
+      }
+    ],
+    "name": "com.google.common.util.concurrent.AbstractFuture$Waiter"
+  },
+  {
+    "name": "com.google.common.util.concurrent.AtomicDouble"
+  },
+  {
+    "name": "com.google.gson.Gson"
+  },
+  {
+    "methods": [
+      {
+        "name": "getEmptyRegistry",
+        "parameterTypes": []
+      }
+    ],
+    "name": "com.google.protobuf.ExtensionRegistry"
+  }
+]

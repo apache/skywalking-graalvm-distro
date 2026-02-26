@@ -1,0 +1,398 @@
+[
+  {
+    "name": "io.netty.bootstrap.ServerBootstrap$1"
+  },
+  {
+    "name": "io.netty.bootstrap.ServerBootstrap$ServerBootstrapAcceptor"
+  },
+  {
+    "name": "io.netty.buffer.AbstractByteBufAllocator"
+  },
+  {
+    "name": "io.netty.buffer.AdaptivePoolingAllocator$Magazine"
+  },
+  {
+    "name": "io.netty.channel.AbstractChannelHandlerContext"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.ChannelException"
+  },
+  {
+    "name": "io.netty.channel.ChannelOutboundBuffer"
+  },
+  {
+    "name": "io.netty.channel.DefaultChannelConfig"
+  },
+  {
+    "name": "io.netty.channel.DefaultChannelPipeline"
+  },
+  {
+    "name": "io.netty.channel.DefaultChannelPipeline$HeadContext"
+  },
+  {
+    "name": "io.netty.channel.DefaultChannelPipeline$TailContext"
+  },
+  {
+    "jniAccessible": true,
+    "fields": [
+      {
+        "name": "file"
+      },
+      {
+        "name": "transferred"
+      }
+    ],
+    "name": "io.netty.channel.DefaultFileRegion"
+  },
+  {
+    "methods": [
+      {
+        "name": "isAvailable",
+        "parameterTypes": []
+      },
+      {
+        "name": "unavailabilityCause",
+        "parameterTypes": []
+      }
+    ],
+    "name": "io.netty.channel.epoll.Epoll"
+  },
+  {
+    "fields": [
+      {
+        "name": "EPOLL_MODE"
+      },
+      {
+        "name": "TCP_KEEPIDLE"
+      },
+      {
+        "name": "TCP_KEEPINTVL"
+      },
+      {
+        "name": "TCP_USER_TIMEOUT"
+      }
+    ],
+    "name": "io.netty.channel.epoll.EpollChannelOption"
+  },
+  {
+    "name": "io.netty.channel.epoll.NativeDatagramPacketArray$NativeDatagramPacket"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.kqueue.BsdSocket"
+  },
+  {
+    "methods": [
+      {
+        "name": "unavailabilityCause",
+        "parameterTypes": []
+      }
+    ],
+    "name": "io.netty.channel.kqueue.KQueue"
+  },
+  {
+    "name": "io.netty.channel.kqueue.KQueueDatagramChannel"
+  },
+  {
+    "name": "io.netty.channel.kqueue.KQueueDomainSocketChannel"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.kqueue.KQueueEventArray"
+  },
+  {
+    "name": "io.netty.channel.kqueue.KQueueIoHandle"
+  },
+  {
+    "methods": [
+      {
+        "name": "newFactory",
+        "parameterTypes": []
+      }
+    ],
+    "name": "io.netty.channel.kqueue.KQueueIoHandler"
+  },
+  {
+    "name": "io.netty.channel.kqueue.KQueueServerDomainSocketChannel"
+  },
+  {
+    "name": "io.netty.channel.kqueue.KQueueServerSocketChannel"
+  },
+  {
+    "name": "io.netty.channel.kqueue.KQueueSocketChannel"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.kqueue.KQueueStaticallyReferencedJniMethods"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.kqueue.Native"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ],
+    "name": "io.netty.channel.socket.nio.NioServerSocketChannel"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ],
+    "name": "io.netty.channel.socket.nio.NioSocketChannel"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.unix.Buffer"
+  },
+  {
+    "jniAccessible": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "byte[]",
+          "int",
+          "int",
+          "int",
+          "io.netty.channel.unix.DatagramSocketAddress"
+        ]
+      }
+    ],
+    "name": "io.netty.channel.unix.DatagramSocketAddress"
+  },
+  {
+    "jniAccessible": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "byte[]",
+          "int",
+          "io.netty.channel.unix.DomainDatagramSocketAddress"
+        ]
+      }
+    ],
+    "name": "io.netty.channel.unix.DomainDatagramSocketAddress"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.unix.ErrorsStaticallyReferencedJniMethods"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.unix.FileDescriptor"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.unix.LimitsStaticallyReferencedJniMethods"
+  },
+  {
+    "jniAccessible": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "int",
+          "int",
+          "int[]"
+        ]
+      }
+    ],
+    "name": "io.netty.channel.unix.PeerCredentials"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.channel.unix.Socket"
+  },
+  {
+    "name": "io.netty.channel.uring.IoUringChannelOption"
+  },
+  {
+    "name": "io.netty.handler.logging.LoggingHandler"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.internal.tcnative.Buffer"
+  },
+  {
+    "name": "io.netty.internal.tcnative.CertificateCallback"
+  },
+  {
+    "jniAccessible": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "long",
+          "byte[]",
+          "byte[][]",
+          "io.netty.internal.tcnative.CertificateCallback"
+        ]
+      }
+    ],
+    "name": "io.netty.internal.tcnative.CertificateCallbackTask"
+  },
+  {
+    "jniAccessible": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "long",
+          "byte[][]",
+          "java.lang.String",
+          "io.netty.internal.tcnative.CertificateVerifier"
+        ]
+      }
+    ],
+    "name": "io.netty.internal.tcnative.CertificateVerifierTask"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.internal.tcnative.Library"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.internal.tcnative.NativeStaticallyReferencedJniMethods"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.internal.tcnative.SSL"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.internal.tcnative.SSLContext"
+  },
+  {
+    "jniAccessible": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "long",
+          "byte[]",
+          "io.netty.internal.tcnative.AsyncSSLPrivateKeyMethod"
+        ]
+      }
+    ],
+    "name": "io.netty.internal.tcnative.SSLPrivateKeyMethodDecryptTask"
+  },
+  {
+    "jniAccessible": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "long",
+          "int",
+          "byte[]",
+          "io.netty.internal.tcnative.AsyncSSLPrivateKeyMethod"
+        ]
+      }
+    ],
+    "name": "io.netty.internal.tcnative.SSLPrivateKeyMethodSignTask"
+  },
+  {
+    "jniAccessible": true,
+    "fields": [
+      {
+        "name": "resultBytes"
+      }
+    ],
+    "name": "io.netty.internal.tcnative.SSLPrivateKeyMethodTask"
+  },
+  {
+    "jniAccessible": true,
+    "name": "io.netty.internal.tcnative.SSLSession"
+  },
+  {
+    "jniAccessible": true,
+    "fields": [
+      {
+        "name": "complete"
+      },
+      {
+        "name": "returnValue"
+      }
+    ],
+    "name": "io.netty.internal.tcnative.SSLTask"
+  },
+  {
+    "name": "io.netty.util.DefaultAttributeMap"
+  },
+  {
+    "name": "io.netty.util.Recycler$DefaultHandle"
+  },
+  {
+    "name": "io.netty.util.ReferenceCountUtil"
+  },
+  {
+    "name": "io.netty.util.ResourceLeakDetector$DefaultResourceLeak"
+  },
+  {
+    "name": "io.netty.util.concurrent.DefaultPromise"
+  },
+  {
+    "name": "io.netty.util.concurrent.MpscIntQueue$MpscAtomicIntegerArrayQueue"
+  },
+  {
+    "name": "io.netty.util.concurrent.SingleThreadEventExecutor"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "java.lang.AutoCloseable",
+          "java.nio.ByteBuffer",
+          "long"
+        ]
+      }
+    ],
+    "name": "io.netty.util.internal.CleanerJava25$CleanableDirectBufferImpl"
+  },
+  {
+    "methods": [
+      {
+        "name": "loadLibrary",
+        "parameterTypes": [
+          "java.lang.String",
+          "boolean"
+        ]
+      }
+    ],
+    "name": "io.netty.util.internal.NativeLibraryUtil"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.BaseMpscLinkedAtomicArrayQueueColdProducerFields"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.BaseMpscLinkedAtomicArrayQueueConsumerFields"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.BaseMpscLinkedAtomicArrayQueueProducerFields"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.MpmcAtomicArrayQueueConsumerIndexField"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.MpmcAtomicArrayQueueProducerIndexField"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.unpadded.MpscAtomicUnpaddedArrayQueueConsumerIndexField"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.unpadded.MpscAtomicUnpaddedArrayQueueProducerIndexField"
+  },
+  {
+    "name": "io.netty.util.internal.shaded.org.jctools.queues.atomic.unpadded.MpscAtomicUnpaddedArrayQueueProducerLimitField"
+  }
+]

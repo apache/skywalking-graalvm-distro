@@ -1,0 +1,56 @@
+[
+  {
+    "name": "io.grpc.census.InternalCensusStatsAccessor"
+  },
+  {
+    "name": "io.grpc.census.InternalCensusTracingAccessor"
+  },
+  {
+    "name": "io.grpc.grpclb.GrpclbLoadBalancerProvider"
+  },
+  {
+    "name": "io.grpc.grpclb.SecretGrpclbNameResolverProvider$Provider"
+  },
+  {
+    "name": "io.grpc.internal.DnsNameResolverProvider"
+  },
+  {
+    "name": "io.grpc.internal.PickFirstLoadBalancerProvider"
+  },
+  {
+    "name": "io.grpc.internal.SerializingExecutor"
+  },
+  {
+    "name": "io.grpc.netty.NettyClientHandler"
+  },
+  {
+    "name": "io.grpc.netty.ProtocolNegotiators$GrpcNegotiationHandler"
+  },
+  {
+    "name": "io.grpc.netty.ProtocolNegotiators$WaitUntilActiveHandler"
+  },
+  {
+    "name": "io.grpc.netty.UdsNameResolverProvider"
+  },
+  {
+    "name": "io.grpc.netty.WriteBufferingAndExceptionHandler"
+  },
+  {
+    "name": "io.grpc.override.ContextStorageOverride"
+  },
+  {
+    "name": "io.grpc.protobuf.services.internal.HealthCheckingRoundRobinLoadBalancerProvider"
+  },
+  {
+    "name": "io.grpc.util.OutlierDetectionLoadBalancerProvider"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ],
+    "name": "io.grpc.util.SecretRoundRobinLoadBalancerProvider$Provider"
+  }
+]

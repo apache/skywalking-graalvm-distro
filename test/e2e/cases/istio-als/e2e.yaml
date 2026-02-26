@@ -18,7 +18,7 @@
 setup:
   env: kind
   file: kind.yaml
-  init-system-environment: ../../../../skywalking/test/e2e-v2/script/env
+  init-system-environment: ../../script/env
   kind:
     expose-ports:
       - namespace: istio-system
@@ -33,12 +33,40 @@ setup:
       command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
     - name: install kubectl
       command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh kubectl
+    - name: pull images
+      command: |
+        pull_or_cache() { docker pull "$1" || docker image inspect "$1" > /dev/null 2>&1; }
+        docker pull ghcr.io/apache/skywalking-banyandb:$SW_BANYANDB_COMMIT
+        docker pull ghcr.io/apache/skywalking/ui:$SW_UPSTREAM_COMMIT
+        pull_or_cache docker.io/istio/pilot:$ISTIO_VERSION
+        pull_or_cache docker.io/istio/proxyv2:$ISTIO_VERSION
+        pull_or_cache curlimages/curl:latest
+        pull_or_cache alpine/curl:8.9.1
+        pull_or_cache docker.io/istio/examples-bookinfo-productpage-v1:1.20.2
+        pull_or_cache docker.io/istio/examples-bookinfo-details-v1:1.20.2
+        pull_or_cache docker.io/istio/examples-bookinfo-reviews-v1:1.20.2
+        pull_or_cache docker.io/istio/examples-bookinfo-reviews-v2:1.20.2
+        pull_or_cache docker.io/istio/examples-bookinfo-reviews-v3:1.20.2
+        pull_or_cache docker.io/istio/examples-bookinfo-ratings-v1:1.20.2
+        pull_or_cache docker.io/istio/examples-bookinfo-ratings-v2:1.20.2
+        pull_or_cache docker.io/istio/examples-bookinfo-mongodb:1.20.2
     - name: load images into kind
       command: |
         kind load docker-image skywalking-oap-native:latest
-        kind load docker-image skywalking/ui:latest
-        kind load docker-image istio/pilot:$ISTIO_VERSION || true
-        kind load docker-image istio/proxyv2:$ISTIO_VERSION || true
+        kind load docker-image ghcr.io/apache/skywalking/ui:$SW_UPSTREAM_COMMIT
+        kind load docker-image istio/pilot:$ISTIO_VERSION
+        kind load docker-image istio/proxyv2:$ISTIO_VERSION
+        kind load docker-image ghcr.io/apache/skywalking-banyandb:$SW_BANYANDB_COMMIT
+        kind load docker-image curlimages/curl:latest
+        kind load docker-image alpine/curl:8.9.1
+        kind load docker-image docker.io/istio/examples-bookinfo-productpage-v1:1.20.2
+        kind load docker-image docker.io/istio/examples-bookinfo-details-v1:1.20.2
+        kind load docker-image docker.io/istio/examples-bookinfo-reviews-v1:1.20.2
+        kind load docker-image docker.io/istio/examples-bookinfo-reviews-v2:1.20.2
+        kind load docker-image docker.io/istio/examples-bookinfo-reviews-v3:1.20.2
+        kind load docker-image docker.io/istio/examples-bookinfo-ratings-v1:1.20.2
+        kind load docker-image docker.io/istio/examples-bookinfo-ratings-v2:1.20.2
+        kind load docker-image docker.io/istio/examples-bookinfo-mongodb:1.20.2
     - name: install istio
       command: |
         bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh istioctl
@@ -64,11 +92,14 @@ setup:
           --set oap.env.SW_HEALTH_CHECKER=default \
           --set oap.envoy.als.enabled=true \
           --set oap.storageType=banyandb \
-          --set ui.image.repository=skywalking/ui \
-          --set ui.image.tag=latest \
+          --set ui.image.repository=ghcr.io/apache/skywalking/ui \
+          --set ui.image.tag=$SW_UPSTREAM_COMMIT \
+          --set ui.image.pullPolicy=IfNotPresent \
           --set elasticsearch.enabled=false \
           --set banyandb.enabled=true \
+          --set banyandb.image.repository=ghcr.io/apache/skywalking-banyandb \
           --set banyandb.image.tag=$SW_BANYANDB_COMMIT \
+          --set banyandb.image.pullPolicy=IfNotPresent \
           --set banyandb.standalone.enabled=true \
           --set banyandb.cluster.enabled=false \
           --set banyandb.etcd.enabled=false \

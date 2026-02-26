@@ -1,0 +1,56 @@
+[
+  {
+    "name": "com.fasterxml.jackson.core.JsonParser"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.JsonNode"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.ObjectMapper"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.deser.BeanDeserializerModifier[]"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.deser.Deserializers[]"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.deser.KeyDeserializers[]"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.deser.ValueInstantiators[]"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ],
+    "name": "com.fasterxml.jackson.databind.ext.Java7SupportImpl"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.ser.BeanSerializerModifier[]"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.ser.Serializers[]"
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.type.TypeModifier[]"
+  },
+  {
+    "name": "com.fasterxml.jackson.dataformat.yaml.YAMLFactory"
+  },
+  {
+    "name": "com.fasterxml.jackson.datatype.guava.GuavaModule"
+  },
+  {
+    "name": "com.fasterxml.jackson.datatype.jdk8.Jdk8Module"
+  },
+  {
+    "name": "com.fasterxml.jackson.datatype.jsr310.JavaTimeModule"
+  },
+  {
+    "name": "com.fasterxml.jackson.module.kotlin.KotlinModule"
+  }
+]

@@ -1,0 +1,640 @@
+[
+  {
+    "fields": [
+      {
+        "name": "ACCEPT"
+      },
+      {
+        "name": "ACCEPT_CH"
+      },
+      {
+        "name": "ACCEPT_CHARSET"
+      },
+      {
+        "name": "ACCEPT_ENCODING"
+      },
+      {
+        "name": "ACCEPT_LANGUAGE"
+      },
+      {
+        "name": "ACCEPT_PATCH"
+      },
+      {
+        "name": "ACCEPT_RANGES"
+      },
+      {
+        "name": "ACCESS_CONTROL_ALLOW_CREDENTIALS"
+      },
+      {
+        "name": "ACCESS_CONTROL_ALLOW_HEADERS"
+      },
+      {
+        "name": "ACCESS_CONTROL_ALLOW_METHODS"
+      },
+      {
+        "name": "ACCESS_CONTROL_ALLOW_ORIGIN"
+      },
+      {
+        "name": "ACCESS_CONTROL_ALLOW_PRIVATE_NETWORK"
+      },
+      {
+        "name": "ACCESS_CONTROL_EXPOSE_HEADERS"
+      },
+      {
+        "name": "ACCESS_CONTROL_MAX_AGE"
+      },
+      {
+        "name": "ACCESS_CONTROL_REQUEST_HEADERS"
+      },
+      {
+        "name": "ACCESS_CONTROL_REQUEST_METHOD"
+      },
+      {
+        "name": "AD_AUCTION_ALLOWED"
+      },
+      {
+        "name": "AD_AUCTION_SIGNALS"
+      },
+      {
+        "name": "AGE"
+      },
+      {
+        "name": "ALLOW"
+      },
+      {
+        "name": "ALT_SVC"
+      },
+      {
+        "name": "ATHENZ_ROLE_AUTH"
+      },
+      {
+        "name": "AUTHORITY"
+      },
+      {
+        "name": "AUTHORIZATION"
+      },
+      {
+        "name": "CACHE_CONTROL"
+      },
+      {
+        "name": "CDN_LOOP"
+      },
+      {
+        "name": "CONNECTION"
+      },
+      {
+        "name": "CONTENT_BASE"
+      },
+      {
+        "name": "CONTENT_DESCRIPTION"
+      },
+      {
+        "name": "CONTENT_DISPOSITION"
+      },
+      {
+        "name": "CONTENT_ENCODING"
+      },
+      {
+        "name": "CONTENT_ID"
+      },
+      {
+        "name": "CONTENT_LANGUAGE"
+      },
+      {
+        "name": "CONTENT_LENGTH"
+      },
+      {
+        "name": "CONTENT_LOCATION"
+      },
+      {
+        "name": "CONTENT_MD5"
+      },
+      {
+        "name": "CONTENT_RANGE"
+      },
+      {
+        "name": "CONTENT_SECURITY_POLICY"
+      },
+      {
+        "name": "CONTENT_SECURITY_POLICY_REPORT_ONLY"
+      },
+      {
+        "name": "CONTENT_TRANSFER_ENCODING"
+      },
+      {
+        "name": "CONTENT_TYPE"
+      },
+      {
+        "name": "COOKIE"
+      },
+      {
+        "name": "CRITICAL_CH"
+      },
+      {
+        "name": "CROSS_ORIGIN_EMBEDDER_POLICY"
+      },
+      {
+        "name": "CROSS_ORIGIN_EMBEDDER_POLICY_REPORT_ONLY"
+      },
+      {
+        "name": "CROSS_ORIGIN_OPENER_POLICY"
+      },
+      {
+        "name": "CROSS_ORIGIN_RESOURCE_POLICY"
+      },
+      {
+        "name": "DATE"
+      },
+      {
+        "name": "DEVICE_MEMORY"
+      },
+      {
+        "name": "DNT"
+      },
+      {
+        "name": "DOWNLINK"
+      },
+      {
+        "name": "EARLY_DATA"
+      },
+      {
+        "name": "ECT"
+      },
+      {
+        "name": "ETAG"
+      },
+      {
+        "name": "EXPECT"
+      },
+      {
+        "name": "EXPIRES"
+      },
+      {
+        "name": "FOLLOW_ONLY_WHEN_PRERENDER_SHOWN"
+      },
+      {
+        "name": "FORWARDED"
+      },
+      {
+        "name": "FROM"
+      },
+      {
+        "name": "GIT_PROTOCOL"
+      },
+      {
+        "name": "HOST"
+      },
+      {
+        "name": "HTTP2_SETTINGS"
+      },
+      {
+        "name": "IF_MATCH"
+      },
+      {
+        "name": "IF_MODIFIED_SINCE"
+      },
+      {
+        "name": "IF_NONE_MATCH"
+      },
+      {
+        "name": "IF_RANGE"
+      },
+      {
+        "name": "IF_UNMODIFIED_SINCE"
+      },
+      {
+        "name": "KEEP_ALIVE"
+      },
+      {
+        "name": "LAST_EVENT_ID"
+      },
+      {
+        "name": "LAST_MODIFIED"
+      },
+      {
+        "name": "LINK"
+      },
+      {
+        "name": "LOCATION"
+      },
+      {
+        "name": "MAX_FORWARDS"
+      },
+      {
+        "name": "METHOD"
+      },
+      {
+        "name": "NO_VARY_SEARCH"
+      },
+      {
+        "name": "OBSERVE_BROWSING_TOPICS"
+      },
+      {
+        "name": "ORIGIN"
+      },
+      {
+        "name": "ORIGIN_ISOLATION"
+      },
+      {
+        "name": "ORIGIN_TRIAL"
+      },
+      {
+        "name": "P3P"
+      },
+      {
+        "name": "PATH"
+      },
+      {
+        "name": "PERMISSIONS_POLICY"
+      },
+      {
+        "name": "PERMISSIONS_POLICY_REPORT_ONLY"
+      },
+      {
+        "name": "PING_FROM"
+      },
+      {
+        "name": "PING_TO"
+      },
+      {
+        "name": "PRAGMA"
+      },
+      {
+        "name": "PREFER"
+      },
+      {
+        "name": "PROTOCOL"
+      },
+      {
+        "name": "PROXY_AUTHENTICATE"
+      },
+      {
+        "name": "PROXY_AUTHORIZATION"
+      },
+      {
+        "name": "PUBLIC_KEY_PINS"
+      },
+      {
+        "name": "PUBLIC_KEY_PINS_REPORT_ONLY"
+      },
+      {
+        "name": "PURPOSE"
+      },
+      {
+        "name": "RANGE"
+      },
+      {
+        "name": "REFERER"
+      },
+      {
+        "name": "REFERRER_POLICY"
+      },
+      {
+        "name": "REFRESH"
+      },
+      {
+        "name": "REPORT_TO"
+      },
+      {
+        "name": "RETRY_AFTER"
+      },
+      {
+        "name": "RTT"
+      },
+      {
+        "name": "SAVE_DATA"
+      },
+      {
+        "name": "SCHEME"
+      },
+      {
+        "name": "SEC_AD_AUCTION_FETCH"
+      },
+      {
+        "name": "SEC_BROWSING_TOPICS"
+      },
+      {
+        "name": "SEC_CH_DPR"
+      },
+      {
+        "name": "SEC_CH_UA"
+      },
+      {
+        "name": "SEC_CH_UA_ARCH"
+      },
+      {
+        "name": "SEC_CH_UA_BITNESS"
+      },
+      {
+        "name": "SEC_CH_UA_FORM_FACTOR"
+      },
+      {
+        "name": "SEC_CH_UA_FORM_FACTORS"
+      },
+      {
+        "name": "SEC_CH_UA_FULL_VERSION"
+      },
+      {
+        "name": "SEC_CH_UA_FULL_VERSION_LIST"
+      },
+      {
+        "name": "SEC_CH_UA_MOBILE"
+      },
+      {
+        "name": "SEC_CH_UA_MODEL"
+      },
+      {
+        "name": "SEC_CH_UA_PLATFORM"
+      },
+      {
+        "name": "SEC_CH_UA_PLATFORM_VERSION"
+      },
+      {
+        "name": "SEC_CH_UA_WOW64"
+      },
+      {
+        "name": "SEC_CH_VIEWPORT_HEIGHT"
+      },
+      {
+        "name": "SEC_CH_VIEWPORT_WIDTH"
+      },
+      {
+        "name": "SEC_FETCH_DEST"
+      },
+      {
+        "name": "SEC_FETCH_MODE"
+      },
+      {
+        "name": "SEC_FETCH_SITE"
+      },
+      {
+        "name": "SEC_FETCH_USER"
+      },
+      {
+        "name": "SEC_GPC"
+      },
+      {
+        "name": "SEC_METADATA"
+      },
+      {
+        "name": "SEC_PROVIDED_TOKEN_BINDING_ID"
+      },
+      {
+        "name": "SEC_REFERRED_TOKEN_BINDING_ID"
+      },
+      {
+        "name": "SEC_TOKEN_BINDING"
+      },
+      {
+        "name": "SEC_WEBSOCKET_ACCEPT"
+      },
+      {
+        "name": "SEC_WEBSOCKET_EXTENSIONS"
+      },
+      {
+        "name": "SEC_WEBSOCKET_KEY"
+      },
+      {
+        "name": "SEC_WEBSOCKET_PROTOCOL"
+      },
+      {
+        "name": "SEC_WEBSOCKET_VERSION"
+      },
+      {
+        "name": "SERVER"
+      },
+      {
+        "name": "SERVER_TIMING"
+      },
+      {
+        "name": "SERVICE_WORKER"
+      },
+      {
+        "name": "SERVICE_WORKER_ALLOWED"
+      },
+      {
+        "name": "SET_COOKIE"
+      },
+      {
+        "name": "SET_COOKIE2"
+      },
+      {
+        "name": "SOURCE_MAP"
+      },
+      {
+        "name": "STATUS"
+      },
+      {
+        "name": "STRICT_TRANSPORT_SECURITY"
+      },
+      {
+        "name": "SUPPORTS_LOADING_MODE"
+      },
+      {
+        "name": "TE"
+      },
+      {
+        "name": "TIMING_ALLOW_ORIGIN"
+      },
+      {
+        "name": "TRAILER"
+      },
+      {
+        "name": "TRANSFER_ENCODING"
+      },
+      {
+        "name": "UPGRADE"
+      },
+      {
+        "name": "UPGRADE_INSECURE_REQUESTS"
+      },
+      {
+        "name": "USER_AGENT"
+      },
+      {
+        "name": "VARY"
+      },
+      {
+        "name": "VIA"
+      },
+      {
+        "name": "VIEWPORT_WIDTH"
+      },
+      {
+        "name": "WARNING"
+      },
+      {
+        "name": "WIDTH"
+      },
+      {
+        "name": "WWW_AUTHENTICATE"
+      },
+      {
+        "name": "X_CONTENT_TYPE_OPTIONS"
+      },
+      {
+        "name": "X_DEVICE_ACCEPT_LANGUAGE"
+      },
+      {
+        "name": "X_DEVICE_IP"
+      },
+      {
+        "name": "X_DEVICE_REFERER"
+      },
+      {
+        "name": "X_DEVICE_REQUESTED_WITH"
+      },
+      {
+        "name": "X_DNS_PREFETCH_CONTROL"
+      },
+      {
+        "name": "X_DOWNLOAD_OPTIONS"
+      },
+      {
+        "name": "X_DO_NOT_TRACK"
+      },
+      {
+        "name": "X_FORWARDED_FOR"
+      },
+      {
+        "name": "X_FORWARDED_HOST"
+      },
+      {
+        "name": "X_FORWARDED_PORT"
+      },
+      {
+        "name": "X_FORWARDED_PROTO"
+      },
+      {
+        "name": "X_FRAME_OPTIONS"
+      },
+      {
+        "name": "X_MOZ"
+      },
+      {
+        "name": "X_POWERED_BY"
+      },
+      {
+        "name": "X_PURPOSE"
+      },
+      {
+        "name": "X_REQUESTED_WITH"
+      },
+      {
+        "name": "X_REQUEST_ID"
+      },
+      {
+        "name": "X_USER_IP"
+      },
+      {
+        "name": "X_XSS_PROTECTION"
+      },
+      {
+        "name": "YAHOO_ROLE_AUTH"
+      }
+    ],
+    "name": "com.linecorp.armeria.common.HttpHeaderNames"
+  },
+  {
+    "name": "com.linecorp.armeria.common.StringMultimap$Entry[]"
+  },
+  {
+    "name": "com.linecorp.armeria.internal.common.util.DefaultExceptionClassifier"
+  },
+  {
+    "name": "com.linecorp.armeria.internal.server.annotation.AnnotatedDocServicePlugin"
+  },
+  {
+    "name": "com.linecorp.armeria.internal.server.graphql.GraphqlDocServicePlugin"
+  },
+  {
+    "fields": [
+      {
+        "name": "drainStatus"
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.BLCHeader$DrainStatusRef"
+  },
+  {
+    "fields": [
+      {
+        "name": "producerLimit"
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.BaseMpscLinkedArrayQueueColdProducerFields"
+  },
+  {
+    "fields": [
+      {
+        "name": "consumerIndex"
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.BaseMpscLinkedArrayQueueConsumerFields"
+  },
+  {
+    "fields": [
+      {
+        "name": "producerIndex"
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.BaseMpscLinkedArrayQueueProducerFields"
+  },
+  {
+    "fields": [
+      {
+        "name": "key"
+      },
+      {
+        "name": "value"
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.PS"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.PSMS"
+  },
+  {
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "com.linecorp.armeria.internal.shaded.caffeine.cache.Caffeine",
+          "com.linecorp.armeria.internal.shaded.caffeine.cache.CacheLoader",
+          "boolean"
+        ]
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.SSLSMS"
+  },
+  {
+    "fields": [
+      {
+        "name": "tableBusy"
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.caffeine.cache.StripedBuffer"
+  },
+  {
+    "name": "com.linecorp.armeria.internal.shaded.jctools.maps.ConcurrentAutoTable"
+  },
+  {
+    "fields": [
+      {
+        "name": "_kvs"
+      }
+    ],
+    "name": "com.linecorp.armeria.internal.shaded.jctools.maps.NonBlockingHashMap"
+  },
+  {
+    "name": "com.linecorp.armeria.internal.shaded.jctools.maps.NonBlockingHashMap$CHM"
+  },
+  {
+    "name": "com.linecorp.armeria.server.protobuf.ProtobufDescriptiveTypeInfoProvider"
+  }
+]
