@@ -12,6 +12,24 @@ Zookeeper/etcd clustering, are excluded.
 
 ---
 
+## Implemented
+
+| Case | Dir | Modules Tested |
+|------|-----|----------------|
+| Simple Java Agent | `simple-java-agent/` | Core tracing, metrics, topology |
+| Istio ALS | `istio-als/` | Envoy ALS receiver, K8s cluster |
+| Event | `event/` | `receiver-event` |
+| Menu | `menu/` | GraphQL menu/dashboard metadata |
+| Alarm | `alarm/` | `alarm` module, webhook |
+| Log | `log/` | `receiver-log`, LAL engine |
+| Meter | `meter/` | `receiver-meter`, MAL, virtual cache/DB |
+| Trace Profiling | `trace-profiling/` | Trace profiling lifecycle |
+| VM Telegraf | `vm-telegraf/` | `receiver-telegraf` |
+| VM Zabbix | `vm-zabbix/` | `receiver-zabbix` (disabled by default) |
+| Zipkin | `zipkin/` | `receiver-zipkin`, `query-zipkin` (disabled by default) |
+
+---
+
 ## Tier 1 — Core (no external deps beyond OAP + BanyanDB + Java test services)
 
 | Case | Upstream Path | Cluster | Description |
