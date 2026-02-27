@@ -238,6 +238,18 @@ jobs:
         with:
           e2e-file: $GITHUB_WORKSPACE/test/e2e/cases/${{ matrix.test.case }}/e2e.yaml
 
+      - name: Dump OAP logs
+        if: ${{ always() }}
+        run: |
+          echo "=== OAP Pod Logs ==="
+          for f in "${{ env.SW_INFRA_E2E_LOG_DIR }}"/pods/istio-system/skywalking-oap-*/*.log \
+                   "${{ env.SW_INFRA_E2E_LOG_DIR }}"/containers/oap*/std*.log; do
+            [ -f "$f" ] || continue
+            echo "--- $f ---"
+            cat "$f"
+            echo ""
+          done
+
       - name: Upload logs on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
