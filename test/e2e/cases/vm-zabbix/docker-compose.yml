@@ -48,6 +48,9 @@ services:
     image: zabbix/zabbix-agent:alpine-6.4.15
     networks:
       - e2e
+    environment:
+      ZBX_ACTIVESERVERS: oap:10051
+      ZBX_HOSTNAME: vm-service
     volumes:
       - ../../../../skywalking/test/e2e-v2/cases/vm/zabbix/zabbix_agentd.conf:/etc/zabbix/zabbix_agentd.d/zabbix_agentd.conf
     depends_on:

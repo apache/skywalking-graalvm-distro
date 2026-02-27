@@ -1235,13 +1235,17 @@ public class Precompiler {
             "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$Entities",
             "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$EntityLabel",
             "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$Metric",
+            // Zabbix protocol: Gson serializes ActiveChecks response to agent
+            "org.apache.skywalking.oap.server.receiver.zabbix.provider.protocol.bean.ZabbixResponse$ActiveChecks",
             // Meter base class: attr0-attr5 fields must be discoverable via getDeclaredFields()
             // for StorageModels.retrieval() to include them in BanyanDB schemas
             "org.apache.skywalking.oap.server.core.analysis.meter.Meter",
             // GraphQL query types deserialized at runtime
             "org.apache.skywalking.oap.server.core.query.type.event.Source",
             // Searchable tag POJO used in alarm/log query results
-            "org.apache.skywalking.oap.server.core.analysis.manual.searchtag.Tag"
+            "org.apache.skywalking.oap.server.core.analysis.manual.searchtag.Tag",
+            // Alarm snapshot: Gson serializes/deserializes at runtime
+            "org.apache.skywalking.oap.server.core.alarm.AlarmSnapshotRecord"
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));
