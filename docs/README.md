@@ -104,6 +104,8 @@ and asserts identical results. Tests require actual data flow — no vacuous emp
 ## Further Reading
 
 - [Distribution Policy](distro-policy.md) — full module table, architecture constraints, build workflow
+- [Compiling from Source](compiling.md) — build JVM distro, native image, and Docker image step by step
+- [Pre-Built Docker Images](docker-image.md) — pull and run the CI-built native image from GHCR
 - [Configuration](configuration.md) — all available settings, environment variables, and differences from upstream
 - [OAL Pre-Compilation](oal-immigration.md) — Javassist class export, annotation scan manifests
 - [MAL Transpilation](mal-immigration.md) — Groovy-to-Java transpiler, combination pattern, functional interfaces

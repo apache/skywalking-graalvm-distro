@@ -20,8 +20,14 @@ catalog:
     path: "/readme"
   - name: "Distribution Policy"
     path: "/distro-policy"
-  - name: "Configuration"
-    path: "/configuration"
+  - name: "Setup"
+    catalog:
+      - name: "Compiling from Source"
+        path: "/compiling"
+      - name: "Pre-Built Docker Images"
+        path: "/docker-image"
+      - name: "Configuration"
+        path: "/configuration"
   - name: "Build-Time Immigration"
     catalog:
       - name: "OAL Pre-Compilation"
