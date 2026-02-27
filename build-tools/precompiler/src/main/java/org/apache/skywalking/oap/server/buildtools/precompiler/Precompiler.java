@@ -1229,7 +1229,11 @@ public class Precompiler {
             "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule",
             "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuInitializer$MenuData",
             "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuItemSetting",
-            "org.apache.skywalking.oap.server.receiver.telegraf.provider.handler.pojo.TelegrafData"
+            "org.apache.skywalking.oap.server.receiver.telegraf.provider.handler.pojo.TelegrafData",
+            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig",
+            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$Entities",
+            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$EntityLabel",
+            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$Metric"
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));

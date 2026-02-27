@@ -212,6 +212,7 @@ jobs:
       SW_AGENT_JDK_VERSION: 17
       ISTIO_VERSION: 1.24.0
     strategy:
+      fail-fast: false
       matrix:
         test:
           - name: Simple Java Agent
