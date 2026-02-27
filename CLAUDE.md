@@ -8,13 +8,13 @@
 - `oap-graalvm-server/` — GraalVM-ready OAP server module (JVM distro) with same-FQCN replacement classes and comprehensive test suites.
 - `oap-graalvm-native/` — Native image module: `native-maven-plugin` configuration, native-specific `log4j2.xml`, `log4j2-reflect-config.json`, and native distribution assembly.
 - `docker/` — `Dockerfile.native` (runtime image) and `docker-compose.yml` (BanyanDB + OAP native).
-- `DISTRO-POLICY.md` — Build plan with phase tracking and module selection.
+- `docs/` — Documentation: distro-policy, configuration, OAL/MAL/LAL immigration, config initialization.
 - Root-level Maven + Makefile — Orchestrates building on top of the submodule.
 
 ## Key Principles
 1. **Minimize upstream changes.** SkyWalking is a submodule. Changes to it require separate upstream PRs and syncing back.
 2. **Build-time class export.** All runtime code generation (OAL via Javassist, MAL/LAL via Groovy) runs at build time. Export `.class` files into native-image classpath.
-3. **Fixed module wiring.** Module/provider selection is hardcoded in this distro — no SPI discovery. See DISTRO-POLICY.md for the full module table.
+3. **Fixed module wiring.** Module/provider selection is hardcoded in this distro — no SPI discovery. See docs/distro-policy.md for the full module table.
 4. **JDK 25.** Already compiles and runs.
 
 ## Technical Notes
@@ -24,13 +24,13 @@
 - **Combination pattern**: Multiple YAML files from different data sources (otel, telegraf, zabbix) may define metrics with the same name. The precompiler assigns deterministic suffixes (`_1`, `_2`, etc.) and tracks expression hashes for unambiguous resolution.
 - **Same-FQCN replacement**: Classes in `oap-libs-for-graalvm/*/src/main/java/` with the same fully-qualified class name as upstream classes are repackaged via `maven-shade-plugin` (original `.class` excluded). Used for `DSL.java`, `SampleFamily.java`, `MeterSystem.java`, etc.
 - **Classpath scanning**: Guava `ClassPath.from()` used in multiple places. Run at build-time pre-compilation as verification gate, export static class index.
-- **Config loading**: `YamlConfigLoaderUtils.copyProperties()` replaced with same-FQCN version that uses Lombok setters instead of `Field.setAccessible()`. See [CONFIG-INIT-IMMIGRATION.md](CONFIG-INIT-IMMIGRATION.md).
+- **Config loading**: `YamlConfigLoaderUtils.copyProperties()` replaced with same-FQCN version that uses Lombok setters instead of `Field.setAccessible()`. See [docs/config-init-immigration.md](docs/config-init-immigration.md).
 - **Reflection metadata**: Precompiler auto-generates `reflect-config.json` by scanning Armeria HTTP handlers, GraphQL resolvers/types, config POJOs, and OAL/MAL/LAL manifests. `log4j2-reflect-config.json` is manually maintained for Log4j2 plugin classes.
 - **Native image**: `oap-graalvm-native` uses `native-maven-plugin` with `-Pnative` profile. Console-only `log4j2.xml` avoids RollingFile reflection chain. ~203MB binary, boots to full module init.
 
 ## Test Suites
 - **MAL**: 71 YAML files covered by 73 test classes (1,281 assertions). See `oap-graalvm-server/src/test/CLAUDE.md` for test generation instructions and `oap-graalvm-server/src/test/MAL-COVERAGE.md` for coverage tracking.
-- **LAL**: 8 YAML files covered by 5 test classes (19 assertions). See [LAL-IMMIGRATION.md](LAL-IMMIGRATION.md) for details.
+- **LAL**: 8 YAML files covered by 5 test classes (19 assertions). See [docs/lal-immigration.md](docs/lal-immigration.md) for details.
 
 Both suites use dual-path comparison: Path A (fresh GroovyShell compilation) vs Path B (pre-compiled class from build-time JAR). Both paths must produce identical results.
 
@@ -65,4 +65,4 @@ docker compose -f docker/docker-compose.yml up
 - **Storage**: BanyanDB
 - **Cluster**: Standalone, Kubernetes
 - **Configuration**: Kubernetes
-- **Receivers/Query/Analyzers/Alarm/Telemetry/Other**: Full feature set (see DISTRO-POLICY.md for details)
+- **Receivers/Query/Analyzers/Alarm/Telemetry/Other**: Full feature set (see docs/distro-policy.md for details)
