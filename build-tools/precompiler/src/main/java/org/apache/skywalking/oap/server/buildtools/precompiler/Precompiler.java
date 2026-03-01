@@ -969,10 +969,15 @@ public class Precompiler {
     private static List<String> scanGraphQLTypes(
         ImmutableSet<ClassPath.ClassInfo> allClasses) {
 
-        // Build simple name → FQCN index for all SkyWalking classes
-        Map<String, String> simpleNameIndex = new HashMap<>();
+        // Build simple name → list of FQCNs index for all SkyWalking classes.
+        // Multiple classes can share a simple name (e.g., AlarmMessage exists in
+        // core.alarm, core.alarm.grpc, and core.query.type packages).
+        // We include ALL matching classes for reflection to avoid missing the
+        // graphql-java-tools type resolver's target class.
+        Map<String, List<String>> simpleNameIndex = new HashMap<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
-            simpleNameIndex.put(classInfo.getSimpleName(), classInfo.getName());
+            simpleNameIndex.computeIfAbsent(classInfo.getSimpleName(), k -> new ArrayList<>())
+                .add(classInfo.getName());
         }
 
         // Parse .graphqls files from classpath
@@ -1000,13 +1005,13 @@ public class Precompiler {
         graphqlTypeNames.remove("Mutation");
         graphqlTypeNames.remove("Subscription");
 
-        // Match schema type names to Java classes
+        // Match schema type names to Java classes (include all FQCN variants)
         List<String> result = new ArrayList<>();
         Set<String> unmatched = new HashSet<>();
         for (String typeName : graphqlTypeNames) {
-            String fqcn = simpleNameIndex.get(typeName);
-            if (fqcn != null) {
-                result.add(fqcn);
+            List<String> fqcns = simpleNameIndex.get(typeName);
+            if (fqcns != null) {
+                result.addAll(fqcns);
             } else {
                 unmatched.add(typeName);
             }
