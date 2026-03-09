@@ -9,7 +9,7 @@ dependency-reduced-pom.xml
 .vscode/
 
 # Claude Code
-.claude/
+.claude/settings.local.json
 
 # Release
 release-package/
