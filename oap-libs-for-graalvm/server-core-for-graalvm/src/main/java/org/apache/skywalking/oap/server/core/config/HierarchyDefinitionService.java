@@ -90,9 +90,10 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
                 Class<?> clazz = Class.forName(fqcn);
                 BiFunction<Service, Service, Boolean> rule =
                     (BiFunction<Service, Service, Boolean>) clazz.getDeclaredConstructor().newInstance();
-                // Extract rule name: HierarchyRule_<sanitizedName> -> reverse sanitize
-                String ruleName = simpleName.startsWith("HierarchyRule_")
-                    ? simpleName.substring("HierarchyRule_".length()).replace('_', '-')
+                // Extract rule name: hierarchy_definition_<sanitizedName> -> reverse sanitize
+                // e.g. hierarchy_definition_lower_short_name_remove_ns -> lower-short-name-remove-ns
+                String ruleName = simpleName.startsWith("hierarchy_definition_")
+                    ? simpleName.substring("hierarchy_definition_".length()).replace('_', '-')
                     : simpleName;
                 rules.put(ruleName, rule);
                 log.debug("Loaded pre-compiled hierarchy rule: {} -> {}", ruleName, fqcn);
