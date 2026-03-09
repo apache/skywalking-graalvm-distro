@@ -17,122 +17,34 @@
 
 package org.apache.skywalking.oap.server.graalvm.lal;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import org.apache.skywalking.apm.network.logging.v3.LogData;
-import org.apache.skywalking.oap.log.analyzer.provider.LALConfig;
+import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
- * Comparison test for the "envoy-als" rule in lal/envoy-als.yaml.
- *
- * <p>This rule uses conditional abort, parsed?.navigation via nested Maps,
- * tag extraction, and rateLimit sampler with if/else branching.
- *
- * <h3>DSL:</h3>
- * <pre>
- * filter {
- *   // abort if responseCode &lt; 400 and no responseFlags
- *   if (parsed?.response?.responseCode?.value as Integer &lt; 400
- *       &amp;&amp; !parsed?.commonProperties?.responseFlags?.toString()?.trim()) {
- *     abort {}
- *   }
- *   extractor {
- *     if (parsed?.response?.responseCode) {
- *       tag 'status.code': parsed?.response?.responseCode?.value
- *     }
- *     tag 'response.flag': parsed?.commonProperties?.responseFlags
- *   }
- *   sink {
- *     sampler {
- *       if (parsed?.commonProperties?.responseFlags?.toString()) {
- *         rateLimit("${log.service}:${parsed?.commonProperties?.responseFlags?.toString()}") { rpm 6000 }
- *       } else {
- *         rateLimit("${log.service}:${parsed?.response?.responseCode}") { rpm 6000 }
- *       }
- *     }
- *   }
- * }
- * </pre>
- *
- * <h3>Branch coverage:</h3>
- * <ul>
- *   <li>responseCode &lt; 400 + no flags → abort</li>
- *   <li>responseCode &gt;= 400 + no flags → tags extracted, sampler with responseCode</li>
- *   <li>responseCode &lt; 400 + flags present → tags extracted, sampler with flags</li>
- * </ul>
- *
- * <p>Input: Instead of Envoy protobuf extraLog, we set parsed Map directly via
- * {@code binding.parsed(nestedMap)}. Groovy's {@code map.property} syntax enables
- * {@code parsed?.response?.responseCode?.value} to traverse nested Maps.
+ * Pre-compilation test for lal/envoy-als.yaml.
  */
 class LALEnvoyAlsTest extends LALScriptComparisonBase {
 
-    private static String ENVOY_ALS_DSL;
+    private static List<LALConfig> RULES;
 
     @BeforeAll
     static void loadRules() throws Exception {
-        final List<LALConfig> rules = loadLALRules("envoy-als.yaml");
-        for (final LALConfig rule : rules) {
-            if ("envoy-als".equals(rule.getName())) {
-                ENVOY_ALS_DSL = rule.getDsl();
-            }
+        RULES = loadLALRules("envoy-als.yaml");
+    }
+
+    @Test
+    void allEnvoyAlsRulesPrecompiled() {
+        assertTrue(RULES.size() >= 1, "envoy-als.yaml should have at least 1 rule");
+        for (final LALConfig rule : RULES) {
+            final LalExpression expr = loadPrecompiled(rule.getName());
+            assertNotNull(expr,
+                "Pre-compiled class for rule '" + rule.getName() + "' should load");
         }
-    }
-
-    /**
-     * responseCode=200 (< 400), no responseFlags → abort fires.
-     */
-    @Test
-    void lowResponseCodeNoFlags_aborts() {
-        final Map<String, Object> parsedMap = new HashMap<>();
-        parsedMap.put("response", buildMap("responseCode", buildMap("value", 200)));
-        parsedMap.put("commonProperties", buildMap("responseFlags", ""));
-
-        final LogData logData = buildTextLogData(
-            "checkout-svc", "checkout-inst", "", null);
-
-        runAndCompareWithParsedMap(ENVOY_ALS_DSL, logData, parsedMap);
-    }
-
-    /**
-     * responseCode=500 (>= 400), no responseFlags → no abort,
-     * tags extracted ('status.code': 500), sampler uses responseCode.
-     */
-    @Test
-    void highResponseCodeNoFlags_extractsTagsWithResponseCode() {
-        final Map<String, Object> parsedMap = new HashMap<>();
-        parsedMap.put("response", buildMap("responseCode", buildMap("value", 500)));
-        parsedMap.put("commonProperties", buildMap("responseFlags", ""));
-
-        final LogData logData = buildTextLogData(
-            "checkout-svc", "checkout-inst", "", null);
-
-        runAndCompareWithParsedMap(ENVOY_ALS_DSL, logData, parsedMap);
-    }
-
-    /**
-     * responseCode=200 (< 400), responseFlags present → no abort (flags make
-     * the !trim() check fail), tags extracted, sampler uses flags.
-     */
-    @Test
-    void lowResponseCodeWithFlags_extractsTagsWithFlags() {
-        final Map<String, Object> parsedMap = new HashMap<>();
-        parsedMap.put("response", buildMap("responseCode", buildMap("value", 200)));
-        parsedMap.put("commonProperties",
-            buildMap("responseFlags", "{upstreamConnectionFailure}"));
-
-        final LogData logData = buildTextLogData(
-            "checkout-svc", "checkout-inst", "", null);
-
-        runAndCompareWithParsedMap(ENVOY_ALS_DSL, logData, parsedMap);
-    }
-
-    private static Map<String, Object> buildMap(final String key, final Object value) {
-        final Map<String, Object> map = new HashMap<>();
-        map.put(key, value);
-        return map;
     }
 }

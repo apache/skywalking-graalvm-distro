@@ -51,8 +51,8 @@ import org.apache.skywalking.oap.server.telemetry.prometheus.PrometheusTelemetry
 // Analyzers
 import org.apache.skywalking.oap.server.analyzer.module.AnalyzerModule;
 import org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleProvider;
-import org.apache.skywalking.oap.log.analyzer.module.LogAnalyzerModule;
-import org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleProvider;
+import org.apache.skywalking.oap.log.analyzer.v2.module.LogAnalyzerModule;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleProvider;
 import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModule;
 import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModuleProvider;
 // Receivers

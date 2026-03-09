@@ -53,34 +53,18 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 | `HierarchyDefinitionService` | `server-core/.../config/HierarchyDefinitionService.java` | Java-backed closures instead of GroovyShell | No |
 | `HierarchyService` | `server-core/.../hierarchy/HierarchyService.java` | Support for Java-backed closures | No |
 
-### meter-analyzer-for-graalvm (10 classes)
+### meter-analyzer-for-graalvm (2 classes)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
-| `DSL` | `meter-analyzer/.../dsl/DSL.java` | Load transpiled `MalExpression` from manifest | No |
-| `FilterExpression` | `meter-analyzer/.../dsl/FilterExpression.java` | Load transpiled `MalFilter` from manifest | No |
-| `Expression` | `meter-analyzer/.../dsl/Expression.java` | Uses `MalExpression` instead of `DelegatingScript` | No |
-| `ExpressionParsingContext` | `meter-analyzer/.../dsl/ExpressionParsingContext.java` | Adapted for `MalExpression` | No |
-| `SampleFamily` | `meter-analyzer/.../dsl/SampleFamily.java` | Closure params → Java functional interfaces | No |
-| `InstanceEntityDescription` | `meter-analyzer/.../EntityDescription/InstanceEntityDescription.java` | Closure params → Java functional interfaces | No |
-| `Rules` | `meter-analyzer/.../prometheus/rule/Rules.java` | Load from JSON manifests instead of filesystem YAML | **Yes** |
-| `MalExpression` | (new) | Interface for transpiled MAL expressions | N/A |
-| `MalFilter` | (new) | Interface for transpiled MAL filters | N/A |
-| `SampleFamilyFunctions` | (new) | Java functional interfaces replacing Groovy Closures | N/A |
+| `DSL` | `meter-analyzer/.../v2/dsl/DSL.java` | Load pre-compiled `MalExpression` from per-file configs (`META-INF/mal-v2/`); look up by expression text; wires closure fields via `LambdaMetafactory` after instantiation | No |
+| `FilterExpression` | `meter-analyzer/.../v2/dsl/FilterExpression.java` | Load pre-compiled `MalFilter` from v2 manifest | No |
 
-### log-analyzer-for-graalvm (9 classes)
+### log-analyzer-for-graalvm (1 class)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
-| `DSL` | `log-analyzer/.../dsl/DSL.java` | Load transpiled `LalExpression` from manifest | No |
-| `LogAnalyzerModuleConfig` | `log-analyzer/.../provider/LogAnalyzerModuleConfig.java` | Added `@Setter` at class level | No |
-| `LALConfigs` | `log-analyzer/.../provider/LALConfigs.java` | Load from JSON manifests instead of filesystem YAML | **Yes** |
-| `AbstractSpec` | `log-analyzer/.../dsl/spec/AbstractSpec.java` | Added `abort()` no-arg overload | No |
-| `FilterSpec` | `log-analyzer/.../dsl/spec/filter/FilterSpec.java` | Added `Consumer` overloads for transpiled code | No |
-| `ExtractorSpec` | `log-analyzer/.../dsl/spec/extractor/ExtractorSpec.java` | Added `Consumer` overloads | No |
-| `SinkSpec` | `log-analyzer/.../dsl/spec/sink/SinkSpec.java` | Added `Consumer` overloads | No |
-| `SamplerSpec` | `log-analyzer/.../dsl/spec/sink/SamplerSpec.java` | Added String-keyed sampler overloads | No |
-| `LalExpression` | (new) | Interface for transpiled LAL expressions | N/A |
+| `DSL` | `log-analyzer/.../v2/dsl/DSL.java` | Load pre-compiled `LalExpression` from v2 manifest | No |
 
 ### agent-analyzer-for-graalvm (2 classes)
 
@@ -117,11 +101,6 @@ Also uses shade plugin to exclude `YamlConfigLoaderUtils`, `ResourceUtils`,
 | `status-query-for-graalvm` | `StatusQueryConfig` | No |
 | `health-checker-for-graalvm` | `HealthCheckerConfig` | No |
 
-### groovy-stubs (12 stub classes)
-
-Minimal `groovy.lang.*` stubs for class loading. No `org.codehaus.groovy.*` packages
-(prevents GraalVM `GroovyIndyInterfaceFeature` from activating). Not a replacement
-of any upstream class — no staleness tracking needed.
 
 ### server-starter-for-graalvm (0 classes, resource-only)
 
@@ -130,20 +109,16 @@ generates its own from git).
 
 ## Tracking Gaps
 
-Only **4 of ~37 replacement source files** are tracked in `replacement-source-sha256.properties`:
+All **~23 replacement source files** are tracked in `replacement-source-sha256.properties`.
+The v2 upstream migration removed many v1 files; remaining replacements cover:
 
-- `ModuleDefine.java`
-- `MeterConfigs.java`
-- `Rules.java`
-- `LALConfigs.java`
-
-The following categories of upstream files have **no SHA-256 staleness tracking**:
-
-| Category | Count | Risk |
-|---|---|---|
-| Non-trivial rewrites (OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem, DSL x2, FilterExpression, Expression, SampleFamily, HierarchyDefinitionService) | ~10 | **High** — upstream API changes would silently break |
-| `@Setter` additions (CoreModuleConfig, AnalyzerModuleConfig, LogAnalyzerModuleConfig, 7 config classes) | ~10 | **Medium** — new fields added upstream won't get setters |
-| Spec class `Consumer` overloads (AbstractSpec, FilterSpec, ExtractorSpec, SinkSpec, SamplerSpec) | 5 | **Medium** — new DSL methods upstream won't get overloads |
+- server-core-for-graalvm: 7 files (OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem, CoreModuleConfig, HierarchyDefinitionService, HierarchyService)
+- meter-analyzer-for-graalvm: 3 files (DSL v2, FilterExpression v2, Rules v2)
+- log-analyzer-for-graalvm: 3 files (DSL v2, LogAnalyzerModuleConfig v2, LALConfigs v2)
+- agent-analyzer-for-graalvm: 2 files (AnalyzerModuleConfig, MeterConfigs)
+- library-module-for-graalvm: 1 file (ModuleDefine)
+- library-util-for-graalvm: 2 files (YamlConfigLoaderUtils, VirtualThreads)
+- Config-only @Setter additions: 7 files
 
 ## Verification Tests
 
@@ -151,11 +126,11 @@ All tests live in `oap-graalvm-server/src/test/`:
 
 | Test | What It Verifies |
 |---|---|
-| `ReplacementClassStalenessTest` | SHA-256 of 4 tracked upstream sources |
+| `ReplacementClassStalenessTest` | SHA-256 of all tracked upstream sources |
 | `PrecompiledYamlStalenessTest` | SHA-256 of ~49 YAML rule files |
 | `PrecompiledRegistrationTest` | Manifests match live Guava ClassPath scans; all OAL/MAL/LAL classes loadable |
-| 73 MAL comparison tests | Dual-path: fresh Groovy vs transpiled Java (1281 assertions) |
-| 5 LAL comparison tests | Dual-path: fresh Groovy vs transpiled Java (19 assertions) |
+| 73 MAL comparison tests | Dual-path: fresh v2 compilation vs pre-compiled class |
+| 5 LAL pre-compilation tests | Pre-compiled LAL classes load from manifest |
 
 ## Adding a New Replacement
 

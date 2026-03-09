@@ -27,7 +27,6 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
@@ -43,22 +42,25 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.skywalking.oap.meter.analyzer.MetricConvert;
-import org.apache.skywalking.oap.log.analyzer.provider.LALConfig;
-import org.apache.skywalking.oap.log.analyzer.provider.LALConfigs;
+import org.apache.skywalking.oap.meter.analyzer.v2.MetricConvert;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.DSL;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.FilterExpression;
+import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule;
+import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
+import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rules;
+import org.apache.skywalking.oap.log.analyzer.v2.compiler.LALClassGenerator;
+import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
+import org.apache.skywalking.oap.log.analyzer.v2.spi.LALSourceTypeProvider;
 import org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig;
-import org.apache.skywalking.oap.meter.analyzer.dsl.DSL;
-import org.apache.skywalking.oap.meter.analyzer.dsl.FilterExpression;
-import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule;
-import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rule;
-import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rules;
+import org.apache.skywalking.oap.server.core.config.v2.compiler.HierarchyRuleClassGenerator;
 import org.yaml.snakeyaml.Yaml;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.library.util.ResourceUtils;
@@ -78,13 +80,15 @@ import org.apache.skywalking.oap.server.core.source.ScopeDeclaration;
 import org.apache.skywalking.oap.server.core.storage.StorageBuilderFactory;
 
 /**
- * Build-time pre-compilation tool that discovers all OALDefine subclasses via
- * classpath scanning, runs the OAL engine for each, exports generated .class
- * files and manifest files, and scans the classpath for annotated classes and
- * interface implementations used at runtime.
+ * Build-time pre-compilation tool that runs all four DSL engines (OAL, MAL, LAL, Hierarchy)
+ * at build time, exports generated .class files and manifest files, and scans the classpath
+ * for annotated classes and interface implementations used at runtime.
  *
- * OAL script files are loaded from the skywalking submodule directly via
- * additionalClasspathElements in the exec-maven-plugin configuration.
+ * All four DSL engines share the same pipeline:
+ * DSL text → ANTLR4 parse → Immutable AST → Javassist bytecode → .class
+ *
+ * OAL script files and MAL/LAL/Hierarchy configs are loaded from the skywalking submodule
+ * directly via additionalClasspathElements in the exec-maven-plugin configuration.
  */
 @Slf4j
 public class Precompiler {
@@ -95,6 +99,12 @@ public class Precompiler {
         "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.";
     private static final String DISPATCHER_PACKAGE =
         "org.apache.skywalking.oap.server.core.source.oal.rt.dispatcher.";
+    private static final String MAL_RT_PACKAGE =
+        "org.apache.skywalking.oap.meter.analyzer.v2.compiler.rt.";
+    private static final String LAL_RT_PACKAGE =
+        "org.apache.skywalking.oap.log.analyzer.v2.compiler.rt.";
+    private static final String HIERARCHY_RT_PACKAGE =
+        "org.apache.skywalking.oap.server.core.config.v2.compiler.hierarchy.rule.rt.";
 
     /**
      * Discover all OALDefine subclasses on the classpath via Guava ClassPath scanning.
@@ -226,11 +236,14 @@ public class Precompiler {
         writeManifest(annotationScanDir.resolve("GraphQLTypes.txt"),
             scanGraphQLTypes(allClasses));
 
-        // ---- MAL pre-compilation ----
+        // ---- MAL pre-compilation (v2 ANTLR4 + Javassist) ----
         compileMAL(outputDir, allClasses);
 
-        // ---- LAL pre-compilation ----
+        // ---- LAL pre-compilation (v2 ANTLR4 + Javassist) ----
         compileLAL(outputDir);
+
+        // ---- Hierarchy pre-compilation (v2 ANTLR4 + Javassist) ----
+        compileHierarchy(outputDir);
 
         // ---- GraalVM native-image metadata generation ----
         generateNativeImageConfig(outputDir);
@@ -239,15 +252,15 @@ public class Precompiler {
     }
 
     /**
-     * Pre-compile all MAL (Meter Analysis Language) rules.
-     * Runs the full MAL pipeline at build time with intercepting same-FQCN classes
-     * that capture Groovy bytecode and Javassist-generated meter classes to disk.
+     * Pre-compile all MAL (Meter Analysis Language) rules using v2 ANTLR4 + Javassist engine.
+     *
+     * Configures the v2 DSL's static MALClassGenerator to write .class files to the output
+     * directory, then runs MetricConvert which internally calls DSL.parse() → MALClassGenerator.compile().
+     * MeterSystem generates its own Javassist meter function storage classes (orthogonal to MAL).
      */
     @SuppressWarnings("unchecked")
     private static void compileMAL(String outputDir,
                                    ImmutableSet<ClassPath.ClassInfo> allClasses) throws Exception {
-        File groovyOutputDir = new File(outputDir);
-
         // Build function register from scanned @MeterFunction classes
         Map<String, Class<? extends AcceptableValue>> functionRegister = new HashMap<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
@@ -265,9 +278,14 @@ public class Precompiler {
         }
         log.info("MAL: built function register with {} entries", functionRegister.size());
 
-        // Set up build-time interceptors
-        DSL.setTargetDirectory(groovyOutputDir);
-        FilterExpression.setTargetDirectory(groovyOutputDir);
+        // Configure v2 DSL and FilterExpression generators to write .class files
+        // to the proper package directory structure within outputDir
+        File malRtDir = new File(outputDir, MAL_RT_PACKAGE.replace('.', '/'));
+        malRtDir.mkdirs();
+        DSL.setClassOutputDir(malRtDir);
+        FilterExpression.setClassOutputDir(malRtDir);
+
+        // Set up MeterSystem (unchanged — Javassist meter function storage class generation)
         MeterSystem.setFunctionRegister(functionRegister);
         MeterSystem.setOutputDirectory(outputDir);
 
@@ -296,49 +314,33 @@ public class Precompiler {
         rulesByPath.put("envoy-metrics-rules", envoyRules);
 
         // 5. Telegraf rules (telegraf-rules/*.yaml)
-        // Shares metricPrefix=meter_vm with otel-rules/vm.yaml — combination pattern:
-        // multiple expressions from different sources aggregate into the same metrics.
         List<Rule> telegrafRules = loadAndCompileRules("telegraf-rules", List.of("*"), meterSystem);
         totalRules += telegrafRules.size();
         rulesByPath.put("telegraf-rules", telegrafRules);
 
         // 6. Zabbix rules (zabbix-rules/*.yaml)
-        // Uses 'metrics' field instead of 'metricsRules', requires custom loading.
         List<Rule> zabbixRules = loadAndCompileZabbixRules("zabbix-rules", meterSystem);
         totalRules += zabbixRules.size();
         rulesByPath.put("zabbix-rules", zabbixRules);
 
         // Write manifests
         Path metaInf = Path.of(outputDir, "META-INF");
+
+        // MeterSystem exported classes (Javassist meter function storage classes)
         writeManifest(metaInf.resolve("mal-meter-classes.txt"), meterSystem.getExportedClasses());
 
-        List<String> scriptEntries = DSL.getScriptRegistry().entrySet().stream()
-            .map(e -> e.getKey() + "=" + e.getValue())
-            .sorted()
-            .collect(Collectors.toList());
-        writeManifest(metaInf.resolve("mal-groovy-scripts.txt"), scriptEntries);
+        // Scan for v2 generated MalExpression/MalFilter .class files
+        List<String> malV2Classes = scanV2Classes(outputDir, MAL_RT_PACKAGE);
+        writeManifest(metaInf.resolve("mal-v2-classes.txt"), malV2Classes);
 
-        List<String> expressionHashEntries = DSL.getExpressionHashes().entrySet().stream()
-            .map(e -> e.getKey() + "=" + e.getValue())
-            .sorted()
-            .collect(Collectors.toList());
-        writeManifest(metaInf.resolve("mal-groovy-expression-hashes.txt"), expressionHashEntries);
+        // Write per-file MAL manifests (organized by original YAML file structure)
+        int expressionCount = writePerFileManifests(rulesByPath, metaInf);
 
-        // Filter scripts use Properties format to handle special chars in filter literals
-        Properties filterProps = new Properties();
-        FilterExpression.getScriptRegistry().forEach(filterProps::setProperty);
-        try (OutputStream os = Files.newOutputStream(metaInf.resolve("mal-filter-scripts.properties"))) {
-            filterProps.store(os, null);
-        }
-
-        log.info("MAL pre-compilation: {} rules, {} meter classes, {} groovy scripts, {} filter scripts",
+        log.info("MAL pre-compilation: {} rules, {} meter classes, {} v2 expression classes, {} filters",
             totalRules,
             meterSystem.getExportedClasses().size(),
-            DSL.getScriptRegistry().size(),
-            FilterExpression.getScriptRegistry().size());
-
-        // ---- MAL-to-Java transpilation ----
-        transpileMAL(outputDir);
+            expressionCount,
+            FilterExpression.FILTER_MAP.size());
 
         // ---- Serialize config data as JSON for runtime loaders ----
         serializeMALConfigData(outputDir, rulesByPath);
@@ -401,7 +403,6 @@ public class Precompiler {
                     rule.setExpSuffix((String) yamlMap.get("expSuffix"));
                     rule.setExpPrefix((String) yamlMap.get("expPrefix"));
                     rule.setFilter((String) yamlMap.get("filter"));
-                    rule.setInitExp((String) yamlMap.get("initExp"));
 
                     List<Map<String, String>> metrics =
                         (List<Map<String, String>>) yamlMap.get("metrics");
@@ -431,76 +432,115 @@ public class Precompiler {
     }
 
     /**
-     * Transpile MAL expressions and filters from Groovy to pure Java classes.
-     * Runs after MetricConvert pipeline — uses expression strings captured by DSL
-     * and filter literals captured by FilterExpression.
+     * Pre-compile hierarchy matching rules using v2 ANTLR4 + Javassist engine.
+     *
+     * Loads hierarchy-definition.yml, compiles each auto-matching-rule expression
+     * via HierarchyRuleClassGenerator, and writes .class files to the output directory.
      */
-    private static void transpileMAL(String outputDir) throws Exception {
-        MalToJavaTranspiler transpiler = new MalToJavaTranspiler();
-        int exprCount = 0;
-        int filterCount = 0;
+    @SuppressWarnings("unchecked")
+    private static void compileHierarchy(String outputDir) throws Exception {
+        HierarchyRuleClassGenerator hierarchyGenerator = new HierarchyRuleClassGenerator();
+        File hierarchyRtDir = new File(outputDir, HIERARCHY_RT_PACKAGE.replace('.', '/'));
+        hierarchyRtDir.mkdirs();
+        hierarchyGenerator.setClassOutputDir(hierarchyRtDir);
+        hierarchyGenerator.setYamlSource("hierarchy-definition.yml");
 
-        // Transpile expressions: scriptName → expression string
-        for (Map.Entry<String, String> entry : DSL.getExpressionRegistry().entrySet()) {
-            String scriptName = entry.getKey();
-            String expression = entry.getValue();
-            String className = "MalExpr_" + scriptName;
-            try {
-                String source = transpiler.transpileExpression(className, expression);
-                transpiler.registerExpression(className, source);
-                exprCount++;
-            } catch (Exception e) {
-                log.warn("Failed to transpile MAL expression: {} = {}", scriptName, expression, e);
+        // Load hierarchy-definition.yml from classpath
+        try (InputStream is = Precompiler.class.getClassLoader()
+                .getResourceAsStream("hierarchy-definition.yml")) {
+            if (is == null) {
+                log.warn("hierarchy-definition.yml not found on classpath, skipping hierarchy compilation");
+                return;
             }
-        }
-
-        // Transpile filters: literal → Groovy class (we need literal for transpiler)
-        int filterIdx = 0;
-        for (String literal : FilterExpression.getScriptRegistry().keySet()) {
-            String className = "MalFilter_" + filterIdx++;
-            try {
-                String source = transpiler.transpileFilter(className, literal);
-                transpiler.registerFilter(className, literal, source);
-                filterCount++;
-            } catch (Exception e) {
-                log.warn("Failed to transpile MAL filter: {}", literal, e);
+            Map<String, Object> yamlMap = new Yaml().load(is);
+            Map<String, String> autoMatchingRules =
+                (Map<String, String>) yamlMap.get("auto-matching-rules");
+            if (autoMatchingRules == null || autoMatchingRules.isEmpty()) {
+                log.warn("No auto-matching-rules found in hierarchy-definition.yml");
+                return;
             }
+
+            int count = 0;
+            for (Map.Entry<String, String> entry : autoMatchingRules.entrySet()) {
+                String ruleName = entry.getKey();
+                String expression = entry.getValue();
+                try {
+                    hierarchyGenerator.setClassNameHint(ruleName);
+                    hierarchyGenerator.compile(ruleName, expression);
+                    count++;
+                    log.debug("Hierarchy: compiled rule {} -> {}", ruleName, expression);
+                } catch (Exception e) {
+                    log.warn("Failed to compile hierarchy rule: {}", ruleName, e);
+                }
+            }
+
+            // Write manifest
+            Path metaInf = Path.of(outputDir, "META-INF");
+            List<String> hierarchyV2Classes = scanV2Classes(outputDir, HIERARCHY_RT_PACKAGE);
+            writeManifest(metaInf.resolve("hierarchy-v2-classes.txt"), hierarchyV2Classes);
+
+            log.info("Hierarchy pre-compilation: {} rules, {} v2 classes",
+                count, hierarchyV2Classes.size());
         }
-
-        // Compile generated Java sources.
-        // Transpiled code targets GraalVM APIs (Java functional interfaces in SampleFamily,
-        // public ExpressionParsingContext.get()). Prepend meter-analyzer-for-graalvm classes
-        // to javac classpath so they take precedence over upstream meter-analyzer.
-        File javaSourceDir = new File(outputDir, "generated-mal-sources");
-        File javaOutputDir = new File(outputDir);
-        String classpath = resolveClasspath();
-        File graalvmMeterClasses = findGraalvmMeterClasses(outputDir);
-        if (graalvmMeterClasses != null) {
-            classpath = graalvmMeterClasses.getAbsolutePath() + File.pathSeparator + classpath;
-            log.info("MAL transpilation: prepended {} to javac classpath",
-                graalvmMeterClasses.getAbsolutePath());
-        } else {
-            log.warn("MAL transpilation: meter-analyzer-for-graalvm classes not found; "
-                + "transpiled sources may fail to compile");
-        }
-        transpiler.compileAll(javaSourceDir, javaOutputDir, classpath);
-
-        // Write transpiled manifests (alongside existing Groovy manifests)
-        transpiler.writeExpressionManifest(new File(outputDir));
-        transpiler.writeFilterManifest(new File(outputDir));
-
-        log.info("MAL transpilation: {} expressions, {} filters transpiled to Java",
-            exprCount, filterCount);
     }
 
     /**
-     * Pre-compile all LAL (Log Analysis Language) scripts.
-     * Uses the same CompilerConfiguration as upstream (CompileStatic + LALPrecompiledExtension,
-     * SecureASTCustomizer, LALDelegatingScript base class) plus targetDirectory for bytecode capture.
+     * Scan output directory for v2 generated .class files matching a package prefix.
+     * Converts directory structure to fully-qualified class names.
+     */
+    private static List<String> scanV2Classes(String outputDir, String packagePrefix) throws IOException {
+        String packagePath = packagePrefix.replace('.', '/');
+        Path dir = Path.of(outputDir, packagePath);
+        if (!Files.isDirectory(dir)) {
+            return Collections.emptyList();
+        }
+
+        List<String> classNames = new ArrayList<>();
+        try (Stream<Path> files = Files.list(dir)) {
+            files.filter(p -> p.toString().endsWith(".class"))
+                 .filter(Files::isRegularFile)
+                 .forEach(p -> {
+                     String fileName = p.getFileName().toString();
+                     String simpleName = fileName.substring(0, fileName.length() - ".class".length());
+                     classNames.add(packagePrefix + simpleName);
+                 });
+        }
+        Collections.sort(classNames);
+        return classNames;
+    }
+
+    /**
+     * Pre-compile all LAL (Log Analysis Language) scripts using v2 ANTLR4 + Javassist engine.
+     *
+     * Creates a LALClassGenerator with classOutputDir set, then compiles each LAL rule
+     * directly. The v2 LAL DSL.of() creates a new generator per call, so we compile
+     * directly via our own generator for .class export.
      */
     private static void compileLAL(String outputDir) throws Exception {
-        File groovyOutputDir = new File(outputDir);
-        org.apache.skywalking.oap.log.analyzer.dsl.DSL.setTargetDirectory(groovyOutputDir);
+        LALClassGenerator lalGenerator = new LALClassGenerator();
+        File lalRtDir = new File(outputDir, LAL_RT_PACKAGE.replace('.', '/'));
+        lalRtDir.mkdirs();
+        lalGenerator.setClassOutputDir(lalRtDir);
+
+        // Discover LALSourceTypeProvider implementations for inputType/outputType resolution
+        Map<String, LALSourceTypeProvider> spiProviders = new HashMap<>();
+        java.util.ServiceLoader<LALSourceTypeProvider> providers =
+            java.util.ServiceLoader.load(LALSourceTypeProvider.class);
+        for (LALSourceTypeProvider provider : providers) {
+            spiProviders.put(provider.layer().name(), provider);
+            log.info("LAL: discovered LALSourceTypeProvider for layer {} -> inputType={}, outputType={}",
+                provider.layer(), provider.inputType().getName(),
+                provider.outputType() != null ? provider.outputType().getName() : "default(Log)");
+        }
+
+        // Build LALOutputBuilder short-name map from SPI (same as LogFilterListener.Factory)
+        Map<String, Class<?>> outputBuilderNames = new HashMap<>();
+        for (org.apache.skywalking.oap.server.core.source.LALOutputBuilder builder :
+                java.util.ServiceLoader.load(org.apache.skywalking.oap.server.core.source.LALOutputBuilder.class)) {
+            String name = builder.name();
+            outputBuilderNames.put(name, builder.getClass());
+            log.info("LAL: LALOutputBuilder registered: name={}, class={}", name, builder.getClass().getName());
+        }
 
         // Enumerate all LAL YAML files from classpath
         File[] lalFiles = ResourceUtils.getPathFiles("lal");
@@ -515,10 +555,9 @@ public class Precompiler {
             }
         }
 
-        // Load all LAL configs and collect DSL text for transpilation
+        // Load all LAL configs and compile each rule
         List<LALConfigs> allConfigs = LALConfigs.load("lal", lalFileNames);
         int totalRules = 0;
-        Map<String, String> hashToDsl = new LinkedHashMap<>();
 
         for (LALConfigs configs : allConfigs) {
             if (configs.getRules() == null) {
@@ -526,121 +565,72 @@ public class Precompiler {
             }
             for (LALConfig rule : configs.getRules()) {
                 try {
-                    org.apache.skywalking.oap.log.analyzer.dsl.DSL.compile(
-                        rule.getName(), rule.getDsl());
+                    String yamlSource = rule.getName();
+                    lalGenerator.setYamlSource(yamlSource);
+                    lalGenerator.setClassNameHint(rule.getName());
+
+                    // Resolve inputType from rule config or SPI
+                    Class<?> inputType = null;
+                    if (rule.getInputType() != null && !rule.getInputType().isEmpty()) {
+                        try {
+                            inputType = Class.forName(rule.getInputType());
+                        } catch (ClassNotFoundException e) {
+                            log.warn("LAL: inputType not found: {}", rule.getInputType());
+                        }
+                    } else if (rule.getLayer() != null) {
+                        LALSourceTypeProvider spi = spiProviders.get(rule.getLayer());
+                        if (spi != null) {
+                            inputType = spi.inputType();
+                        }
+                    }
+                    lalGenerator.setInputType(inputType);
+
+                    // Resolve outputType from rule config or SPI
+                    Class<?> outputType = null;
+                    String yamlOutputType = rule.getOutputType();
+                    if (yamlOutputType != null && !yamlOutputType.isEmpty()) {
+                        // Try short name first
+                        if (!yamlOutputType.contains(".")) {
+                            outputType = outputBuilderNames.get(yamlOutputType);
+                        }
+                        // Fall back to FQCN
+                        if (outputType == null) {
+                            try {
+                                outputType = Class.forName(yamlOutputType);
+                            } catch (ClassNotFoundException e) {
+                                log.warn("LAL: outputType not found: {}", yamlOutputType);
+                            }
+                        }
+                    } else if (rule.getLayer() != null) {
+                        LALSourceTypeProvider spi = spiProviders.get(rule.getLayer());
+                        if (spi != null && spi.outputType() != null) {
+                            outputType = spi.outputType();
+                        }
+                    }
+                    lalGenerator.setOutputType(outputType);
+
+                    LalExpression compiled = lalGenerator.compile(rule.getDsl());
                     totalRules++;
-                    // Capture DSL text keyed by hash for transpilation
-                    String hash = org.apache.skywalking.oap.log.analyzer.dsl.DSL.sha256(
-                        rule.getDsl());
-                    hashToDsl.putIfAbsent(hash, rule.getDsl());
+                    log.debug("LAL: compiled rule {} -> {}", rule.getName(),
+                        compiled.getClass().getName());
                 } catch (Exception e) {
                     log.warn("Failed to compile LAL rule: {}", rule.getName(), e);
                 }
             }
         }
 
-        // Write manifests — hash-based for runtime lookup (DSL.of() only gets DSL string)
+        // Write manifests
         Path metaInf = Path.of(outputDir, "META-INF");
+        List<String> lalV2Classes = scanV2Classes(outputDir, LAL_RT_PACKAGE);
+        writeManifest(metaInf.resolve("lal-v2-classes.txt"), lalV2Classes);
 
-        List<String> lalNameEntries =
-            org.apache.skywalking.oap.log.analyzer.dsl.DSL.getScriptRegistry().entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue())
-                .sorted()
-                .collect(Collectors.toList());
-        writeManifest(metaInf.resolve("lal-scripts.txt"), lalNameEntries);
-
-        List<String> lalHashEntries =
-            org.apache.skywalking.oap.log.analyzer.dsl.DSL.getDslHashRegistry().entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue())
-                .sorted()
-                .collect(Collectors.toList());
-        writeManifest(metaInf.resolve("lal-scripts-by-hash.txt"), lalHashEntries);
-
-        log.info("LAL pre-compilation: {} rules, {} scripts",
-            totalRules,
-            org.apache.skywalking.oap.log.analyzer.dsl.DSL.getScriptRegistry().size());
-
-        // ---- LAL-to-Java transpilation ----
-        transpileLAL(outputDir, hashToDsl);
+        log.info("LAL pre-compilation: {} rules, {} v2 expression classes",
+            totalRules, lalV2Classes.size());
 
         // ---- Serialize LAL config data as JSON for runtime loader ----
         serializeLALConfigData(outputDir, lalFileMap);
     }
 
-    /**
-     * Transpile LAL scripts from Groovy to pure Java classes implementing LalExpression.
-     * Runs after Groovy compilation — uses captured DSL text keyed by SHA-256 hash.
-     */
-    private static void transpileLAL(String outputDir,
-                                     Map<String, String> hashToDsl) throws Exception {
-        LalToJavaTranspiler transpiler = new LalToJavaTranspiler();
-        int count = 0;
-
-        for (Map.Entry<String, String> entry : hashToDsl.entrySet()) {
-            String hash = entry.getKey();
-            String dslText = entry.getValue();
-            String className = "LalExpr_" + count;
-            try {
-                String source = transpiler.transpile(className, dslText);
-                transpiler.register(className, hash, source);
-                count++;
-            } catch (Exception e) {
-                log.warn("Failed to transpile LAL script (hash={}): {}",
-                    hash, dslText.substring(0, Math.min(80, dslText.length())), e);
-            }
-        }
-
-        // Compile generated Java sources
-        File javaSourceDir = new File(outputDir, "generated-lal-sources");
-        File javaOutputDir = new File(outputDir);
-        String classpath = resolveClasspath();
-        File graalvmLogClasses = findGraalvmLogAnalyzerClasses(outputDir);
-        if (graalvmLogClasses != null) {
-            classpath = graalvmLogClasses.getAbsolutePath() + File.pathSeparator + classpath;
-            log.info("LAL transpilation: prepended {} to javac classpath",
-                graalvmLogClasses.getAbsolutePath());
-        } else {
-            log.warn("LAL transpilation: log-analyzer-for-graalvm classes not found; "
-                + "transpiled sources may fail to compile");
-        }
-        transpiler.compileAll(javaSourceDir, javaOutputDir, classpath);
-
-        // Write transpiled manifest
-        transpiler.writeManifest(new File(outputDir));
-
-        log.info("LAL transpilation: {} scripts transpiled to Java", count);
-    }
-
-    /**
-     * Locate log-analyzer-for-graalvm compiled classes directory.
-     */
-    private static File findGraalvmLogAnalyzerClasses(String outputDir) {
-        String relPath = "oap-libs-for-graalvm/log-analyzer-for-graalvm/target/classes";
-
-        String basedir = System.getProperty("basedir");
-        if (basedir != null) {
-            File candidate = new File(new File(basedir).getParentFile().getParentFile(), relPath);
-            if (candidate.isDirectory()) {
-                return candidate;
-            }
-        }
-
-        File candidate = new File(outputDir).getParentFile()
-            .getParentFile()
-            .getParentFile()
-            .getParentFile();
-        candidate = new File(candidate, relPath);
-        if (candidate.isDirectory()) {
-            return candidate;
-        }
-
-        candidate = new File(System.getProperty("user.dir"), relPath);
-        if (candidate.isDirectory()) {
-            return candidate;
-        }
-
-        return null;
-    }
 
     /**
      * Validate that all OAL script files referenced by the discovered OALDefines are
@@ -1082,6 +1072,111 @@ public class Precompiler {
     }
 
     /**
+     * Write per-file MAL manifests organized by original YAML file structure.
+     *
+     * <p>Creates:
+     * <ul>
+     *   <li>{@code META-INF/mal-v2.manifest} — lists all per-file config paths</li>
+     *   <li>{@code META-INF/mal-v2/{path}/{ruleName}.yaml} — per-file properties with
+     *       rule names, expressions, filter, and compiled class FQCNs</li>
+     * </ul>
+     *
+     * @return total number of expression entries written
+     */
+    private static int writePerFileManifests(Map<String, List<Rule>> rulesByPath,
+                                             Path metaInf) throws Exception {
+        Path malV2Dir = metaInf.resolve("mal-v2");
+        List<String> manifestEntries = new ArrayList<>();
+        int totalExpressions = 0;
+
+        for (Map.Entry<String, List<Rule>> pathEntry : rulesByPath.entrySet()) {
+            String path = pathEntry.getKey();
+            for (Rule rule : pathEntry.getValue()) {
+                String ruleName = rule.getName();
+                String configFile = path + "/" + ruleName + ".yaml";
+                manifestEntries.add(configFile);
+
+                List<String> lines = new ArrayList<>();
+                lines.add("# Source: " + configFile);
+
+                // Filter
+                String filterText = rule.getFilter();
+                if (filterText != null && !filterText.isEmpty()) {
+                    String filterClassName = FilterExpression.FILTER_MAP.get(filterText);
+                    lines.add("filter=" + escapePropertiesValue(filterText));
+                    lines.add("filter.class=" + (filterClassName != null ? filterClassName : ""));
+                } else {
+                    lines.add("filter=");
+                    lines.add("filter.class=");
+                }
+
+                // Rules
+                List<MetricsRule> metricsRules = rule.getMetricsRules();
+                if (metricsRules != null) {
+                    for (int i = 0; i < metricsRules.size(); i++) {
+                        MetricsRule mr = metricsRules.get(i);
+                        String metricName = rule.getMetricPrefix() + "_" + mr.getName();
+                        String fullExp = malFormatExp(
+                            rule.getExpPrefix(), rule.getExpSuffix(), mr.getExp());
+                        String exprKey = DSL.expressionKey(fullExp, metricName);
+                        String className = DSL.COMPILE_MAP.get(exprKey);
+
+                        lines.add("rule." + i + ".name=" + metricName);
+                        lines.add("rule." + i + ".exp=" + escapePropertiesValue(fullExp));
+                        lines.add("rule." + i + ".class=" + (className != null ? className : ""));
+                        totalExpressions++;
+                    }
+                }
+
+                Path configPath = malV2Dir.resolve(configFile);
+                Files.createDirectories(configPath.getParent());
+                Files.write(configPath, lines, StandardCharsets.UTF_8);
+            }
+        }
+
+        // Write top-level manifest listing all config files
+        List<String> manifestLines = new ArrayList<>();
+        manifestLines.add("# Auto-generated by Precompiler — lists all MAL per-file configs");
+        manifestLines.addAll(manifestEntries);
+        Files.write(metaInf.resolve("mal-v2.manifest"), manifestLines, StandardCharsets.UTF_8);
+
+        log.info("MAL: wrote {} per-file configs with {} expressions to mal-v2/",
+            manifestEntries.size(), totalExpressions);
+        return totalExpressions;
+    }
+
+    /**
+     * Replicate MetricConvert.formatExp() to compose the full MAL expression
+     * from expPrefix, expSuffix, and the per-rule expression.
+     */
+    private static String malFormatExp(final String expPrefix,
+                                       final String expSuffix,
+                                       final String exp) {
+        String ret = exp;
+        if (expPrefix != null && !expPrefix.isEmpty()) {
+            String before = exp.contains(".") ? exp.substring(0, exp.indexOf('.')) : exp;
+            ret = String.format("(%s.%s)", before, expPrefix);
+            if (exp.contains(".")) {
+                String after = exp.substring(exp.indexOf('.') + 1);
+                if (!after.isEmpty()) {
+                    ret = String.format("(%s.%s)", ret, after);
+                }
+            }
+        }
+        if (expSuffix != null && !expSuffix.isEmpty()) {
+            ret = String.format("(%s).%s", ret, expSuffix);
+        }
+        return ret;
+    }
+
+    private static String escapePropertiesValue(String value) {
+        // Escape backslashes and newlines in property values
+        return value.replace("\\", "\\\\")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r");
+    }
+
+    /**
      * Serialize MAL config data (Rules and MeterConfigs) as JSON for runtime loaders.
      * At runtime, replacement loader classes deserialize from these JSON files instead
      * of reading YAML from the filesystem.
@@ -1168,6 +1263,26 @@ public class Precompiler {
     }
 
     /**
+     * Write a key=value properties manifest file.
+     * Keys and values are escaped for Java Properties format.
+     */
+    private static void writePropertiesManifest(Path path, Map<String, String> map) throws IOException {
+        List<String> lines = new ArrayList<>();
+        lines.add("# Auto-generated by Precompiler");
+        map.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(e -> lines.add(escapePropertiesKey(e.getKey()) + "=" + e.getValue()));
+        Files.write(path, lines, StandardCharsets.UTF_8);
+    }
+
+    private static String escapePropertiesKey(String key) {
+        return key.replace("\\", "\\\\")
+                  .replace("=", "\\=")
+                  .replace(":", "\\:")
+                  .replace(" ", "\\ ");
+    }
+
+    /**
      * Generate GraalVM native-image metadata (reflect-config.json and resource-config.json)
      * from the manifests already produced by the precompiler.
      *
@@ -1227,11 +1342,11 @@ public class Precompiler {
 
         // Config POJOs deserialized by Jackson/SnakeYAML at runtime — full access
         String[] configPojos = {
-            "org.apache.skywalking.oap.log.analyzer.provider.LALConfigs",
-            "org.apache.skywalking.oap.log.analyzer.provider.LALConfig",
+            "org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs",
+            "org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig",
             "org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig",
-            "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rule",
-            "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule",
+            "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule",
+            "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule",
             "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuInitializer$MenuData",
             "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuItemSetting",
             "org.apache.skywalking.oap.server.receiver.telegraf.provider.handler.pojo.TelegrafData",
@@ -1254,7 +1369,10 @@ public class Precompiler {
             // Alarm snapshot: Gson serializes/deserializes at runtime
             "org.apache.skywalking.oap.server.core.alarm.AlarmSnapshotRecord",
             // Alarm webhook: Gson serializes AlarmMessage list to JSON for webhook POST
-            "org.apache.skywalking.oap.server.core.alarm.AlarmMessage"
+            "org.apache.skywalking.oap.server.core.alarm.AlarmMessage",
+            // LALOutputBuilder SPI: ServiceLoader instantiates to call name() for short-name resolution
+            "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder",
+            "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder"
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));
@@ -1295,61 +1413,14 @@ public class Precompiler {
         addConstructorEntries(entries, metaInf.resolve("oal-metrics-classes.txt"));
         addConstructorEntries(entries, metaInf.resolve("oal-dispatcher-classes.txt"));
 
-        // MAL Groovy scripts — key=value format, constructor-only
-        Path malScripts = metaInf.resolve("mal-groovy-scripts.txt");
-        if (Files.exists(malScripts)) {
-            for (String className : readValueFromKeyValue(malScripts)) {
-                entries.add(constructorOnlyEntry(className));
-            }
-        }
+        // MAL v2 expression classes — one FQCN per line, constructor-only
+        addConstructorEntries(entries, metaInf.resolve("mal-v2-classes.txt"));
 
-        // MAL filter scripts — Properties format, constructor-only
-        Path filterScripts = metaInf.resolve("mal-filter-scripts.properties");
-        if (Files.exists(filterScripts)) {
-            Properties props = new Properties();
-            try (InputStream is = Files.newInputStream(filterScripts)) {
-                props.load(is);
-            }
-            List<String> filterClasses = new ArrayList<>(props.stringPropertyNames().stream()
-                .map(k -> props.getProperty(k))
-                .sorted()
-                .collect(Collectors.toList()));
-            for (String className : filterClasses) {
-                entries.add(constructorOnlyEntry(className));
-            }
-        }
+        // LAL v2 expression classes — one FQCN per line, constructor-only
+        addConstructorEntries(entries, metaInf.resolve("lal-v2-classes.txt"));
 
-        // MAL transpiled expressions — one FQCN per line, constructor-only
-        addConstructorEntries(entries, metaInf.resolve("mal-expressions.txt"));
-
-        // MAL transpiled filters — Properties format, constructor-only
-        Path transpiledFilters = metaInf.resolve("mal-filter-expressions.properties");
-        if (Files.exists(transpiledFilters)) {
-            Properties tProps = new Properties();
-            try (InputStream is = Files.newInputStream(transpiledFilters)) {
-                tProps.load(is);
-            }
-            for (String className : tProps.stringPropertyNames().stream()
-                    .map(tProps::getProperty).sorted().collect(Collectors.toList())) {
-                entries.add(constructorOnlyEntry(className));
-            }
-        }
-
-        // LAL scripts — key=value format, constructor-only
-        Path lalScripts = metaInf.resolve("lal-scripts-by-hash.txt");
-        if (Files.exists(lalScripts)) {
-            for (String className : readValueFromKeyValue(lalScripts)) {
-                entries.add(constructorOnlyEntry(className));
-            }
-        }
-
-        // LAL transpiled expressions — key=value format, constructor-only
-        Path lalExpressions = metaInf.resolve("lal-expressions.txt");
-        if (Files.exists(lalExpressions)) {
-            for (String className : readValueFromKeyValue(lalExpressions)) {
-                entries.add(constructorOnlyEntry(className));
-            }
-        }
+        // Hierarchy v2 rule classes — one FQCN per line, constructor-only
+        addConstructorEntries(entries, metaInf.resolve("hierarchy-v2-classes.txt"));
 
         // MAL meter classes — key=value format, constructor-only
         Path meterClasses = metaInf.resolve("mal-meter-classes.txt");
@@ -1378,6 +1449,7 @@ public class Precompiler {
         includes.add(Map.of("pattern", "META-INF/mal-.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/mal-.*\\.properties"));
         includes.add(Map.of("pattern", "META-INF/lal-.*\\.txt"));
+        includes.add(Map.of("pattern", "META-INF/hierarchy-.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/config-data/.*\\.json"));
 
         resources.put("includes", includes);
@@ -1444,61 +1516,4 @@ public class Precompiler {
      * exec-maven-plugin creates a URLClassLoader with project dependencies;
      * extract URLs from it. Falls back to java.class.path system property.
      */
-    @SuppressWarnings("deprecation")
-    /**
-     * Locate meter-analyzer-for-graalvm compiled classes directory.
-     * Tries multiple strategies: basedir property (set by surefire), outputDir traversal,
-     * and user.dir (CWD). Returns the directory if found, null otherwise.
-     */
-    private static File findGraalvmMeterClasses(String outputDir) {
-        String relPath = "oap-libs-for-graalvm/meter-analyzer-for-graalvm/target/classes";
-
-        // Strategy 1: basedir (set by surefire) → build-tools/precompiler/
-        String basedir = System.getProperty("basedir");
-        if (basedir != null) {
-            File candidate = new File(new File(basedir).getParentFile().getParentFile(), relPath);
-            if (candidate.isDirectory()) {
-                return candidate;
-            }
-        }
-
-        // Strategy 2: outputDir traversal (works when outputDir = target/generated-classes)
-        File candidate = new File(outputDir).getParentFile()  // target/
-            .getParentFile()  // precompiler/
-            .getParentFile()  // build-tools/
-            .getParentFile(); // project root
-        candidate = new File(candidate, relPath);
-        if (candidate.isDirectory()) {
-            return candidate;
-        }
-
-        // Strategy 3: user.dir may be project root
-        candidate = new File(System.getProperty("user.dir"), relPath);
-        if (candidate.isDirectory()) {
-            return candidate;
-        }
-
-        return null;
-    }
-
-    private static String resolveClasspath() {
-        Set<String> paths = new java.util.LinkedHashSet<>();
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
-        while (cl != null) {
-            if (cl instanceof java.net.URLClassLoader) {
-                for (java.net.URL url : ((java.net.URLClassLoader) cl).getURLs()) {
-                    try {
-                        paths.add(new File(url.toURI()).getAbsolutePath());
-                    } catch (Exception e) {
-                        paths.add(url.getPath());
-                    }
-                }
-            }
-            cl = cl.getParent();
-        }
-        if (!paths.isEmpty()) {
-            return String.join(File.pathSeparator, paths);
-        }
-        return System.getProperty("java.class.path", "");
-    }
 }

@@ -61,18 +61,11 @@
                         <filter>
                             <artifact>org.apache.skywalking:meter-analyzer</artifact>
                             <excludes>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/DSL.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/DSL$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/FilterExpression.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/FilterExpression$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/SampleFamily.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/SampleFamily$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/Expression.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/Expression$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/ExpressionParsingContext.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/ExpressionParsingContext$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/dsl/EntityDescription/InstanceEntityDescription.class</exclude>
-                                <exclude>org/apache/skywalking/oap/meter/analyzer/prometheus/rule/Rules.class</exclude>
+                                <!-- v2 ANTLR4+Javassist DSL classes replaced with pre-compiled loaders -->
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/v2/dsl/DSL.class</exclude>
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/v2/dsl/DSL$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/v2/dsl/FilterExpression.class</exclude>
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/v2/dsl/FilterExpression$*.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

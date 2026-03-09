@@ -354,24 +354,6 @@
             <classifier>generated</classifier>
         </dependency>
 
-        <!--
-          Real Groovy: test-only for MAL/LAL comparison tests (Path A GroovyShell).
-          MUST be declared before groovy-stubs so it appears first in test classpath
-          (both provide groovy.lang.Closure — classloader uses first-found).
-        -->
-        <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <!--
-          Groovy stubs: minimal groovy.lang.* types for runtime class loading.
-          Replaces real Groovy on runtime classpath (no org.codehaus.groovy.*).
-        -->
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>groovy-stubs</artifactId>
-        </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-text</artifactId>

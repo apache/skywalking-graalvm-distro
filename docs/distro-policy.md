@@ -29,7 +29,7 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 
 ## Core Strategy
 
-1. **Build-Time Class Export**: All runtime code generation (OAL via Javassist, MAL/LAL via Groovy) runs at build time. Export `.class` files and package into native-image classpath. Classpath scanning also runs here as a verification gate.
+1. **Build-Time Class Export**: All runtime code generation (OAL/MAL/LAL/Hierarchy via ANTLR4 + Javassist) runs at build time. Export `.class` files and package into native-image classpath. Classpath scanning also runs here as a verification gate.
 
 2. **Fixed Module Wiring**: Module/provider selection is hardcoded in this distro (no SPI discovery). Simplified config file for selected providers only.
 
@@ -37,51 +37,40 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 
 ---
 
-## OAL Runtime Class Generation (Javassist)
+## DSL Runtime Class Generation (Unified V2 Engines)
 
-### What Happens
-OAL V2 generates metrics/builder/dispatcher classes at startup via Javassist (`ClassPool.makeClass()` → `CtClass.toClass()`). Already has `writeGeneratedFile()` for debug export.
+Since upstream PR #13723, all four SkyWalking DSL compilers (OAL, MAL, LAL, Hierarchy) use a unified pipeline: ANTLR4 parse → immutable AST → Javassist bytecode. This eliminated the need for the complex, 10,000-line custom Groovy-to-Java transpiler previously maintained in this distro.
 
-### Approach (this repo)
-All `.oal` scripts are known. Run OAL engine at build time, export `.class` files, load them directly at runtime from manifests.
+### Approach (Simplified)
+Run all four v2 compilers at build time via their native exposed APIs (`setClassOutputDir()`, `setClassNameHint()`, `setGeneratedFilePath()`). Capture generated `.class` files into the precompiler output JAR. At runtime, same-FQCN replacement loaders find these classes by name instead of compiling them.
 
-**Details**: [oal-immigration.md](oal-immigration.md)
+**Details**: [dsl-immigration.md](dsl-immigration.md) | [oal-immigration.md](oal-immigration.md)
 
-### What Was Built
-- `OALClassExporter` processes all 9 OAL defines, exports ~620 metrics classes, ~620 builder classes, ~45 dispatchers
-- 3 manifest files: `oal-metrics-classes.txt`, `oal-dispatcher-classes.txt`, `oal-disabled-sources.txt`
-- Same-FQCN replacement `OALEngineLoaderService` loads pre-compiled classes from manifests instead of running Javassist
+### OAL
+- `OALEngineV2.start()` processes all 9 OAL defines at build time.
+- Exports ~620 metrics classes, ~620 builder classes, ~45 dispatchers.
+- 3 manifest files: `oal-metrics-classes.txt`, `oal-dispatcher-classes.txt`, `oal-disabled-sources.txt`.
+- Same-FQCN `OALEngineLoaderService` loads pre-compiled classes from manifests.
 
-### Upstream Changes Needed
-- None. Build-time class export works via existing debug API (`setOpenEngineDebug(true)` + `setGeneratedFilePath()`)
+### MAL
+- `MALClassGenerator` compiles ~1250 MAL expressions from 71 YAML rule files at build time.
+- Uses `setClassNameHint(yamlSource + metricName)` for deterministic naming.
+- Same-FQCN v2 `DSL.java` loads pre-compiled `MalExpression` classes by computed name.
+- `MeterSystem.create()` also runs at build time → exports ~1188 Javassist meter classes.
 
----
+### LAL
+- `LALClassGenerator` compiles 10 LAL scripts (8 YAML files) at build time.
+- Uses `setClassNameHint(yamlSource + ruleName)` for deterministic naming.
+- Same-FQCN v2 `DSL.java` loads pre-compiled `LalExpression` classes by computed name.
 
-## MAL and LAL (Groovy + Javassist)
+### Hierarchy
+- `HierarchyRuleClassGenerator` compiles 4 hierarchy matching rules at build time.
+- Same-FQCN `CompiledHierarchyRuleProvider` loads pre-compiled `BiFunction` classes by rule name.
 
-### What Happens
-- MAL uses `GroovyShell` + `DelegatingScript` for meter rule expressions (~1250 rules across 71 YAML files). Also, `MeterSystem.create()` uses Javassist to dynamically generate one meter subclass per metric rule.
-- LAL uses `GroovyShell` + `@CompileStatic` + `LALPrecompiledExtension` for log analysis scripts (10 rules).
-
-### Approach (this repo)
-Run full MAL/LAL initialization at build time via `build-tools/precompiler` (unified tool). Export Javassist-generated `.class` files. Transpile all Groovy expressions to pure Java at build time — zero Groovy at runtime.
-
-**Details**: [mal-immigration.md](mal-immigration.md) | [lal-immigration.md](lal-immigration.md)
-
-### What Was Built
-- **Unified precompiler** (`build-tools/precompiler`): Replaced separate `oal-exporter` and `mal-compiler` modules. Compiles all 71 MAL YAML rule files (meter-analyzer-config, otel-rules, log-mal-rules, envoy-metrics-rules, telegraf-rules, zabbix-rules) producing 1209 meter classes.
-- **MAL-to-Java transpiler**: 1250+ MAL expressions transpiled from Groovy AST to pure Java `MalExpression` implementations. 29 filter expressions transpiled to `MalFilter` implementations. Zero Groovy at runtime.
-- **LAL-to-Java transpiler**: 10 LAL scripts (6 unique) transpiled to pure Java `LalExpression` implementations. Spec classes enhanced with `Consumer` overloads for transpiled code.
-- **Groovy stubs module**: Minimal `groovy.lang.*` types (Binding, Closure, etc.) for class loading. No `org.codehaus.groovy.*` — prevents GraalVM `GroovyIndyInterfaceFeature` from activating.
-- **Manifests**: `META-INF/mal-expressions.txt` (transpiled Java classes), `META-INF/mal-groovy-expression-hashes.txt` (SHA-256 for combination pattern resolution), `META-INF/mal-meter-classes.txt` (Javassist-generated classes), `META-INF/lal-expressions.txt` (transpiled LAL classes), `META-INF/annotation-scan/MeterFunction.txt` (16 function classes).
-- **Combination pattern**: Multiple YAML files from different data sources (otel, telegraf, zabbix) may define metrics with the same name. Deterministic suffixes (`_1`, `_2`) with expression hash tracking enable unambiguous resolution.
-- **Same-FQCN replacements**: `DSL.java` (MAL), `DSL.java` (LAL), `FilterExpression.java`, `MeterSystem.java`, `Expression.java`, `SampleFamily.java` — all use pure Java, no Groovy.
-- **Comparison test suite**: 73 MAL test classes (1281 assertions) + 5 LAL test classes (19 assertions) covering all 79 YAML files. Tests require data flow through full pipeline (no vacuous agreements). Dual-path: fresh Groovy compilation (Path A) vs transpiled Java (Path B).
-
-### Groovy Elimination
-- MAL: `MalExpression` interface replaces `DelegatingScript`. `SampleFamily` uses Java functional interfaces (`TagFunction`, `SampleFilter`, `ForEachFunction`, `DecorateFunction`, `PropertiesExtractor`) instead of `groovy.lang.Closure`.
-- LAL: `LalExpression` interface replaces `DelegatingScript`. Spec classes have `Consumer` overloads.
-- No `groovy.lang.Closure` in any production source code. Groovy is test-only dependency.
+### Upstream Changes & Simplification
+- **Groovy Removed**: Groovy was completely removed from upstream production code (PR #13723).
+- **Transpiler Deleted**: The legacy Groovy-to-Java transpiler (~9,800 lines of complex AST walking logic) has been deleted from this distro.
+- **Native Alignment**: We now use the exact same compilation pipeline as upstream, just executed at build-time. This ensures 100% behavioral parity and zero maintenance lag for new DSL features.
 
 ---
 
@@ -134,17 +123,17 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 
 `oap-graalvm-server` depends on `*-for-graalvm` JARs instead of originals. Original upstream JARs are forced to `provided` scope via `<dependencyManagement>` to prevent transitive leakage.
 
-### 23 Same-FQCN Replacement Classes Across 13 Modules
+### Same-FQCN Replacement Classes
 
 **Non-trivial replacements (load pre-compiled assets from manifests):**
 
 | Module | Replacement Classes | Purpose |
 |---|---|---|
 | `library-module-for-graalvm` | `ModuleDefine` | Add `prepare()` overload for direct provider wiring (bypasses ServiceLoader) |
-| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService` | Load from manifests instead of Javassist/ClassPath; config with @Setter; Java-backed closures instead of GroovyShell |
+| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService`, `CompiledHierarchyRuleProvider` | Load from manifests instead of Javassist/ClassPath; config with @Setter; pre-compiled hierarchy rules |
 | `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set config fields via setter instead of reflection |
-| `meter-analyzer-for-graalvm` | `DSL`, `FilterExpression`, `Rules` | Load pre-compiled MAL Groovy scripts from manifest; load rule data from JSON config-data manifests |
-| `log-analyzer-for-graalvm` | `DSL`, `LogAnalyzerModuleConfig`, `LALConfigs` | Load pre-compiled LAL scripts; config with @Setter; load LAL config data from JSON config-data manifests |
+| `meter-analyzer-for-graalvm` | `DSL` (v2), `Rules` | Load pre-compiled v2 `MalExpression` classes; load rule data from JSON config-data manifests |
+| `log-analyzer-for-graalvm` | `DSL` (v2), `LogAnalyzerModuleConfig`, `LALConfigs` | Load pre-compiled v2 `LalExpression` classes; config with @Setter; load LAL config data from JSON config-data manifests |
 | `agent-analyzer-for-graalvm` | `AnalyzerModuleConfig`, `MeterConfigs` | Config with @Setter; load meter config data from JSON config-data manifests |
 
 **Config-only replacements (add `@Setter` for reflection-free config):**
@@ -228,17 +217,17 @@ packaged in JARs. The YAML source files are not needed at runtime.
 
 | Category | Count | Pre-compiled Into | Tool |
 |---|---|---|---|
-| `oal/*.oal` | 9 | ~620 metrics classes + ~620 builders + ~45 dispatchers (Javassist) | `OALClassExporter` |
-| `meter-analyzer-config/*.yaml` | 11 | 147 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
-| `otel-rules/**/*.yaml` | 55 | 1044 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
-| `log-mal-rules/*.yaml` | 2 | 2 Groovy scripts | `MALPrecompiler` |
-| `envoy-metrics-rules/*.yaml` | 2 | 26 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
-| `telegraf-rules/*.yaml` | 1 | 20 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
-| `zabbix-rules/*.yaml` | 1 | 15 Groovy scripts + Javassist meter classes | `MALPrecompiler` |
-| `lal/*.yaml` | 8 | 6 unique `@CompileStatic` Groovy classes | `LALPrecompiler` |
+| `oal/*.oal` | 9 | ~620 metrics + ~620 builders + ~45 dispatchers (Javassist) | OAL v2 engine |
+| `meter-analyzer-config/*.yaml` | 11 | ~147 `MalExpression` classes (ANTLR4+Javassist) + meter classes | MAL v2 compiler |
+| `otel-rules/**/*.yaml` | 55 | ~1039 `MalExpression` classes + meter classes | MAL v2 compiler |
+| `log-mal-rules/*.yaml` | 2 | ~2 `MalExpression` classes | MAL v2 compiler |
+| `envoy-metrics-rules/*.yaml` | 2 | ~26 `MalExpression` classes + meter classes | MAL v2 compiler |
+| `telegraf-rules/*.yaml` | 1 | ~20 `MalExpression` classes + meter classes | MAL v2 compiler |
+| `zabbix-rules/*.yaml` | 1 | ~15 `MalExpression` classes + meter classes | MAL v2 compiler |
+| `lal/*.yaml` | 8 | ~10 `LalExpression` classes (ANTLR4+Javassist) | LAL v2 compiler |
+| `hierarchy-definition.yml` | 1 | ~4 `BiFunction` hierarchy rule classes | Hierarchy v2 compiler |
 
-**Total: 89 files** consumed at build time, producing ~1285 pre-compiled classes
-and ~1254 Groovy scripts stored in JARs.
+**Total: 90 files** consumed at build time, producing ~1285 OAL classes, ~1250 MAL expression classes, ~1188 meter classes, ~10 LAL expression classes, and ~4 hierarchy rule classes.
 
 Additionally, the precompiler serializes parsed config POJOs as JSON manifests in
 `META-INF/config-data/` (7 JSON files for meter-analyzer-config, otel-rules,
@@ -264,11 +253,15 @@ keys) that replacement loader classes use instead of filesystem YAML access.
 
 ### Build-Time Pre-Compilation
 
-**OAL**: OAL engine exports `.class` files (9 defines, ~620 metrics, ~620 builders, ~45 dispatchers). 7 annotation/interface manifests. 3 same-FQCN replacement classes (`OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`).
+All four DSL compilers (OAL/MAL/LAL/Hierarchy) use ANTLR4 + Javassist v2 engines. The unified precompiler (`build-tools/precompiler`) runs them all at build time, capturing generated `.class` files into the output JAR.
 
-**MAL**: Unified precompiler (`build-tools/precompiler`) processes 71 YAML files → 1250 expressions transpiled to pure Java `MalExpression` + 1209 Javassist meter classes. Combination pattern with deterministic suffixes + expression hash tracking. Same-FQCN replacements: `DSL.java`, `FilterExpression.java`, `MeterSystem.java`, `Expression.java`, `SampleFamily.java`. 73 comparison test classes, 1281 assertions (100% YAML coverage).
+**OAL**: OAL v2 engine exports `.class` files (9 defines, ~620 metrics, ~620 builders, ~45 dispatchers). 7 annotation/interface manifests. Same-FQCN `OALEngineLoaderService` loads from manifests.
 
-**LAL**: 8 YAML files → 10 rules → 6 unique transpiled Java `LalExpression` classes. Same-FQCN `DSL.java` loads via SHA-256 hash lookup. 5 comparison test classes, 19 assertions (100% branch coverage).
+**MAL**: MAL v2 compiler processes 71 YAML files → ~1250 `MalExpression` classes + ~1188 Javassist meter classes. Deterministic class naming via `setClassNameHint()`. Same-FQCN v2 `DSL.java` loads pre-compiled classes by computed name.
+
+**LAL**: LAL v2 compiler processes 8 YAML files → ~10 `LalExpression` classes. Deterministic class naming. Same-FQCN v2 `DSL.java` loads pre-compiled classes.
+
+**Hierarchy**: Hierarchy v2 compiler processes 4 rules → ~4 `BiFunction` classes. Same-FQCN `CompiledHierarchyRuleProvider` loads pre-compiled rules.
 
 **Config initialization**: `ConfigInitializerGenerator` generates same-FQCN `YamlConfigLoaderUtils` using Lombok setters — zero `Field.setAccessible` at runtime.
 
@@ -276,17 +269,7 @@ keys) that replacement loader classes use instead of filesystem YAML access.
 
 **Module system**: `ModuleDefine` replacement with direct `prepare()` overload (bypasses ServiceLoader). `GraalVMOAPServerStartUp` with `configuration.has()` guards for 6 optional modules.
 
-**Distro resource packaging**: 146 runtime files → distro `config/`, 89 pre-compiled files → JARs. Assembly descriptor (`distribution.xml`) packages runtime config files from upstream.
-
-### Groovy Elimination
-
-- MAL-to-Java transpiler: 1250+ expressions → pure Java `MalExpression` (no Groovy MOP/ExpandoMetaClass)
-- LAL-to-Java transpiler: 10 scripts → pure Java `LalExpression` (no DelegatingScript)
-- `SampleFamily` Closure parameters → Java functional interfaces (zero `groovy.lang.Closure` in production)
-- Groovy stubs module for class loading (no `org.codehaus.groovy.*`)
-- HierarchyDefinitionService: same-FQCN replacement with Java-backed closures
-- Real Groovy (`groovy-5.0.3.jar`) is test-only; `groovy-stubs-1.0.0-SNAPSHOT.jar` on runtime classpath
-- 1303 tests require actual data flow (no vacuous empty-result agreements)
+**Distro resource packaging**: 146 runtime files → distro `config/`, 90 pre-compiled files → JARs. Assembly descriptor (`distribution.xml`) packages runtime config files from upstream.
 
 ### Native Image Build
 
@@ -315,8 +298,10 @@ keys) that replacement loader classes use instead of filesystem YAML access.
 
 ## Upstream Changes Tracker
 
-No upstream changes needed. All GraalVM incompatibilities are resolved in this distro via same-FQCN replacement and build-time pre-compilation:
-- OAL: build-time class export works via existing debug API
-- MAL: transpiled to pure Java, bypasses Groovy entirely
-- LAL: transpiled to pure Java, bypasses Groovy entirely
-- Dynamic Groovy MOP: transpiled to pure Java, no ExpandoMetaClass/MOP at runtime
+Upstream SkyWalking PR #13723 replaced Groovy with ANTLR4 + Javassist v2 engines for MAL/LAL/Hierarchy. Groovy is completely removed from all production dependencies. All four DSL compilers now share the same pipeline and expose build-time compilation APIs.
+
+No further upstream changes needed. All GraalVM incompatibilities are resolved in this distro via same-FQCN replacement and build-time pre-compilation:
+- OAL: build-time class export works via existing debug API (`setGeneratedFilePath()`)
+- MAL: build-time compilation via `MALClassGenerator.setClassOutputDir()`
+- LAL: build-time compilation via `LALClassGenerator.setClassOutputDir()`
+- Hierarchy: build-time compilation via `HierarchyRuleClassGenerator.setClassOutputDir()`

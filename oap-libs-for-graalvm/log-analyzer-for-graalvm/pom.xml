@@ -37,10 +37,6 @@
             <artifactId>log-analyzer</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.apache.skywalking</groupId>
-            <artifactId>groovy-stubs</artifactId>
-        </dependency>
-        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
@@ -65,20 +61,9 @@
                         <filter>
                             <artifact>org.apache.skywalking:log-analyzer</artifact>
                             <excludes>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/DSL.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/DSL$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/provider/LogAnalyzerModuleConfig.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/provider/LALConfigs.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/AbstractSpec.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/AbstractSpec$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/filter/FilterSpec.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/filter/FilterSpec$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/extractor/ExtractorSpec.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/extractor/ExtractorSpec$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SinkSpec.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SinkSpec$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SamplerSpec.class</exclude>
-                                <exclude>org/apache/skywalking/oap/log/analyzer/dsl/spec/sink/SamplerSpec$*.class</exclude>
+                                <!-- v2 ANTLR4+Javassist classes replaced with pre-compiled loaders -->
+                                <exclude>org/apache/skywalking/oap/log/analyzer/v2/dsl/DSL.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/v2/dsl/DSL$*.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

@@ -11,5 +11,8 @@ dependency-reduced-pom.xml
 # Claude Code
 .claude/
 
+# Release
+release-package/
+
 # OS
 .DS_Store

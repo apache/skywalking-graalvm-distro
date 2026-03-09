@@ -365,38 +365,135 @@ class PrecompiledRegistrationTest {
     }
 
     @Test
-    void malGroovyScriptManifestExistsAndIsNotEmpty() throws Exception {
-        List<String> entries = readManifest("META-INF/mal-groovy-scripts.txt");
-        assertFalse(entries.isEmpty(), "MAL groovy scripts manifest should not be empty");
-    }
+    void malV2ManifestExistsAndPerFileConfigsAreReadable() throws Exception {
+        ClassLoader cl = PrecompiledRegistrationTest.class.getClassLoader();
+        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
+            assertNotNull(mis, "MAL v2 manifest should exist");
+            List<String> configFiles = new ArrayList<>();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    line = line.trim();
+                    if (!line.isEmpty() && !line.startsWith("#")) {
+                        configFiles.add(line);
+                    }
+                }
+            }
+            assertFalse(configFiles.isEmpty(), "MAL v2 manifest should list config files");
 
-    @Test
-    void malGroovyScriptsAreLoadable() throws Exception {
-        List<String> entries = readManifest("META-INF/mal-groovy-scripts.txt");
-        for (String entry : entries) {
-            String[] parts = entry.split("=", 2);
-            String metricName = parts[0];
-            String className = parts[1];
-            Class<?> clazz = Class.forName(className);
-            assertNotNull(clazz,
-                "Should be able to load MAL groovy script: " + metricName + " -> " + className);
+            int totalExpressions = 0;
+            for (String configFile : configFiles) {
+                try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + configFile)) {
+                    assertNotNull(cis, "Per-file config should exist: " + configFile);
+                    Properties props = new Properties();
+                    props.load(cis);
+                    for (int i = 0; ; i++) {
+                        String exp = props.getProperty("rule." + i + ".exp");
+                        if (exp == null) {
+                            break;
+                        }
+                        totalExpressions++;
+                    }
+                }
+            }
+            assertTrue(totalExpressions > 0,
+                "Per-file configs should contain expression entries");
         }
     }
 
     @Test
-    void malFilterScriptManifestExistsAndScriptsAreLoadable() throws Exception {
+    void malV2ExpressionsAreLoadable() throws Exception {
         ClassLoader cl = PrecompiledRegistrationTest.class.getClassLoader();
-        try (InputStream is = cl.getResourceAsStream("META-INF/mal-filter-scripts.properties")) {
-            assertNotNull(is, "Filter script manifest should exist");
-            Properties props = new Properties();
-            props.load(is);
-            assertFalse(props.isEmpty(), "Filter script manifest should not be empty");
-            for (Object value : props.values()) {
-                String className = (String) value;
-                Class<?> clazz = Class.forName(className);
-                assertNotNull(clazz, "Should be able to load filter script: " + className);
+        Map<String, String> exprMap = loadMalV2ExpressionMap(cl);
+        assertFalse(exprMap.isEmpty(), "MAL v2 expression map should not be empty");
+        for (Map.Entry<String, String> entry : exprMap.entrySet()) {
+            String className = entry.getValue();
+            Class<?> clazz = Class.forName(className);
+            assertNotNull(clazz, "Should be able to load MAL v2 expression: " + className);
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            assertNotNull(instance, "Should be able to instantiate: " + className);
+        }
+    }
+
+    @Test
+    void malV2FiltersAreLoadable() throws Exception {
+        ClassLoader cl = PrecompiledRegistrationTest.class.getClassLoader();
+        Map<String, String> filterMap = loadMalV2FilterMap(cl);
+        assertFalse(filterMap.isEmpty(), "MAL v2 filter map should not be empty");
+        for (String className : filterMap.values()) {
+            Class<?> clazz = Class.forName(className);
+            assertNotNull(clazz, "Should be able to load MAL v2 filter: " + className);
+        }
+    }
+
+    private static Map<String, String> loadMalV2ExpressionMap(ClassLoader cl) throws Exception {
+        Map<String, String> map = new HashMap<>();
+        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
+            if (mis == null) {
+                return map;
+            }
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) {
+                        continue;
+                    }
+                    try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + line)) {
+                        if (cis == null) {
+                            continue;
+                        }
+                        Properties props = new Properties();
+                        props.load(cis);
+                        for (int i = 0; ; i++) {
+                            String exp = props.getProperty("rule." + i + ".exp");
+                            if (exp == null) {
+                                break;
+                            }
+                            String className = props.getProperty("rule." + i + ".class", "");
+                            if (!className.isEmpty()) {
+                                map.put(exp, className);
+                            }
+                        }
+                    }
+                }
             }
         }
+        return map;
+    }
+
+    private static Map<String, String> loadMalV2FilterMap(ClassLoader cl) throws Exception {
+        Map<String, String> map = new HashMap<>();
+        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
+            if (mis == null) {
+                return map;
+            }
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) {
+                        continue;
+                    }
+                    try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + line)) {
+                        if (cis == null) {
+                            continue;
+                        }
+                        Properties props = new Properties();
+                        props.load(cis);
+                        String filterLiteral = props.getProperty("filter", "");
+                        String filterClass = props.getProperty("filter.class", "");
+                        if (!filterLiteral.isEmpty() && !filterClass.isEmpty()) {
+                            map.putIfAbsent(filterLiteral, filterClass);
+                        }
+                    }
+                }
+            }
+        }
+        return map;
     }
 
     // =========================================================================
@@ -404,33 +501,23 @@ class PrecompiledRegistrationTest {
     // =========================================================================
 
     @Test
-    void lalScriptManifestExistsAndIsNotEmpty() throws Exception {
-        List<String> entries = readManifest("META-INF/lal-scripts.txt");
-        assertFalse(entries.isEmpty(), "LAL scripts manifest should not be empty");
+    void lalV2ManifestExistsAndIsNotEmpty() throws Exception {
+        List<String> entries = readManifest("META-INF/lal-v2-classes.txt");
+        assertFalse(entries.isEmpty(), "LAL v2 manifest should not be empty");
     }
 
     @Test
-    void lalScriptsAreLoadable() throws Exception {
-        List<String> entries = readManifest("META-INF/lal-scripts.txt");
+    void lalV2ClassesAreLoadable() throws Exception {
+        List<String> entries = readManifest("META-INF/lal-v2-classes.txt");
         for (String entry : entries) {
-            String[] parts = entry.split("=", 2);
-            String scriptName = parts[0];
-            String className = parts[1];
-            Class<?> clazz = Class.forName(className);
-            assertNotNull(clazz,
-                "Should be able to load LAL script: " + scriptName + " -> " + className);
-        }
-    }
-
-    @Test
-    void lalHashManifestExistsAndScriptsAreLoadable() throws Exception {
-        List<String> entries = readManifest("META-INF/lal-scripts-by-hash.txt");
-        assertFalse(entries.isEmpty(), "LAL hash manifest should not be empty");
-        for (String entry : entries) {
-            String[] parts = entry.split("=", 2);
-            String className = parts[1];
-            Class<?> clazz = Class.forName(className);
-            assertNotNull(clazz, "Should be able to load LAL script by hash: " + className);
+            entry = entry.trim();
+            if (entry.isEmpty() || entry.startsWith("#")) {
+                continue;
+            }
+            Class<?> clazz = Class.forName(entry);
+            assertNotNull(clazz, "Should be able to load LAL v2 class: " + entry);
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            assertNotNull(instance, "Should be able to instantiate: " + entry);
         }
     }
 

@@ -16,6 +16,17 @@
 # Extract SkyWalking version from submodule
 SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*<revision>\(.*\)<\/revision>.*/\1/')
 
+# Auto-detect GraalVM 25 JDK via sdkman if JAVA_HOME is not already set to one
+GRAAL_HOME := $(shell \
+	if echo "$$JAVA_HOME" | grep -qi graal 2>/dev/null; then \
+		echo "$$JAVA_HOME"; \
+	elif [ -d "$$HOME/.sdkman/candidates/java" ]; then \
+		find "$$HOME/.sdkman/candidates/java" -maxdepth 1 -name '*graal*' -name '*25*' -print -quit 2>/dev/null; \
+	fi)
+ifdef GRAAL_HOME
+  export JAVA_HOME := $(GRAAL_HOME)
+endif
+
 MVN := ./mvnw
 MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
 

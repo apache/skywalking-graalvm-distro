@@ -17,49 +17,43 @@
 
 package org.apache.skywalking.oap.server.graalvm.lal;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import org.apache.skywalking.apm.network.logging.v3.LogData;
-import org.apache.skywalking.oap.log.analyzer.provider.LALConfig;
+import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Comparison test for lal/default.yaml.
+ * Pre-compilation test for lal/default.yaml.
  *
- * <p>The simplest LAL rule — just saves all logs with no parsing or extraction:
- * <pre>
- * filter {
- *   sink {
- *   }
- * }
- * </pre>
+ * <p>Verifies that the pre-compiled LAL class for the default rule
+ * can be loaded from the manifest and instantiated.
  */
 class LALDefaultTest extends LALScriptComparisonBase {
 
     @Test
-    void defaultRuleSavesAllLogs() throws Exception {
+    void defaultRulePrecompiledClassLoads() throws Exception {
         final List<LALConfig> rules = loadLALRules("default.yaml");
         assertEquals(1, rules.size());
         assertEquals("default", rules.get(0).getName());
 
-        final LogData logData = buildTextLogData(
-            "test-service", "test-instance", "some log message",
-            Collections.emptyMap());
-
-        runAndCompare(rules.get(0).getDsl(), logData);
+        final LalExpression expr = loadPrecompiled("default");
+        assertNotNull(expr, "Pre-compiled class for 'default' rule should be loadable");
     }
 
     @Test
     void manifestContainsDefaultRule() {
-        final Map<String, String> nameManifest = loadNameManifest();
-        assertTrue(nameManifest.containsKey("default"),
-            "lal-scripts.txt should contain 'default' rule");
-        assertFalse(nameManifest.get("default").isEmpty(),
-            "default rule should map to a class name");
+        final Map<String, String> manifest = loadManifest();
+        boolean found = false;
+        for (final String key : manifest.keySet()) {
+            if (key.contains("default")) {
+                found = true;
+                break;
+            }
+        }
+        assert found : "Manifest should contain 'default' rule";
     }
 }

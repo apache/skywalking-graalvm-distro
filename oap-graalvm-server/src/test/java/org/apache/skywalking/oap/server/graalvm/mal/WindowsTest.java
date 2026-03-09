@@ -20,9 +20,9 @@ package org.apache.skywalking.oap.server.graalvm.mal;
 import com.google.common.collect.ImmutableMap;
 import java.time.Instant;
 import java.util.stream.Stream;
-import org.apache.skywalking.oap.meter.analyzer.dsl.Sample;
-import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamily;
-import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyBuilder;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 

@@ -20,9 +20,10 @@ This distro moves all of that to build time:
 
 | Subsystem | Runtime Pattern | Build-Time Solution |
 |-----------|----------------|---------------------|
-| **OAL** (metrics) | Javassist generates ~1285 classes at startup | `OALClassExporter` runs the OAL engine at build time, exports `.class` files and manifests |
-| **MAL** (meters) | Groovy compiles 1250+ expressions at startup | `MalToJavaTranspiler` converts Groovy AST to pure Java `MalExpression` classes |
-| **LAL** (logs) | Groovy compiles 10 scripts at startup | `LalToJavaTranspiler` converts Groovy AST to pure Java `LalExpression` classes |
+| **OAL** (metrics) | Javassist generates ~1285 classes at startup | OAL v2 engine runs at build time, exports `.class` files and manifests |
+| **MAL** (meters) | ANTLR4 + Javassist compiles ~1250 expressions at startup | MAL v2 compiler runs at build time via `MALClassGenerator.setClassOutputDir()` |
+| **LAL** (logs) | ANTLR4 + Javassist compiles ~10 scripts at startup | LAL v2 compiler runs at build time via `LALClassGenerator.setClassOutputDir()` |
+| **Hierarchy** | ANTLR4 + Javassist compiles ~4 rules at startup | Hierarchy v2 compiler runs at build time via `HierarchyRuleClassGenerator.setClassOutputDir()` |
 | **Config loading** | `Field.setAccessible()` + reflection | `ConfigInitializerGenerator` produces setter-based `YamlConfigLoaderUtils` |
 | **Classpath scanning** | Guava `ClassPath.from()` at startup | Build-time manifests under `META-INF/annotation-scan/` |
 | **Module wiring** | ServiceLoader SPI discovery | `FixedModuleManager` with hardcoded module/provider construction |
@@ -82,7 +83,7 @@ docker compose -f docker/docker-compose.yml up
 skywalking-graalvm-distro/
 ├── skywalking/              # Git submodule — apache/skywalking (read-only)
 ├── build-tools/
-│   ├── precompiler/         # OAL + MAL + LAL build-time compilation
+│   ├── precompiler/         # OAL + MAL + LAL + Hierarchy build-time compilation
 │   └── config-generator/    # Config code generator (YamlConfigLoaderUtils)
 ├── oap-libs-for-graalvm/    # Per-JAR same-FQCN replacement modules (shade plugin)
 ├── oap-graalvm-server/      # GraalVM-ready OAP server (JVM distro)
@@ -93,13 +94,13 @@ skywalking-graalvm-distro/
 
 ## Test Suites
 
-All build-time transpilations are validated by dual-path comparison tests:
+Build-time pre-compilation is validated by dual-path comparison tests:
 
-- **MAL**: 73 test classes, 1281 assertions — covers all 71 YAML rule files
-- **LAL**: 5 test classes, 19 assertions — covers all 8 YAML rule files
+- **MAL**: Verify pre-compiled `MalExpression` classes produce identical results to fresh v2 compilation
+- **LAL**: Verify pre-compiled `LalExpression` classes produce identical results to fresh v2 compilation
+- **Hierarchy**: Verify pre-compiled hierarchy rule classes match fresh v2 compilation
 
-Each test compiles the expression via both paths (fresh Groovy compilation vs pre-compiled Java class)
-and asserts identical results. Tests require actual data flow — no vacuous empty-result agreements.
+Tests require actual data flow — no vacuous empty-result agreements.
 
 ## Further Reading
 
@@ -107,7 +108,6 @@ and asserts identical results. Tests require actual data flow — no vacuous emp
 - [Compiling from Source](compiling.md) — build JVM distro, native image, and Docker image step by step
 - [Pre-Built Docker Images](docker-image.md) — pull and run the CI-built native image from GHCR
 - [Configuration](configuration.md) — all available settings, environment variables, and differences from upstream
-- [OAL Pre-Compilation](oal-immigration.md) — Javassist class export, annotation scan manifests
-- [MAL Transpilation](mal-immigration.md) — Groovy-to-Java transpiler, combination pattern, functional interfaces
-- [LAL Transpilation](lal-immigration.md) — Groovy-to-Java transpiler, SHA-256 deduplication, spec class overloads
+- [DSL Pre-Compilation](dsl-immigration.md) — unified OAL/MAL/LAL/Hierarchy build-time compilation via ANTLR4 + Javassist v2
+- [OAL Pre-Compilation](oal-immigration.md) — OAL-specific details: Javassist class export, annotation scan manifests
 - [Config Initialization](config-init-immigration.md) — reflection-free config loading via generated setters

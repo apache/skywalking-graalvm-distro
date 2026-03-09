@@ -43,7 +43,6 @@
         <checkstyle.fails.on.error>true</checkstyle.fails.on.error>
         <junit.version>5.9.2</junit.version>
         <!-- Versions aligned with upstream skywalking transitive deps -->
-        <groovy.version>5.0.3</groovy.version>
         <commons-text.version>1.4</commons-text.version>
         <joda-time.version>2.10.5</joda-time.version>
         <mockito.version>5.11.0</mockito.version>
@@ -143,6 +142,11 @@
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>log-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>hierarchy</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
             <dependency>
@@ -429,12 +433,6 @@
                 <artifactId>server-starter-for-graalvm</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>groovy-stubs</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
             <!-- Lombok -->
             <dependency>
                 <groupId>org.projectlombok</groupId>
@@ -447,14 +445,7 @@
               Transitive deps of provided-scope upstream JARs that are
               still needed at runtime (commons-text for MetricConvert,
               joda-time for alarm formatting).
-              Groovy is test-only — all MAL/LAL scripts are transpiled to Java;
-              groovy-stubs provides minimal groovy.lang.* types for class loading.
             -->
-            <dependency>
-                <groupId>org.apache.groovy</groupId>
-                <artifactId>groovy</artifactId>
-                <version>${groovy.version}</version>
-            </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-text</artifactId>

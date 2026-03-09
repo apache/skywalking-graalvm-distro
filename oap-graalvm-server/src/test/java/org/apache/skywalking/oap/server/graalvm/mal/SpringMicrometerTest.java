@@ -20,12 +20,12 @@ package org.apache.skywalking.oap.server.graalvm.mal;
 import com.google.common.collect.ImmutableMap;
 import java.time.Instant;
 import java.util.stream.Stream;
-import org.apache.skywalking.oap.meter.analyzer.dsl.Expression;
-import org.apache.skywalking.oap.meter.analyzer.dsl.Result;
-import org.apache.skywalking.oap.meter.analyzer.dsl.Sample;
-import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamily;
-import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyBuilder;
-import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rule;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Expression;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Result;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
+import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -36,8 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Comparison test for meter-analyzer-config/spring-micrometer.yaml.
  *
- * Loads all 23 metrics from the YAML, runs each through Groovy (Path A) and
- * pre-compiled class (Path B), and verifies identical results.
+ * Loads all 23 metrics from the YAML, runs each through fresh v2 compilation
+ * (Path A) and pre-compiled class (Path B), and verifies identical results.
  *
  * Expression types covered: passthrough, multiply(100), increase("PT1M").
  */
@@ -64,11 +64,11 @@ class SpringMicrometerTest extends MALScriptComparisonBase {
      * </pre>
      */
     @Test
-    void passthroughPreservesValue() {
+    void passthroughPreservesValue() throws Exception {
         Rule rule = loadRule(YAML_PATH);
         String expression = findMetricExp(rule, "meter_jvm_memory_committed");
 
-        Expression e = compileWithGroovy("verify_passthrough", expression);
+        Expression e = compileFresh("verify_passthrough", expression);
         Result r = e.run(ImmutableMap.of("jvm_memory_committed",
             buildSingleSample("jvm_memory_committed", 1024000.0,
                 System.currentTimeMillis())));
@@ -88,11 +88,11 @@ class SpringMicrometerTest extends MALScriptComparisonBase {
      * </pre>
      */
     @Test
-    void multiplyActuallyMultipliesValue() {
+    void multiplyActuallyMultipliesValue() throws Exception {
         Rule rule = loadRule(YAML_PATH);
         String expression = findMetricExp(rule, "meter_process_cpu_usage");
 
-        Expression e = compileWithGroovy("verify_multiply", expression);
+        Expression e = compileFresh("verify_multiply", expression);
         Result r = e.run(ImmutableMap.of("process_cpu_usage",
             buildSingleSample("process_cpu_usage", 0.75,
                 System.currentTimeMillis())));
@@ -114,13 +114,13 @@ class SpringMicrometerTest extends MALScriptComparisonBase {
      * </pre>
      */
     @Test
-    void increaseComputesDelta() {
+    void increaseComputesDelta() throws Exception {
         Rule rule = loadRule(YAML_PATH);
         String expression = findMetricExp(rule, "meter_http_server_requests_count");
         long ts1 = Instant.parse("2024-01-01T00:00:00Z").toEpochMilli();
         long ts2 = Instant.parse("2024-01-01T00:00:10Z").toEpochMilli();
 
-        Expression e = compileWithGroovy("verify_increase", expression);
+        Expression e = compileFresh("verify_increase", expression);
         e.run(ImmutableMap.of("http_server_requests_count",
             buildSingleSample("http_server_requests_count", 100.0, ts1)));
         Result r = e.run(ImmutableMap.of("http_server_requests_count",

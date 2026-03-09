@@ -17,11 +17,15 @@
 
 package org.apache.skywalking.oap.server.core.config;
 
+import java.io.BufferedReader;
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.BiFunction;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -37,60 +41,66 @@ import static java.util.stream.Collectors.toMap;
 /**
  * Same-FQCN replacement of upstream HierarchyDefinitionService.
  *
- * <p>Replaces {@code GroovyShell.evaluate()} with pre-built Java
- * {@link BiFunction} implementations. Eliminates runtime Groovy
- * compilation and the Groovy runtime dependency entirely.
+ * <p>Loads pre-compiled hierarchy matching rule classes from the
+ * {@code hierarchy-v2-classes.txt} manifest. These classes were compiled
+ * at build time by the precompiler using the v2 ANTLR4 + Javassist engine.
  *
- * <p>The 4 matching rules from {@code hierarchy-definition.yml} are
- * implemented as lambda expressions in {@link #RULE_REGISTRY}.
- * Unknown rule names fail fast at startup.
+ * <p>Each rule class implements {@code BiFunction<Service, Service, Boolean>}
+ * and is named deterministically based on the rule name from
+ * {@code hierarchy-definition.yml}.
  */
 @Slf4j
 public class HierarchyDefinitionService implements org.apache.skywalking.oap.server.library.module.Service {
 
+    private static final String MANIFEST_PATH = "META-INF/hierarchy-v2-classes.txt";
+    private static final String PACKAGE_PREFIX =
+        "org.apache.skywalking.oap.server.core.config.v2.compiler.hierarchy.rule.rt.";
+
     /**
-     * Pre-built matching rules keyed by rule name from hierarchy-definition.yml.
-     * Each function takes two Service arguments (upper, lower) and returns Boolean.
+     * Load pre-compiled hierarchy rules from the manifest.
+     * Falls back to the rule name as class lookup key.
      */
-    private static final Map<String, BiFunction<Service, Service, Boolean>> RULE_REGISTRY;
-
-    static {
-        RULE_REGISTRY = new HashMap<>();
-
-        // name: "{ (u, l) -> u.name == l.name }"
-        RULE_REGISTRY.put("name", (u, l) -> Objects.equals(u.getName(), l.getName()));
-
-        // short-name: "{ (u, l) -> u.shortName == l.shortName }"
-        RULE_REGISTRY.put("short-name", (u, l) -> Objects.equals(u.getShortName(), l.getShortName()));
-
-        // lower-short-name-remove-ns:
-        // "{ (u, l) -> { if(l.shortName.lastIndexOf('.') > 0)
-        //     return u.shortName == l.shortName.substring(0, l.shortName.lastIndexOf('.'));
-        //     return false; } }"
-        RULE_REGISTRY.put("lower-short-name-remove-ns", (u, l) -> {
-            int dot = l.getShortName().lastIndexOf('.');
-            if (dot > 0) {
-                return Objects.equals(
-                    u.getShortName(),
-                    l.getShortName().substring(0, dot));
+    @SuppressWarnings("unchecked")
+    private static Map<String, BiFunction<Service, Service, Boolean>> loadPrecompiledRules() {
+        final Map<String, String> classMap = new HashMap<>();
+        try (InputStream is = HierarchyDefinitionService.class.getClassLoader()
+                .getResourceAsStream(MANIFEST_PATH)) {
+            if (is == null) {
+                log.warn("Hierarchy v2 manifest not found: {}", MANIFEST_PATH);
+                return new HashMap<>();
             }
-            return false;
-        });
-
-        // lower-short-name-with-fqdn:
-        // "{ (u, l) -> { if(u.shortName.lastIndexOf(':') > 0)
-        //     return u.shortName.substring(0, u.shortName.lastIndexOf(':'))
-        //         == l.shortName.concat('.svc.cluster.local');
-        //     return false; } }"
-        RULE_REGISTRY.put("lower-short-name-with-fqdn", (u, l) -> {
-            int colon = u.getShortName().lastIndexOf(':');
-            if (colon > 0) {
-                return Objects.equals(
-                    u.getShortName().substring(0, colon),
-                    l.getShortName() + ".svc.cluster.local");
+            try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (!line.isEmpty()) {
+                        String simpleName = line.substring(line.lastIndexOf('.') + 1);
+                        classMap.put(simpleName, line);
+                    }
+                }
             }
-            return false;
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load hierarchy v2 manifest", e);
+        }
+
+        final Map<String, BiFunction<Service, Service, Boolean>> rules = new HashMap<>();
+        classMap.forEach((simpleName, fqcn) -> {
+            try {
+                Class<?> clazz = Class.forName(fqcn);
+                BiFunction<Service, Service, Boolean> rule =
+                    (BiFunction<Service, Service, Boolean>) clazz.getDeclaredConstructor().newInstance();
+                // Extract rule name: HierarchyRule_<sanitizedName> -> reverse sanitize
+                String ruleName = simpleName.startsWith("HierarchyRule_")
+                    ? simpleName.substring("HierarchyRule_".length()).replace('_', '-')
+                    : simpleName;
+                rules.put(ruleName, rule);
+                log.debug("Loaded pre-compiled hierarchy rule: {} -> {}", ruleName, fqcn);
+            } catch (Exception e) {
+                log.warn("Failed to load hierarchy rule class: {}", fqcn, e);
+            }
         });
+        return rules;
     }
 
     @Getter
@@ -167,14 +177,17 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
         private final String expression;
         private final BiFunction<Service, Service, Boolean> matcher;
 
+        @SuppressWarnings("unchecked")
         public MatchingRule(final String name, final String expression) {
             this.name = name;
             this.expression = expression;
-            this.matcher = RULE_REGISTRY.get(name);
+            // Load pre-compiled rule from v2 manifest
+            Map<String, BiFunction<Service, Service, Boolean>> rules = loadPrecompiledRules();
+            this.matcher = rules.get(name);
             if (this.matcher == null) {
                 throw new IllegalArgumentException(
-                    "Unknown hierarchy matching rule: " + name
-                        + ". Known rules: " + RULE_REGISTRY.keySet());
+                    "Pre-compiled hierarchy matching rule not found: " + name
+                        + ". Available: " + rules.keySet());
             }
         }
     }

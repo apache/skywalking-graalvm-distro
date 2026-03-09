@@ -3,7 +3,7 @@
 
 SkyWalking GraalVM Distro is a re-distribution of the official Apache SkyWalking OAP server, targeting GraalVM native image on JDK 25.
 
-This distro moves all dynamic code generation (Javassist, Groovy, classpath scanning) from runtime to build time, producing a ~203MB native binary with full OAP feature set. No upstream source modifications required.
+This distro moves all dynamic code generation (Javassist, classpath scanning) from runtime to build time, producing a ~203MB native binary with full OAP feature set. No upstream source modifications required.
 
 ## Quick Start
 

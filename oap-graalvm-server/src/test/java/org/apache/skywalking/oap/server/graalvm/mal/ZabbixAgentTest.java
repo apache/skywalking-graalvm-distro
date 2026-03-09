@@ -20,10 +20,10 @@ package org.apache.skywalking.oap.server.graalvm.mal;
 import com.google.common.collect.ImmutableMap;
 import java.time.Instant;
 import java.util.stream.Stream;
-import org.apache.skywalking.oap.meter.analyzer.dsl.Sample;
-import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamily;
-import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamilyBuilder;
-import org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rule;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
+import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
@@ -57,7 +57,7 @@ class ZabbixAgentTest extends MALScriptComparisonBase {
     @TestFactory
     Stream<DynamicTest> allMetricsGroovyVsPrecompiled() {
         Rule rule = loadZabbixRule(YAML_PATH);
-        return generateComparisonTests(rule,
+        return generateComparisonTests(YAML_PATH, rule,
             buildInput(100.0, TS1), buildInput(200.0, TS2));
     }
 

@@ -17,406 +17,31 @@
 
 package org.apache.skywalking.oap.server.graalvm.lal;
 
-import com.google.common.collect.ImmutableList;
-import com.google.protobuf.Message;
-import groovy.lang.GString;
-import groovy.lang.GroovyShell;
-import groovy.transform.CompileStatic;
-import groovy.util.DelegatingScript;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-import org.apache.skywalking.apm.network.common.v3.KeyStringValuePair;
-import org.apache.skywalking.apm.network.logging.v3.LogData;
-import org.apache.skywalking.oap.log.analyzer.dsl.Binding;
-import org.apache.skywalking.oap.log.analyzer.dsl.LALPrecompiledExtension;
-import org.apache.skywalking.oap.log.analyzer.dsl.LalExpression;
-import org.apache.skywalking.oap.log.analyzer.dsl.spec.LALDelegatingScript;
-import org.apache.skywalking.oap.log.analyzer.dsl.spec.filter.FilterSpec;
-import org.apache.skywalking.oap.log.analyzer.module.LogAnalyzerModule;
-import org.apache.skywalking.oap.log.analyzer.provider.LALConfig;
-import org.apache.skywalking.oap.log.analyzer.provider.LALConfigs;
-import org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleConfig;
-import org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleProvider;
-import org.apache.skywalking.oap.meter.analyzer.dsl.SampleFamily;
-import org.apache.skywalking.oap.meter.analyzer.dsl.registry.ProcessRegistry;
-import org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder;
-import org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder;
-import org.apache.skywalking.oap.server.core.CoreModule;
-import org.apache.skywalking.oap.server.core.analysis.worker.RecordStreamProcessor;
-import org.apache.skywalking.oap.server.core.config.ConfigService;
-import org.apache.skywalking.oap.server.core.config.NamingControl;
-import org.apache.skywalking.oap.server.core.source.SourceReceiver;
-import org.apache.skywalking.oap.server.library.module.ModuleManager;
-import org.apache.skywalking.oap.server.library.module.ModuleProviderHolder;
-import org.apache.skywalking.oap.server.library.module.ModuleServiceHolder;
-import org.codehaus.groovy.ast.stmt.DoWhileStatement;
-import org.codehaus.groovy.ast.stmt.ForStatement;
-import org.codehaus.groovy.ast.stmt.Statement;
-import org.codehaus.groovy.ast.stmt.WhileStatement;
-import org.codehaus.groovy.control.CompilerConfiguration;
-import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer;
-import org.codehaus.groovy.control.customizers.ImportCustomizer;
-import org.codehaus.groovy.control.customizers.SecureASTCustomizer;
-import org.powermock.reflect.Whitebox;
+import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
 
 import static java.util.Collections.singletonList;
-import static java.util.Collections.singletonMap;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Base class for LAL script comparison tests.
+ * Base class for LAL v2 pre-compilation tests.
  *
- * <p>Validates that pre-compiled LAL scripts (built at build time) behave
- * identically to freshly-compiled scripts. Uses the same dual-path comparison
- * pattern as {@code MALScriptComparisonBase}.
- *
- * <p>Path A: Fresh Groovy compilation with the same CompilerConfiguration
- * as the build-time LAL DSL.
- *
- * <p>Path B: Load pre-compiled class from manifest via SHA-256 hash lookup.
+ * <p>Verifies that pre-compiled LAL classes from the build-time manifest
+ * can be loaded and instantiated. With v2, both fresh compilation and
+ * pre-compilation use the same ANTLR4+Javassist engine, so the main
+ * verification is that the precompiler correctly captured all classes.
  */
 abstract class LALScriptComparisonBase {
     private static volatile Map<String, String> MANIFEST;
-
-    private final ModuleManager mockManager;
-    private final LogAnalyzerModuleConfig config;
-
-    LALScriptComparisonBase() {
-        mockManager = createMockManager();
-        config = new LogAnalyzerModuleConfig();
-    }
-
-    // ── ModuleManager mock setup (from upstream DSLTest) ──
-
-    private static ModuleManager createMockManager() {
-        final ModuleManager manager = mock(ModuleManager.class);
-        Whitebox.setInternalState(manager, "isInPrepareStage", false);
-        when(manager.find(anyString())).thenReturn(mock(ModuleProviderHolder.class));
-
-        // LogAnalyzerModule
-        final LogAnalyzerModuleProvider logProvider = mock(LogAnalyzerModuleProvider.class);
-        when(logProvider.getMetricConverts()).thenReturn(Collections.emptyList());
-        final ModuleProviderHolder logHolder = mock(ModuleProviderHolder.class);
-        when(logHolder.provider()).thenReturn(logProvider);
-        when(manager.find(LogAnalyzerModule.NAME)).thenReturn(logHolder);
-
-        // CoreModule
-        final ModuleServiceHolder coreServiceHolder = mock(ModuleServiceHolder.class);
-        when(coreServiceHolder.getService(SourceReceiver.class))
-            .thenReturn(mock(SourceReceiver.class));
-        final ConfigService configService = mock(ConfigService.class);
-        when(configService.getSearchableLogsTags()).thenReturn("");
-        when(coreServiceHolder.getService(ConfigService.class))
-            .thenReturn(configService);
-        final NamingControl namingControl = mock(NamingControl.class);
-        when(namingControl.formatServiceName(anyString()))
-            .thenAnswer(inv -> inv.getArgument(0));
-        when(coreServiceHolder.getService(NamingControl.class))
-            .thenReturn(namingControl);
-        final ModuleProviderHolder coreHolder = mock(ModuleProviderHolder.class);
-        when(coreHolder.provider()).thenReturn(coreServiceHolder);
-        when(manager.find(CoreModule.NAME)).thenReturn(coreHolder);
-
-        return manager;
-    }
-
-    // ── Path A: Fresh Groovy compilation ──
-
-    @SuppressWarnings("rawtypes")
-    private DelegatingScript compileGroovy(final String dsl) {
-        final CompilerConfiguration cc = new CompilerConfiguration();
-        final ASTTransformationCustomizer customizer =
-            new ASTTransformationCustomizer(
-                singletonMap("extensions",
-                    singletonList(LALPrecompiledExtension.class.getName())),
-                CompileStatic.class);
-        cc.addCompilationCustomizers(customizer);
-
-        final SecureASTCustomizer secureAST = new SecureASTCustomizer();
-        secureAST.setDisallowedStatements(
-            ImmutableList.<Class<? extends Statement>>builder()
-                .add(WhileStatement.class)
-                .add(DoWhileStatement.class)
-                .add(ForStatement.class)
-                .build());
-        secureAST.setAllowedReceiversClasses(
-            ImmutableList.<Class>builder()
-                .add(Object.class)
-                .add(Map.class)
-                .add(List.class)
-                .add(Array.class)
-                .add(GString.class)
-                .add(String.class)
-                .add(ProcessRegistry.class)
-                .build());
-        cc.addCompilationCustomizers(secureAST);
-        cc.setScriptBaseClass(LALDelegatingScript.class.getName());
-
-        final ImportCustomizer icz = new ImportCustomizer();
-        icz.addImport("ProcessRegistry", ProcessRegistry.class.getName());
-        cc.addCompilationCustomizers(icz);
-
-        final GroovyShell sh = new GroovyShell(cc);
-        return (DelegatingScript) sh.parse(dsl, "test_groovy");
-    }
-
-    // ── Path B: Pre-compiled LalExpression lookup ──
-
-    private LalExpression loadPrecompiled(final String dsl) {
-        final Map<String, String> manifest = loadManifest();
-        final String hash = sha256(dsl);
-        final String className = manifest.get(hash);
-        if (className == null) {
-            throw new AssertionError(
-                "Pre-compiled LAL expression not found for hash: " + hash
-                    + ". Available: " + manifest.size() + " expressions. "
-                    + "Manifest keys: " + manifest.keySet());
-        }
-        try {
-            final Class<?> exprClass = Class.forName(className);
-            return (LalExpression) exprClass.getDeclaredConstructor().newInstance();
-        } catch (final Exception e) {
-            throw new AssertionError(
-                "Failed to load pre-compiled LAL expression: " + className, e);
-        }
-    }
-
-    // ── Dual-path comparison ──
-
-    /**
-     * Runs both Groovy and pre-compiled paths with the given LogData,
-     * then asserts identical Binding state.
-     */
-    protected void runAndCompare(final String dsl, final LogData logData) {
-        runAndCompareInternal(dsl, logData, null);
-    }
-
-    /**
-     * Variant with extraLog (for envoy-als rules that access parsed?.response etc).
-     */
-    protected void runAndCompare(final String dsl, final LogData logData,
-                                 final Message extraLog) {
-        runAndCompareInternal(dsl, logData, extraLog);
-    }
-
-    /**
-     * Variant with pre-populated parsed Map (for envoy-als where parsed comes
-     * from extraLog protobuf normally, but we use Maps for testing).
-     */
-    protected void runAndCompareWithParsedMap(final String dsl,
-                                              final LogData logData,
-                                              final Map<String, Object> parsedMap) {
-        final DelegatingScript scriptA = compileGroovy(dsl);
-        final LalExpression exprB = loadPrecompiled(dsl);
-
-        final EvalResult resultA = evaluateGroovy(scriptA, logData, null, parsedMap);
-        final EvalResult resultB = evaluateExpression(exprB, logData, null, parsedMap);
-
-        assertResultsMatch(resultA, resultB);
-    }
-
-    private void runAndCompareInternal(final String dsl,
-                                       final LogData logData,
-                                       final Message extraLog) {
-        final DelegatingScript scriptA = compileGroovy(dsl);
-        final LalExpression exprB = loadPrecompiled(dsl);
-
-        final EvalResult resultA = evaluateGroovy(scriptA, logData, extraLog, null);
-        final EvalResult resultB = evaluateExpression(exprB, logData, extraLog, null);
-
-        assertResultsMatch(resultA, resultB);
-    }
-
-    // ── Path A evaluation: Groovy DelegatingScript ──
-
-    private EvalResult evaluateGroovy(final DelegatingScript script,
-                                      final LogData logData,
-                                      final Message extraLog,
-                                      final Map<String, Object> parsedMap) {
-        try {
-            final FilterSpec filterSpec = new FilterSpec(mockManager, config);
-            Whitebox.setInternalState(filterSpec, "sinkListenerFactories",
-                Collections.emptyList());
-            script.setDelegate(filterSpec);
-
-            final Binding binding = createBinding(logData, extraLog, parsedMap);
-            mockRecordStreamProcessor();
-
-            filterSpec.bind(binding);
-            script.run();
-
-            return new EvalResult(binding,
-                binding.metricsContainer().orElse(null), null);
-        } catch (final Exception e) {
-            return new EvalResult(null, null, e);
-        }
-    }
-
-    // ── Path B evaluation: Transpiled LalExpression ──
-
-    private EvalResult evaluateExpression(final LalExpression expression,
-                                          final LogData logData,
-                                          final Message extraLog,
-                                          final Map<String, Object> parsedMap) {
-        try {
-            final FilterSpec filterSpec = new FilterSpec(mockManager, config);
-            Whitebox.setInternalState(filterSpec, "sinkListenerFactories",
-                Collections.emptyList());
-
-            final Binding binding = createBinding(logData, extraLog, parsedMap);
-            mockRecordStreamProcessor();
-
-            filterSpec.bind(binding);
-            expression.execute(filterSpec, binding);
-
-            return new EvalResult(binding,
-                binding.metricsContainer().orElse(null), null);
-        } catch (final Exception e) {
-            return new EvalResult(null, null, e);
-        }
-    }
-
-    // ── Shared Binding setup ──
-
-    private static Binding createBinding(final LogData logData,
-                                         final Message extraLog,
-                                         final Map<String, Object> parsedMap) {
-        final Binding binding = new Binding();
-        binding.log(logData.toBuilder().build());
-        if (extraLog != null) {
-            binding.extraLog(extraLog);
-        }
-        if (parsedMap != null) {
-            binding.parsed(parsedMap);
-        }
-        final List<SampleFamily> metricsContainer = new ArrayList<>();
-        binding.metricsContainer(metricsContainer);
-        binding.logContainer(new AtomicReference<>());
-        return binding;
-    }
-
-    private static void mockRecordStreamProcessor() {
-        try {
-            final RecordStreamProcessor mockRSP = mock(RecordStreamProcessor.class);
-            Whitebox.setInternalState(
-                RecordStreamProcessor.class, "PROCESSOR", mockRSP);
-        } catch (final Exception ignored) {
-            // May already be mocked
-        }
-    }
-
-    // ── Assertion helpers ──
-
-    private static void assertResultsMatch(final EvalResult a,
-                                           final EvalResult b) {
-        if (a.error != null || b.error != null) {
-            // Both should either succeed or fail with same exception type
-            if (a.error != null && b.error != null) {
-                assertEquals(a.error.getClass(), b.error.getClass(),
-                    "Exception types differ: A=" + a.error.getMessage()
-                        + ", B=" + b.error.getMessage());
-            } else {
-                final String msg = a.error != null
-                    ? "Groovy path threw " + a.error + " but pre-compiled succeeded"
-                    : "Pre-compiled path threw " + b.error + " but Groovy succeeded";
-                throw new AssertionError(msg);
-            }
-            return;
-        }
-
-        // Compare abort/save flags
-        assertEquals(a.binding.shouldAbort(), b.binding.shouldAbort(),
-            "shouldAbort differs");
-        assertEquals(a.binding.shouldSave(), b.binding.shouldSave(),
-            "shouldSave differs");
-
-        if (a.binding.shouldAbort()) {
-            // If aborted, log state may be partially modified. Compare what we can.
-            return;
-        }
-
-        // Compare LogData.Builder state
-        final LogData.Builder logA = a.binding.log();
-        final LogData.Builder logB = b.binding.log();
-        assertEquals(logA.getService(), logB.getService(), "service differs");
-        assertEquals(logA.getServiceInstance(), logB.getServiceInstance(),
-            "serviceInstance differs");
-        assertEquals(logA.getEndpoint(), logB.getEndpoint(), "endpoint differs");
-        assertEquals(logA.getLayer(), logB.getLayer(), "layer differs");
-        assertEquals(logA.getTimestamp(), logB.getTimestamp(), "timestamp differs");
-
-        // Compare tags
-        final List<KeyStringValuePair> tagsA = logA.getTags().getDataList();
-        final List<KeyStringValuePair> tagsB = logB.getTags().getDataList();
-        assertEquals(tagsA.size(), tagsB.size(),
-            "tag count differs: A=" + tagsA + ", B=" + tagsB);
-        for (int i = 0; i < tagsA.size(); i++) {
-            assertEquals(tagsA.get(i).getKey(), tagsB.get(i).getKey(),
-                "tag key at index " + i + " differs");
-            assertEquals(tagsA.get(i).getValue(), tagsB.get(i).getValue(),
-                "tag value at index " + i + " differs");
-        }
-
-        // Compare metrics container
-        final int metricsA = a.metrics != null ? a.metrics.size() : 0;
-        final int metricsB = b.metrics != null ? b.metrics.size() : 0;
-        assertEquals(metricsA, metricsB, "metrics container size differs");
-
-        // Compare databaseSlowStatement if set
-        try {
-            final DatabaseSlowStatementBuilder slowA = a.binding.databaseSlowStatement();
-            final DatabaseSlowStatementBuilder slowB = b.binding.databaseSlowStatement();
-            if (slowA != null && slowB != null) {
-                assertEquals(slowA.getId(), slowB.getId(), "slowSql.id differs");
-                assertEquals(slowA.getStatement(), slowB.getStatement(),
-                    "slowSql.statement differs");
-                assertEquals(slowA.getLatency(), slowB.getLatency(),
-                    "slowSql.latency differs");
-            } else {
-                assertEquals(slowA, slowB, "slowSql builder presence differs");
-            }
-        } catch (final Exception ignored) {
-            // databaseSlowStatement may not be set
-        }
-
-        // Compare sampledTrace if set
-        try {
-            final SampledTraceBuilder traceA = a.binding.sampledTraceBuilder();
-            final SampledTraceBuilder traceB = b.binding.sampledTraceBuilder();
-            if (traceA != null && traceB != null) {
-                assertEquals(traceA.getUri(), traceB.getUri(),
-                    "sampledTrace.uri differs");
-                assertEquals(traceA.getLatency(), traceB.getLatency(),
-                    "sampledTrace.latency differs");
-                assertEquals(traceA.getProcessId(), traceB.getProcessId(),
-                    "sampledTrace.processId differs");
-                assertEquals(traceA.getDestProcessId(), traceB.getDestProcessId(),
-                    "sampledTrace.destProcessId differs");
-                assertEquals(traceA.getComponentId(), traceB.getComponentId(),
-                    "sampledTrace.componentId differs");
-            } else {
-                assertEquals(traceA, traceB,
-                    "sampledTrace builder presence differs");
-            }
-        } catch (final Exception ignored) {
-            // sampledTraceBuilder may not be set
-        }
-    }
-
-    // ── YAML loading ──
 
     /**
      * Load LAL rules from a YAML file under the lal/ resource directory.
@@ -433,6 +58,35 @@ abstract class LALScriptComparisonBase {
         return rules;
     }
 
+    /**
+     * Load pre-compiled LalExpression by rule name from manifest.
+     */
+    protected static LalExpression loadPrecompiled(final String ruleName) {
+        final Map<String, String> manifest = loadManifest();
+        String className = null;
+
+        // Search for class matching sanitized rule name
+        final String sanitizedName = sanitizeName(ruleName);
+        for (final Map.Entry<String, String> entry : manifest.entrySet()) {
+            final String simpleName = entry.getKey();
+            if (simpleName.contains(sanitizedName)) {
+                className = entry.getValue();
+                break;
+            }
+        }
+
+        assertNotNull(className,
+            "Pre-compiled LAL expression not found for rule: " + ruleName
+                + " (sanitized: " + sanitizedName + ")");
+        try {
+            final Class<?> exprClass = Class.forName(className);
+            return (LalExpression) exprClass.getDeclaredConstructor().newInstance();
+        } catch (final Exception e) {
+            throw new AssertionError(
+                "Failed to load pre-compiled LAL expression: " + className, e);
+        }
+    }
+
     // ── Manifest loading ──
 
     protected static Map<String, String> loadManifest() {
@@ -445,23 +99,23 @@ abstract class LALScriptComparisonBase {
             }
             final Map<String, String> map = new HashMap<>();
             try (InputStream is = LALScriptComparisonBase.class.getClassLoader()
-                    .getResourceAsStream("META-INF/lal-expressions.txt")) {
+                    .getResourceAsStream("META-INF/lal-v2-classes.txt")) {
                 if (is == null) {
                     throw new AssertionError(
-                        "Manifest META-INF/lal-expressions.txt not found");
+                        "Manifest META-INF/lal-v2-classes.txt not found");
                 }
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(is, StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         line = line.trim();
-                        if (line.isEmpty()) {
+                        if (line.isEmpty() || line.startsWith("#")) {
                             continue;
                         }
-                        final String[] parts = line.split("=", 2);
-                        if (parts.length == 2) {
-                            map.put(parts[0], parts[1]);
-                        }
+                        // Each line is a FQCN like org.apache.skywalking...LalExpr_default
+                        final String simpleName = line.substring(
+                            line.lastIndexOf('.') + 1);
+                        map.put(simpleName, line);
                     }
                 }
             } catch (final Exception e) {
@@ -473,134 +127,20 @@ abstract class LALScriptComparisonBase {
     }
 
     /**
-     * Load the script name → class name manifest.
+     * Sanitize a name for use in class naming (matches upstream LALCodegenHelper).
      */
-    protected static Map<String, String> loadNameManifest() {
-        final Map<String, String> map = new HashMap<>();
-        try (InputStream is = LALScriptComparisonBase.class.getClassLoader()
-                .getResourceAsStream("META-INF/lal-scripts.txt")) {
-            if (is == null) {
-                throw new AssertionError(
-                    "Manifest META-INF/lal-scripts.txt not found");
-            }
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty()) {
-                        continue;
-                    }
-                    final String[] parts = line.split("=", 2);
-                    if (parts.length == 2) {
-                        map.put(parts[0], parts[1]);
-                    }
-                }
-            }
-        } catch (final Exception e) {
-            throw new AssertionError("Failed to load LAL name manifest", e);
+    static String sanitizeName(final String name) {
+        if (name == null || name.isEmpty()) {
+            return "Generated";
         }
-        return map;
-    }
-
-    // ── LogData builders ──
-
-    /**
-     * Build minimal LogData with text body and optional tags.
-     */
-    protected static LogData buildTextLogData(final String service,
-                                              final String serviceInstance,
-                                              final String textBody,
-                                              final Map<String, String> tags) {
-        final LogData.Builder builder = LogData.newBuilder()
-            .setService(service)
-            .setServiceInstance(serviceInstance)
-            .setTimestamp(System.currentTimeMillis());
-
-        if (textBody != null) {
-            builder.setBody(
-                org.apache.skywalking.apm.network.logging.v3.LogDataBody.newBuilder()
-                    .setText(
-                        org.apache.skywalking.apm.network.logging.v3.TextLog.newBuilder()
-                            .setText(textBody)
-                            .build())
-                    .build());
+        final StringBuilder sb = new StringBuilder(name.length() + 1);
+        if (!Character.isJavaIdentifierStart(name.charAt(0))) {
+            sb.append('_');
         }
-
-        if (tags != null) {
-            final org.apache.skywalking.apm.network.logging.v3.LogTags.Builder
-                tagsBuilder = org.apache.skywalking.apm.network.logging.v3
-                    .LogTags.newBuilder();
-            tags.forEach((k, v) -> tagsBuilder.addData(
-                KeyStringValuePair.newBuilder().setKey(k).setValue(v).build()));
-            builder.setTags(tagsBuilder);
+        for (int i = 0; i < name.length(); i++) {
+            final char c = name.charAt(i);
+            sb.append(Character.isJavaIdentifierPart(c) ? c : '_');
         }
-
-        return builder.build();
-    }
-
-    /**
-     * Build LogData with JSON body.
-     */
-    protected static LogData buildJsonLogData(final String service,
-                                              final String serviceInstance,
-                                              final String jsonBody,
-                                              final Map<String, String> tags) {
-        final LogData.Builder builder = LogData.newBuilder()
-            .setService(service)
-            .setServiceInstance(serviceInstance)
-            .setTimestamp(System.currentTimeMillis());
-
-        if (jsonBody != null) {
-            builder.setBody(
-                org.apache.skywalking.apm.network.logging.v3.LogDataBody.newBuilder()
-                    .setJson(
-                        org.apache.skywalking.apm.network.logging.v3.JSONLog.newBuilder()
-                            .setJson(jsonBody)
-                            .build())
-                    .build());
-        }
-
-        if (tags != null) {
-            final org.apache.skywalking.apm.network.logging.v3.LogTags.Builder
-                tagsBuilder = org.apache.skywalking.apm.network.logging.v3
-                    .LogTags.newBuilder();
-            tags.forEach((k, v) -> tagsBuilder.addData(
-                KeyStringValuePair.newBuilder().setKey(k).setValue(v).build()));
-            builder.setTags(tagsBuilder);
-        }
-
-        return builder.build();
-    }
-
-    // ── Utility ──
-
-    static String sha256(final String input) {
-        try {
-            final MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            final byte[] hash = digest.digest(
-                input.getBytes(StandardCharsets.UTF_8));
-            final StringBuilder hex = new StringBuilder();
-            for (final byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (final Exception e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
-    }
-
-    private static final class EvalResult {
-        final Binding binding;
-        final List<SampleFamily> metrics;
-        final Exception error;
-
-        EvalResult(final Binding binding,
-                   final List<SampleFamily> metrics,
-                   final Exception error) {
-            this.binding = binding;
-            this.metrics = metrics;
-            this.error = error;
-        }
+        return sb.toString();
     }
 }

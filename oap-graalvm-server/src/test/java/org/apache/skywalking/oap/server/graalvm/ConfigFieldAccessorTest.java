@@ -57,6 +57,14 @@ class ConfigFieldAccessorTest {
      * - meterConfigs: lazily loaded via custom getMeterConfigs()/getLogMeterConfigs() method
      * - serviceMetaInfoFactory: final, accessed via serviceMetaInfoFactory() method
      */
+    /**
+     * Fields that are lazily-loaded caches or derived values, not YAML config properties.
+     * YamlConfigLoaderUtils does not need to set these.
+     */
+    private static final Set<String> SETTER_EXCLUSION_FIELDS = Set.of(
+        "LogAnalyzerModuleConfig.meterConfigs"
+    );
+
     private static final Set<String> CUSTOM_ACCESSOR_FIELDS = Set.of(
         "AnalyzerModuleConfig.virtualPeers",
         "AnalyzerModuleConfig.meterAnalyzerActiveFiles",
@@ -78,6 +86,10 @@ class ConfigFieldAccessorTest {
             while (clazz != null && clazz != ModuleConfig.class && clazz != Object.class) {
                 for (Field field : clazz.getDeclaredFields()) {
                     if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
+                        continue;
+                    }
+                    String fieldKey = configClass.getSimpleName() + "." + field.getName();
+                    if (SETTER_EXCLUSION_FIELDS.contains(fieldKey)) {
                         continue;
                     }
                     if (!hasSetter(configClass, field)) {

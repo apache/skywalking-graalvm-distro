@@ -26,7 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.Yaml;
 
 import java.util.Set;
-import org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleConfig;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig;
 import org.apache.skywalking.oap.query.debug.StatusQueryConfig;
 import org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig;
 import org.apache.skywalking.oap.query.logql.LogQLConfig;
@@ -1235,9 +1235,6 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "malFiles":
                     cfg.setMalFiles((String) value);
-                    break;
-                case "meterConfigs":
-                    cfg.setMeterConfigs((List) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
