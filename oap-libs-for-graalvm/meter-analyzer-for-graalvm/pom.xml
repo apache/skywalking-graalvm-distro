@@ -66,6 +66,8 @@
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/v2/dsl/DSL$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/v2/dsl/FilterExpression.class</exclude>
                                 <exclude>org/apache/skywalking/oap/meter/analyzer/v2/dsl/FilterExpression$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/v2/prometheus/rule/Rules.class</exclude>
+                                <exclude>org/apache/skywalking/oap/meter/analyzer/v2/prometheus/rule/Rules$*.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

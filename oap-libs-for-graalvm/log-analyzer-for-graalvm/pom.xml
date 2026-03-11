@@ -64,6 +64,8 @@
                                 <!-- v2 ANTLR4+Javassist classes replaced with pre-compiled loaders -->
                                 <exclude>org/apache/skywalking/oap/log/analyzer/v2/dsl/DSL.class</exclude>
                                 <exclude>org/apache/skywalking/oap/log/analyzer/v2/dsl/DSL$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/v2/provider/LALConfigs.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/v2/provider/LALConfigs$*.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

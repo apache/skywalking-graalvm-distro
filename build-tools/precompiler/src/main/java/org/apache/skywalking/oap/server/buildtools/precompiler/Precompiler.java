@@ -1447,7 +1447,8 @@ public class Precompiler {
         includes.add(Map.of("pattern", "META-INF/annotation-scan/.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/oal-.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/mal-.*\\.txt"));
-        includes.add(Map.of("pattern", "META-INF/mal-.*\\.properties"));
+        includes.add(Map.of("pattern", "META-INF/mal-v2\\.manifest"));
+        includes.add(Map.of("pattern", "META-INF/mal-v2/.*"));
         includes.add(Map.of("pattern", "META-INF/lal-.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/hierarchy-.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/config-data/.*\\.json"));

@@ -82,15 +82,34 @@ public class DSL {
                          final String yamlSource) throws ModuleStartException {
         final Map<String, String> classMap = loadManifest();
 
-        // Try to find by sanitized ruleName (matching precompiler's classNameHint)
+        // Try to find by sanitized ruleName (matching precompiler's classNameHint).
+        // Class names follow pattern: {yamlSource}_{ruleName}
+        // e.g., "default_default", "network_profiling_slow_trace_network_profiling_slow_trace"
         final String sanitizedName = sanitizeName(ruleName);
-        String className = classMap.get("LalExpr_" + sanitizedName);
+
+        // First try exact match on simple name
+        String className = classMap.get(sanitizedName);
+        // Then try {sanitizedName}_{sanitizedName} pattern (yamlSource == ruleName)
+        if (className == null) {
+            className = classMap.get(sanitizedName + "_" + sanitizedName);
+        }
+        // Fallback: try suffix match (_ruleName at end of simple name)
+        if (className == null) {
+            final String suffix = "_" + sanitizedName;
+            for (Map.Entry<String, String> entry : classMap.entrySet()) {
+                if (entry.getKey().endsWith(suffix)) {
+                    className = entry.getValue();
+                    break;
+                }
+            }
+        }
 
         if (className == null) {
             throw new ModuleStartException(
                 "Pre-compiled LAL expression not found for rule: " + ruleName
                     + " (sanitized: " + sanitizedName + ")"
-                    + ". Available: " + classMap.size() + " expressions");
+                    + ". Available: " + classMap.size() + " expressions"
+                    + " keys: " + classMap.keySet());
         }
 
         try {

@@ -7916,7 +7916,7 @@
       "allPublicMethods": true
     },
     {
-      "type": "org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleConfig",
+      "type": "org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig",
       "methods": [
         {
           "name": "<init>",
@@ -7925,13 +7925,13 @@
       ]
     },
     {
-      "type": "org.apache.skywalking.oap.meter.analyzer.MetricRuleConfig"
+      "type": "org.apache.skywalking.oap.meter.analyzer.v2.MetricRuleConfig"
     },
     {
-      "type": "org.apache.skywalking.oap.meter.analyzer.MetricRuleConfig$RuleConfig"
+      "type": "org.apache.skywalking.oap.meter.analyzer.v2.MetricRuleConfig$RuleConfig"
     },
     {
-      "type": "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.MetricsRule",
+      "type": "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule",
       "methods": [
         {
           "name": "<init>",
@@ -7952,7 +7952,7 @@
       ]
     },
     {
-      "type": "org.apache.skywalking.oap.meter.analyzer.prometheus.rule.Rule",
+      "type": "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule",
       "methods": [
         {
           "name": "<init>",

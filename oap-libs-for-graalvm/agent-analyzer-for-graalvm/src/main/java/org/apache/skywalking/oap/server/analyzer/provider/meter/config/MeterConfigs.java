@@ -18,6 +18,7 @@
 package org.apache.skywalking.oap.server.analyzer.provider.meter.config;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.util.Collections;
@@ -42,7 +43,8 @@ import org.apache.skywalking.oap.server.library.util.CollectionUtils;
 @Slf4j
 public class MeterConfigs {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /**
      * Load all configs from pre-compiled JSON manifest.
