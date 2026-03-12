@@ -8,7 +8,7 @@
 - `oap-graalvm-server/` — GraalVM-ready OAP server module (JVM distro) with same-FQCN replacement classes and comprehensive test suites.
 - `oap-graalvm-native/` — Native image module: `native-maven-plugin` configuration, native-specific `log4j2.xml`, `log4j2-reflect-config.json`, and native distribution assembly.
 - `docker/` — `Dockerfile.native` (runtime image) and `docker-compose.yml` (BanyanDB + OAP native).
-- `docs/` — Documentation: distro-policy, configuration, DSL pre-compilation (OAL/MAL/LAL/Hierarchy), config initialization.
+- `docs/` — User-facing docs (quick-start, features, FAQ, configuration) and `docs/internals/` for build-time immigration details.
 - Root-level Maven + Makefile — Orchestrates building on top of the submodule.
 
 ## Key Principles
@@ -26,7 +26,7 @@
 - **MeterSystem**: `MeterSystem.create()` uses Javassist to generate ~1188 meter function subclasses. Run at build time, export `.class` files. Separate from MAL DSL compilation.
 - **Same-FQCN replacement**: Classes in `oap-libs-for-graalvm/*/src/main/java/` with the same fully-qualified class name as upstream classes are repackaged via `maven-shade-plugin` (original `.class` excluded). Used for v2 `DSL.java` (MAL/LAL), `MeterSystem.java`, `CompiledHierarchyRuleProvider.java`, etc.
 - **Classpath scanning**: Guava `ClassPath.from()` used in multiple places. Run at build-time pre-compilation as verification gate, export static class index.
-- **Config loading**: `YamlConfigLoaderUtils.copyProperties()` replaced with same-FQCN version that uses Lombok setters instead of `Field.setAccessible()`. See [docs/config-init-immigration.md](docs/config-init-immigration.md).
+- **Config loading**: `YamlConfigLoaderUtils.copyProperties()` replaced with same-FQCN version that uses Lombok setters instead of `Field.setAccessible()`. See [docs/internals/config-init-immigration.md](docs/internals/config-init-immigration.md).
 - **Reflection metadata**: Precompiler auto-generates `reflect-config.json` by scanning Armeria HTTP handlers, GraphQL resolvers/types, config POJOs, and OAL/MAL/LAL/Hierarchy manifests. `log4j2-reflect-config.json` is manually maintained for Log4j2 plugin classes.
 - **Native image**: `oap-graalvm-native` uses `native-maven-plugin` with `-Pnative` profile. Console-only `log4j2.xml` avoids RollingFile reflection chain. ~203MB binary, boots to full module init.
 
@@ -35,7 +35,7 @@
 - **LAL**: Verify pre-compiled `LalExpression` classes produce identical results. Covers all 8 LAL YAML files.
 - **Hierarchy**: Verify pre-compiled hierarchy rule classes match fresh v2 compilation.
 
-See [docs/dsl-immigration.md](docs/dsl-immigration.md) for details.
+See [docs/internals/dsl-immigration.md](docs/internals/dsl-immigration.md) for details.
 
 ## Build Commands
 
@@ -48,7 +48,7 @@ make build-distro
 # Precompiler only
 mvn -pl build-tools/precompiler install -DskipTests
 
-# Run MAL tests only
+# Run tests
 mvn -pl oap-graalvm-server test
 
 # Native image (requires GraalVM with native-image)

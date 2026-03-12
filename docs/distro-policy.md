@@ -44,7 +44,7 @@ Since upstream PR #13723, all four SkyWalking DSL compilers (OAL, MAL, LAL, Hier
 ### Approach (Simplified)
 Run all four v2 compilers at build time via their native exposed APIs (`setClassOutputDir()`, `setClassNameHint()`, `setGeneratedFilePath()`). Capture generated `.class` files into the precompiler output JAR. At runtime, same-FQCN replacement loaders find these classes by name instead of compiling them.
 
-**Details**: [dsl-immigration.md](dsl-immigration.md) | [oal-immigration.md](oal-immigration.md)
+**Details**: [dsl-immigration.md](internals/dsl-immigration.md) | [oal-immigration.md](internals/oal-immigration.md)
 
 ### OAL
 - `OALEngineV2.start()` processes all 9 OAL defines at build time.
@@ -96,7 +96,7 @@ Run all four v2 compilers at build time via their native exposed APIs (`setClass
 2. **Simplified config file**: Only knobs for selected providers
 3. **Config loading**: **No reflection.** Build-time tool scans all `ModuleConfig` subclass fields → generates same-FQCN replacement of `YamlConfigLoaderUtils` that uses Lombok setters and VarHandle to set config fields directly. Eliminates `Field.setAccessible`/`field.set` and the need for `reflect-config.json` for config classes.
 
-**Details**: [config-init-immigration.md](config-init-immigration.md)
+**Details**: [config-init-immigration.md](internals/config-init-immigration.md)
 
 ### What Was Built
 - `FixedModuleManager` — direct module/provider construction via `ModuleDefine.prepare()` overload, no SPI
