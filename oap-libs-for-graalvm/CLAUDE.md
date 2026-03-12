@@ -41,7 +41,7 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 
 ## Complete Replacement Inventory
 
-### server-core-for-graalvm (7 classes)
+### server-core-for-graalvm (8 classes)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
@@ -52,6 +52,7 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 | `CoreModuleConfig` | `server-core/.../CoreModuleConfig.java` | Added `@Setter` at class level | No |
 | `HierarchyDefinitionService` | `server-core/.../config/HierarchyDefinitionService.java` | Java-backed closures instead of GroovyShell | No |
 | `HierarchyService` | `server-core/.../hierarchy/HierarchyService.java` | Support for Java-backed closures | No |
+| `HttpAlarmCallback` | `server-core/.../alarm/HttpAlarmCallback.java` | Lazy HttpClient init (static final breaks in native image) | No |
 
 ### meter-analyzer-for-graalvm (2 classes)
 
