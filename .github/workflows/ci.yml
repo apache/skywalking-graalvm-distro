@@ -254,6 +254,13 @@ jobs:
       - name: Load Docker image
         run: docker load -i /tmp/skywalking-oap-native.tar
 
+      - name: Build mock sender jar (baseline only)
+        if: matrix.test.case == 'baseline'
+        run: |
+          cd skywalking && ./mvnw -B -q \
+            -f test/e2e-v2/java-test-service/e2e-mock-sender/pom.xml \
+            package -DskipTests -Dmaven.javadoc.skip
+
       - name: Run E2E test
         uses: apache/skywalking-infra-e2e@8c21e43e241a32a54bdf8eeceb9099eb27e5e9b4
         with:

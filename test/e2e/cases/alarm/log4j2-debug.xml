@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one or more
+  ~ contributor license agreements.  See the NOTICE file distributed with
+  ~ this work for additional information regarding copyright ownership.
+  ~ The ASF licenses this file to You under the Apache License, Version 2.0
+  ~ (the "License"); you may not use this file except in compliance with
+  ~ the License.  You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  ~
+  -->
+
+<!--
+  Log4j2 configuration for alarm E2E debugging.
+  Enables DEBUG for alarm-related packages to trace the alarm evaluation pipeline.
+-->
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout>
+                <pattern>%d - %c - %L [%t] %-5p %x - %m%n</pattern>
+            </PatternLayout>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <logger name="org.apache.zookeeper" level="INFO"/>
+        <logger name="io.grpc.netty" level="INFO"/>
+        <!-- Alarm pipeline TRACE logging: RunningRule, AlarmCore, NotifyHandler -->
+        <logger name="org.apache.skywalking.oap.server.core.alarm" level="TRACE"/>
+        <logger name="org.apache.skywalking.oap.server.core.analysis.worker.AlarmNotifyWorker" level="TRACE"/>
+        <logger name="org.apache.skywalking.oap.server.core.analysis.worker.MetricsPersistentWorker" level="TRACE"/>
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

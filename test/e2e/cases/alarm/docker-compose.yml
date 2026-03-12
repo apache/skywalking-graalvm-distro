@@ -40,6 +40,7 @@ services:
         condition: service_healthy
     volumes:
       - ../../../../skywalking/test/e2e-v2/cases/alarm/alarm-settings.yml:/skywalking/config/alarm-settings.yml
+      - ./log4j2-debug.xml:/skywalking/config/log4j2.xml
     healthcheck:
       test: ["CMD-SHELL", "nc -nz 127.0.0.1 11800 || exit 1"]
       interval: 5s
