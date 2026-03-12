@@ -1,5 +1,6 @@
 # Build output
 target/
+gen/
 dependency-reduced-pom.xml
 *.class
 

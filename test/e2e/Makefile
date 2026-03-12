@@ -18,7 +18,7 @@
 # local runs and CI (apache/skywalking-infra-e2e action).
 ROOT := ../..
 
-.PHONY: simple-java-agent istio-als
+.PHONY: simple-java-agent istio-als baseline
 
 # Run simple-java-agent e2e test
 # Prerequisites: make docker-native (from root)
@@ -29,5 +29,11 @@ simple-java-agent:
 # Run Istio ALS + K8s cluster + BanyanDB e2e test
 # Prerequisites: make docker-native (from root), kind, istioctl
 istio-als:
-	cd $(ROOT) && ISTIO_VERSION=$${ISTIO_VERSION:-1.24.0} \
+	cd $(ROOT) && ISTIO_VERSION=$${ISTIO_VERSION:-1.28.0} \
 	e2e run -c test/e2e/cases/istio-als/e2e.yaml
+
+# Run baseline predictor e2e test
+# Prerequisites: make docker-native (from root)
+baseline:
+	cd $(ROOT) && SW_AGENT_JDK_VERSION=$${SW_AGENT_JDK_VERSION:-17} \
+	e2e run -c test/e2e/cases/baseline/e2e.yaml

@@ -210,7 +210,7 @@ jobs:
     timeout-minutes: 30
     env:
       SW_AGENT_JDK_VERSION: 17
-      ISTIO_VERSION: 1.24.0
+      ISTIO_VERSION: 1.28.0
     strategy:
       fail-fast: false
       matrix:
@@ -237,6 +237,8 @@ jobs:
             case: vm-zabbix
           - name: Zipkin
             case: zipkin
+          - name: Baseline
+            case: baseline
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v4
