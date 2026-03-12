@@ -1372,7 +1372,9 @@ public class Precompiler {
             "org.apache.skywalking.oap.server.core.alarm.AlarmMessage",
             // LALOutputBuilder SPI: ServiceLoader instantiates to call name() for short-name resolution
             "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder",
-            "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder"
+            "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder",
+            // TTL status REST endpoint: Jackson serializes TTLDefinition returned by /status/config/ttl
+            "org.apache.skywalking.oap.server.core.storage.ttl.TTLDefinition"
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));
