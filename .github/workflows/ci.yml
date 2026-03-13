@@ -18,9 +18,20 @@ name: CI
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit SHA to build (leave empty for latest on current branch)'
+        required: false
+        default: ''
+      version:
+        description: 'Version label for release artifacts (e.g. 1.0.0-rc1). Leave empty for CI-only build.'
+        required: false
+        default: ''
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -33,6 +44,7 @@ jobs:
   license-header:
     name: License Header Check
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -46,11 +58,31 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cache-key: ${{ steps.cache-key.outputs.key }}
+      commit-sha: ${{ steps.meta.outputs.commit-sha }}
+      version: ${{ steps.meta.outputs.version }}
+      is-release: ${{ steps.meta.outputs.is-release }}
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.inputs.commit || github.ref }}
           submodules: recursive
+
+      - name: Resolve build metadata
+        id: meta
+        run: |
+          echo "commit-sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          # Determine if this is a release build
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "is-release=true" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "is-release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+            echo "is-release=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up GraalVM JDK 25
         uses: graalvm/setup-graalvm@v1
@@ -78,6 +110,7 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
     needs: init-skywalking
+    if: needs.init-skywalking.outputs.is-release == 'false'
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5
@@ -108,9 +141,9 @@ jobs:
       - name: Build distribution
         run: make build-distro
 
-  # ── Native image build per architecture ──
-  build-native:
-    name: Native ${{ matrix.arch }}
+  # ── Native image build for Linux (per architecture) ──
+  build-native-linux:
+    name: Native Linux ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     needs: init-skywalking
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -130,6 +163,7 @@ jobs:
       - name: Checkout with submodules
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.inputs.commit || github.ref }}
           submodules: recursive
 
       - name: Set up GraalVM JDK 25
@@ -178,11 +212,28 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
+      - name: Rename tarball with arch and version
+        id: rename
+        run: |
+          VERSION="${{ needs.init-skywalking.outputs.version }}"
+          SRC=$(ls oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz)
+          DEST="oap-graalvm-native/target/apache-skywalking-graalvm-distro-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+          cp "${SRC}" "${DEST}"
+          echo "path=${DEST}" >> "$GITHUB_OUTPUT"
+
       - name: Upload digest
         uses: actions/upload-artifact@v5
         with:
           name: digests-${{ matrix.arch }}
           path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload native tarball
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-tarball-linux-${{ matrix.arch }}
+          path: ${{ steps.rename.outputs.path }}
           if-no-files-found: error
           retention-days: 1
 
@@ -202,11 +253,64 @@ jobs:
           path: /tmp/skywalking-oap-native.tar
           retention-days: 1
 
+  # ── Native image build for macOS (per architecture) ──
+  build-native-macos:
+    name: Native macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    needs: init-skywalking
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: macos-13
+          - arch: arm64
+            runner: macos-14
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.commit || github.ref }}
+          submodules: recursive
+
+      - name: Set up GraalVM JDK 25
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+
+      - name: Restore Maven cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ needs.init-skywalking.outputs.cache-key }}
+
+      - name: Build native image
+        run: make native-image
+
+      - name: Rename tarball with arch and version
+        id: rename
+        run: |
+          VERSION="${{ needs.init-skywalking.outputs.version }}"
+          SRC=$(ls oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz)
+          DEST="oap-graalvm-native/target/apache-skywalking-graalvm-distro-${VERSION}-macos-${{ matrix.arch }}.tar.gz"
+          cp "${SRC}" "${DEST}"
+          echo "path=${DEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload native tarball
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-tarball-macos-${{ matrix.arch }}
+          path: ${{ steps.rename.outputs.path }}
+          if-no-files-found: error
+          retention-days: 1
+
   # ── E2E tests using pre-built native image ──
   e2e:
     name: E2E ${{ matrix.test.name }}
     runs-on: ubuntu-latest
-    needs: [init-skywalking, build-native]
+    needs: [init-skywalking, build-native-linux]
+    if: needs.init-skywalking.outputs.is-release == 'false'
     timeout-minutes: 30
     env:
       SW_AGENT_JDK_VERSION: 17
@@ -293,7 +397,7 @@ jobs:
   docker-manifest:
     name: Docker Manifest
     runs-on: ubuntu-latest
-    needs: build-native
+    needs: [init-skywalking, build-native-linux]
     permissions:
       contents: read
       packages: write
@@ -318,7 +422,63 @@ jobs:
       - name: Create and push manifest
         working-directory: /tmp/digests
         run: |
+          VERSION="${{ needs.init-skywalking.outputs.version }}"
+          COMMIT_SHA="${{ needs.init-skywalking.outputs.commit-sha }}"
+          IS_RELEASE="${{ needs.init-skywalking.outputs.is-release }}"
+          TAGS="-t ${{ env.IMAGE }}:${COMMIT_SHA}"
+          if [[ "${IS_RELEASE}" == "true" ]]; then
+            TAGS="${TAGS} -t ${{ env.IMAGE }}:${VERSION} -t ${{ env.IMAGE }}:latest"
+          fi
           docker buildx imagetools create \
-            -t ${{ env.IMAGE }}:latest \
-            -t ${{ env.IMAGE }}:${GITHUB_SHA} \
+            ${TAGS} \
             $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+
+  # ── Upload tarballs to GitHub Release (release builds only) ──
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [init-skywalking, build-native-linux, build-native-macos]
+    if: needs.init-skywalking.outputs.is-release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.commit || github.ref }}
+          submodules: true
+          fetch-depth: 0
+
+      - name: Generate version metadata
+        run: |
+          VERSION="${{ needs.init-skywalking.outputs.version }}"
+          SW_COMMIT=$(git -C skywalking rev-parse HEAD)
+          SW_TAG=$(git -C skywalking describe --tags --exact-match "${SW_COMMIT}" 2>/dev/null || echo "none")
+          cat > /tmp/apache-skywalking-graalvm-distro-${VERSION}-version.txt <<EOF
+          Version: ${VERSION}
+          SkyWalking-Commit: ${SW_COMMIT}
+          SkyWalking-Tag: ${SW_TAG}
+          Build-Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+      - name: Download all native tarballs
+        uses: actions/download-artifact@v5
+        with:
+          path: /tmp/tarballs
+          pattern: native-tarball-*
+          merge-multiple: true
+
+      - name: Collect release files and generate checksums
+        run: |
+          cp /tmp/apache-skywalking-graalvm-distro-*-version.txt /tmp/tarballs/
+          cd /tmp/tarballs
+          for f in *.tar.gz; do
+            sha512sum "${f}" > "${f}.sha512"
+          done
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.init-skywalking.outputs.version }}
+          files: /tmp/tarballs/*
+          generate_release_notes: true
