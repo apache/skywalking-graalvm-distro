@@ -272,7 +272,7 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-latest
+            runner: macos-latest-xlarge
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5
