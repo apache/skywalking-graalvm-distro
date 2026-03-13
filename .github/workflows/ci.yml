@@ -261,57 +261,6 @@ jobs:
           path: /tmp/skywalking-oap-native.tar
           retention-days: 1
 
-  # ── Native image build for macOS (per architecture) ──
-  build-native-macos:
-    name: Native macOS ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-    needs: init-skywalking
-    timeout-minutes: 60
-    if: github.event_name != 'pull_request'
-    strategy:
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-latest-xlarge
-    steps:
-      - name: Checkout with submodules
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.inputs.commit || github.ref }}
-          submodules: recursive
-
-      - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: '25'
-          distribution: 'graalvm'
-
-      - name: Restore Maven cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.m2/repository
-          key: ${{ needs.init-skywalking.outputs.cache-key }}
-
-      - name: Build native image
-        run: make native-image
-
-      - name: Rename tarball with arch and version
-        id: rename
-        run: |
-          VERSION="${{ needs.init-skywalking.outputs.version }}"
-          SRC=$(ls oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz)
-          DEST="oap-graalvm-native/target/apache-skywalking-graalvm-distro-${VERSION}-macos-${{ matrix.arch }}.tar.gz"
-          cp "${SRC}" "${DEST}"
-          echo "path=${DEST}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload native tarball
-        uses: actions/upload-artifact@v5
-        with:
-          name: native-tarball-macos-${{ matrix.arch }}
-          path: ${{ steps.rename.outputs.path }}
-          if-no-files-found: error
-          retention-days: 1
-
   # ── E2E tests using pre-built native image ──
   e2e:
     name: E2E ${{ matrix.test.name }}
@@ -445,7 +394,7 @@ jobs:
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: [init-skywalking, build-native-linux, build-native-macos]
+    needs: [init-skywalking, build-native-linux]
     if: needs.init-skywalking.outputs.is-release == 'true'
     permissions:
       contents: write

@@ -51,7 +51,7 @@ This is the initial release, built on top of Apache SkyWalking OAP server.
 - Native distribution: single binary (~200MB) with config files, LICENSE, NOTICE, and third-party licenses.
 - Docker image: `ghcr.io/apache/skywalking-graalvm-distro` based on `debian:bookworm-slim`.
 - Multi-arch Docker images: `linux/amd64` and `linux/arm64`.
-- macOS native binaries: `amd64` (Intel) and `arm64` (Apple Silicon).
+- macOS native binary: build locally via `make native-image` on macOS.
 
 ### Testing
 
