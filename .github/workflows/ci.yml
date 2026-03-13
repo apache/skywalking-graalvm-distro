@@ -271,10 +271,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: amd64
-            runner: macos-13
           - arch: arm64
-            runner: macos-14
+            runner: macos-latest
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5
