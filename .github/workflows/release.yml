@@ -46,7 +46,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.RELEASE_REF || github.ref }}
           submodules: recursive
@@ -72,7 +72,7 @@ jobs:
 
       - name: Restore Maven cache
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: ${{ steps.cache-key.outputs.key }}
@@ -100,7 +100,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.RELEASE_REF || github.ref }}
           submodules: recursive
@@ -112,7 +112,7 @@ jobs:
           distribution: 'graalvm'
 
       - name: Restore Maven cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
           key: ${{ needs.init-skywalking.outputs.cache-key }}
@@ -161,7 +161,7 @@ jobs:
           echo "path=${DEST}" >> "$GITHUB_OUTPUT"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: digests-${{ matrix.arch }}
           path: /tmp/digests/*
@@ -169,7 +169,7 @@ jobs:
           retention-days: 1
 
       - name: Upload native tarball
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: native-tarball-${{ matrix.arch }}
           path: ${{ steps.rename.outputs.path }}
@@ -186,7 +186,7 @@ jobs:
       packages: write
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /tmp/digests
           pattern: digests-*
@@ -220,7 +220,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.RELEASE_REF || github.ref }}
           submodules: true
@@ -239,7 +239,7 @@ jobs:
           EOF
 
       - name: Download native tarballs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /tmp/tarballs
           pattern: native-tarball-*

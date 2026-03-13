@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check license headers
         uses: apache/skywalking-eyes/header@main
@@ -48,7 +48,7 @@ jobs:
       cache-key: ${{ steps.cache-key.outputs.key }}
     steps:
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -64,7 +64,7 @@ jobs:
 
       - name: Restore Maven cache
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: ${{ steps.cache-key.outputs.key }}
@@ -80,7 +80,7 @@ jobs:
     needs: init-skywalking
     steps:
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -91,7 +91,7 @@ jobs:
           distribution: 'graalvm'
 
       - name: Restore Maven cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
           key: ${{ needs.init-skywalking.outputs.cache-key }}
@@ -128,7 +128,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -139,7 +139,7 @@ jobs:
           distribution: 'graalvm'
 
       - name: Restore Maven cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
           key: ${{ needs.init-skywalking.outputs.cache-key }}
@@ -179,7 +179,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: digests-${{ matrix.arch }}
           path: /tmp/digests/*
@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload Docker image artifact (amd64 only)
         if: matrix.arch == 'amd64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: skywalking-oap-native-image
           path: /tmp/skywalking-oap-native.tar
@@ -241,12 +241,12 @@ jobs:
             case: baseline
     steps:
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
       - name: Download Docker image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: skywalking-oap-native-image
           path: /tmp
@@ -263,7 +263,7 @@ jobs:
 
       - name: Restore Maven cache (baseline mock-sender)
         if: matrix.test.case == 'baseline'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
           key: ${{ needs.init-skywalking.outputs.cache-key }}
@@ -284,7 +284,7 @@ jobs:
 
       - name: Upload E2E logs
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: e2e-logs-${{ matrix.test.case }}
           path: "${{ env.SW_INFRA_E2E_LOG_DIR }}"
@@ -299,7 +299,7 @@ jobs:
       packages: write
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /tmp/digests
           pattern: digests-*
