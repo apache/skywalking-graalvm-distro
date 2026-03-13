@@ -83,6 +83,16 @@
                 <include>trace-sampling-policy-settings.yml</include>
             </includes>
         </fileSet>
+        <!-- LICENSE, NOTICE, and third-party licenses from upstream dist-material -->
+        <fileSet>
+            <directory>${project.basedir}/../skywalking/dist-material/release-docs</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>LICENSE</include>
+                <include>NOTICE</include>
+                <include>licenses/**</include>
+            </includes>
+        </fileSet>
         <!-- logs/ — empty directory for runtime logs -->
         <fileSet>
             <directory>.</directory>

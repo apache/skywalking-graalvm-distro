@@ -145,8 +145,9 @@ SRC_CLONE_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/src-clone"
 # Clean clone with submodules
 git clone --recurse-submodules "${SCRIPT_DIR}" "${SRC_CLONE_DIR}"
 
-# Remove all .git directories (root + submodules)
-find "${SRC_CLONE_DIR}" -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
+# Remove all .git directories and files (root + submodules)
+# Submodule .git entries are files (not directories), so match both types
+find "${SRC_CLONE_DIR}" -name ".git" -exec rm -rf {} + 2>/dev/null || true
 find "${SRC_CLONE_DIR}" -name ".gitmodules" -type f -delete 2>/dev/null || true
 
 # Remove build artifacts and unnecessary files
