@@ -28,8 +28,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.skywalking.apm.network.logging.v3.LogData;
 import org.apache.skywalking.oap.log.analyzer.v2.dsl.spec.filter.FilterSpec;
+import org.apache.skywalking.oap.server.core.source.LogMetadata;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
@@ -131,11 +131,11 @@ public class DSL {
 
     public void evaluate(final ExecutionContext ctx) {
         if (log.isDebugEnabled()) {
-            final LogData.Builder logData = ctx.log();
-            log.debug("[LAL] rule={}, class={}, service={}, instance={}, endpoint={}, bodyType={}",
+            final LogMetadata metadata = ctx.metadata();
+            log.debug("[LAL] rule={}, class={}, service={}, instance={}, endpoint={}",
                 ruleName, expression.getClass().getName(),
-                logData.getService(), logData.getServiceInstance(),
-                logData.getEndpoint(), logData.getBody().getContentCase());
+                metadata.getService(), metadata.getServiceInstance(),
+                metadata.getEndpoint());
         }
         expression.execute(filterSpec, ctx);
     }

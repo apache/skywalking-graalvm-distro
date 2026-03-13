@@ -1375,6 +1375,9 @@ public class Precompiler {
             // LALOutputBuilder SPI: ServiceLoader instantiates to call name() for short-name resolution
             "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder",
             "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder",
+            "org.apache.skywalking.oap.server.receiver.envoy.persistence.EnvoyAccessLogBuilder",
+            // LALSourceTypeProvider SPI: ServiceLoader instantiates for per-layer input/output type resolution
+            "org.apache.skywalking.oap.server.receiver.envoy.EnvoyHTTPLALSourceTypeProvider",
             // TTL status REST endpoint: Jackson serializes TTLDefinition returned by /status/config/ttl
             "org.apache.skywalking.oap.server.core.storage.ttl.TTLDefinition"
         };
