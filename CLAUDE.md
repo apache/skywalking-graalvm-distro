@@ -67,6 +67,9 @@ docker compose -f docker/docker-compose.yml up
 ## Git Commit Rules
 - **No Co-Authored-By**: Do not add `Co-Authored-By` lines to commit messages.
 
+## CI Rules
+- **Docker tags must use full commit SHA** (`git rev-parse HEAD`), never short SHA (`--short`). This applies to the `commit-sha` output in CI workflows.
+
 ## Selected Modules
 - **Storage**: BanyanDB
 - **Cluster**: Standalone, Kubernetes
