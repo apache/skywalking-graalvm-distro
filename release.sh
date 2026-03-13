@@ -20,29 +20,32 @@ set -euo pipefail
 ARTIFACT_PREFIX="apache-skywalking-graalvm-distro"
 RELEASE_DIR="release-package"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="apache/skywalking-graalvm-distro"
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 usage() {
     cat <<EOF
 Usage: $0 <version>
 
-Create an Apache-style release for SkyWalking GraalVM Distro.
+Package an Apache-style release for SkyWalking GraalVM Distro.
 
-Arguments:
-  version    Release version (e.g. 1.0.0)
+Prerequisites:
+  - CI release workflow must have completed for tag v<version>
+  - Binary tarballs and SHA-512 checksums are on the GitHub Release page
+  - GPG key with @apache.org email must be configured
 
 What this script does:
-  1. Generates a changelog template in changes/<version>.md
-  2. Creates a git tag v<version> and pushes it
-  3. Packages a clean source tarball (with submodule, excluding .git/binaries)
-  4. Builds the Linux native binary via Docker cross-compilation
-  5. Packages the native binary tarball with configuration
-  6. Signs all tarballs with GPG (default key) and generates SHA-512 checksums
+  1. Creates a clean source tarball (git clone with submodules, strip .git/binaries)
+  2. Downloads binary tarballs and SHA-512 checksums from GitHub Release page
+  3. Signs all tarballs with GPG and generates SHA-512 for the source tarball
 
 Output:
   ${RELEASE_DIR}/
     ${ARTIFACT_PREFIX}-<version>-src.tar.gz{,.asc,.sha512}
-    ${ARTIFACT_PREFIX}-<version>-bin.tar.gz{,.asc,.sha512}
+    ${ARTIFACT_PREFIX}-<version>-linux-amd64.tar.gz{,.asc,.sha512}
+    ${ARTIFACT_PREFIX}-<version>-linux-arm64.tar.gz{,.asc,.sha512}
+    ${ARTIFACT_PREFIX}-<version>-macos-amd64.tar.gz{,.asc,.sha512}
+    ${ARTIFACT_PREFIX}-<version>-macos-arm64.tar.gz{,.asc,.sha512}
 EOF
     exit 1
 }
@@ -55,8 +58,10 @@ sign_and_checksum() {
     local file="$1"
     log "Signing ${file}..."
     gpg --armor --detach-sign "${file}"
-    log "Generating SHA-512 checksum for ${file}..."
-    shasum -a 512 "${file}" > "${file}.sha512"
+    if [[ ! -f "${file}.sha512" ]]; then
+        log "Generating SHA-512 checksum for ${file}..."
+        shasum -a 512 "${file}" > "${file}.sha512"
+    fi
 }
 
 # ─── Validate arguments ─────────────────────────────────────────────────────
@@ -70,9 +75,9 @@ log "Pre-flight checks..."
 command -v gpg   >/dev/null 2>&1 || error "gpg is not installed"
 command -v git   >/dev/null 2>&1 || error "git is not installed"
 command -v tar   >/dev/null 2>&1 || error "tar is not installed"
-command -v docker >/dev/null 2>&1 || error "docker is not installed (needed for native build)"
+command -v gh    >/dev/null 2>&1 || error "gh CLI is not installed (needed to download release assets)"
 
-# Verify default GPG key exists and print it
+# Verify default GPG key exists and is @apache.org
 gpg --list-secret-keys --keyid-format LONG >/dev/null 2>&1 \
     || error "No GPG secret keys found. Import or generate a key first."
 GPG_KEY=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null \
@@ -86,64 +91,27 @@ echo ""
 [[ "${GPG_EMAIL}" == *@apache.org ]] \
     || error "GPG key email '${GPG_EMAIL}' is not an @apache.org address. Apache releases must be signed with your Apache committer key."
 
-# Verify working directory is clean
-if [[ -n "$(git status --porcelain)" ]]; then
-    error "Working directory is not clean. Commit or stash changes first."
-fi
+# Verify tag exists locally
+git rev-parse "${TAG}" >/dev/null 2>&1 \
+    || error "Tag ${TAG} not found locally. Run: git fetch --tags"
 
-# Verify tag does not already exist
-if git rev-parse "${TAG}" >/dev/null 2>&1; then
-    error "Tag ${TAG} already exists. Delete it first if re-releasing."
-fi
+# Verify GitHub Release exists
+gh release view "${TAG}" --repo "${REPO}" >/dev/null 2>&1 \
+    || error "GitHub Release for ${TAG} not found. Run the CI release workflow first."
 
-# ─── Step 1: Changelog ──────────────────────────────────────────────────────
-log "Creating changelog for ${VERSION}..."
-
-mkdir -p "${SCRIPT_DIR}/changes"
-
-CHANGELOG="${SCRIPT_DIR}/changes/${VERSION}.md"
-{
-    echo "# ${VERSION} Release"
-    echo ""
-    echo "## Highlights"
-    echo ""
-    echo "<!-- Fill in the highlights of this release -->"
-    echo ""
-    echo "## Changes"
-    echo ""
-    # Collect commits since last tag, or all if no prior tag
-    PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-    if [[ -n "${PREV_TAG}" ]]; then
-        git log --oneline "${PREV_TAG}..HEAD" | sed 's/^/- /'
-    else
-        git log --oneline | sed 's/^/- /'
-    fi
-} > "${CHANGELOG}"
-
-log "Changelog written to ${CHANGELOG}"
-log "Please review and edit the changelog before continuing."
-echo ""
-read -r -p "Press ENTER to continue after editing the changelog (or Ctrl+C to abort)..."
-
-# ─── Step 2: Git tag ────────────────────────────────────────────────────────
-log "Creating git tag ${TAG}..."
-git tag -a "${TAG}" -m "Release ${VERSION}"
-log "Pushing tag ${TAG} to origin..."
-git push origin "${TAG}"
-
-# ─── Step 3: Prepare release directory ───────────────────────────────────────
+# ─── Step 1: Prepare release directory ────────────────────────────────────────
 log "Preparing release directory..."
 rm -rf "${SCRIPT_DIR}/${RELEASE_DIR}"
 mkdir -p "${SCRIPT_DIR}/${RELEASE_DIR}"
 
-# ─── Step 4: Source package ──────────────────────────────────────────────────
+# ─── Step 2: Source package ───────────────────────────────────────────────────
 log "Creating source package..."
 
 SRC_TARBALL="${ARTIFACT_PREFIX}-${VERSION}-src.tar.gz"
 SRC_CLONE_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/src-clone"
 
-# Clean clone with submodules
-git clone --recurse-submodules "${SCRIPT_DIR}" "${SRC_CLONE_DIR}"
+# Clean clone at the release tag with submodules
+git clone --branch "${TAG}" --recurse-submodules "${SCRIPT_DIR}" "${SRC_CLONE_DIR}"
 
 # Remove all .git directories and files (root + submodules)
 # Submodule .git entries are files (not directories), so match both types
@@ -170,55 +138,55 @@ rm -rf "${SRC_CLONE_DIR}"
 
 log "Source package created: ${RELEASE_DIR}/${SRC_TARBALL}"
 
-# ─── Step 5: Binary package (Linux native) ───────────────────────────────────
-log "Building Linux native binary via Docker cross-compilation..."
-log "(This may take a while — native-image compilation is resource-intensive)"
-
-make native-image-macos
-
-# Locate the native dist tarball produced by Maven assembly
-NATIVE_TARBALL=$(ls "${SCRIPT_DIR}"/oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz 2>/dev/null | head -1)
-[[ -n "${NATIVE_TARBALL}" ]] || error "Native dist tarball not found. Build may have failed."
-
-BIN_TARBALL="${ARTIFACT_PREFIX}-${VERSION}-bin.tar.gz"
-
-# Repackage with Apache naming: extract, rename root dir, re-tar
-REPACK_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/repack-tmp"
-mkdir -p "${REPACK_DIR}"
-tar -xzf "${NATIVE_TARBALL}" -C "${REPACK_DIR}"
-
-# The native assembly uses base directory "oap-native"
-mv "${REPACK_DIR}/oap-native" "${REPACK_DIR}/${ARTIFACT_PREFIX}-${VERSION}"
-
-tar -czf "${SCRIPT_DIR}/${RELEASE_DIR}/${BIN_TARBALL}" \
-    -C "${REPACK_DIR}" \
-    "${ARTIFACT_PREFIX}-${VERSION}"
-
-rm -rf "${REPACK_DIR}"
-
-log "Binary package created: ${RELEASE_DIR}/${BIN_TARBALL}"
-
-# ─── Step 6: Sign and checksum ──────────────────────────────────────────────
-log "Signing and checksumming release artifacts..."
+# ─── Step 3: Download binary tarballs from GitHub Release ─────────────────────
+log "Downloading binary tarballs and checksums from GitHub Release ${TAG}..."
 
 cd "${SCRIPT_DIR}/${RELEASE_DIR}"
-sign_and_checksum "${SRC_TARBALL}"
-sign_and_checksum "${BIN_TARBALL}"
+
+# Download all tar.gz and sha512 assets
+gh release download "${TAG}" --repo "${REPO}" \
+    --pattern "*.tar.gz" \
+    --pattern "*.sha512" \
+    --clobber
+
+# List downloaded files
+log "Downloaded assets:"
+ls -lh *.tar.gz *.sha512 2>/dev/null || true
+
+# Verify SHA-512 checksums for downloaded binaries
+log "Verifying SHA-512 checksums..."
+for sha_file in *.sha512; do
+    if shasum -a 512 -c "${sha_file}"; then
+        log "  OK: ${sha_file}"
+    else
+        error "SHA-512 verification failed for ${sha_file}"
+    fi
+done
+
+# ─── Step 4: Sign all tarballs ────────────────────────────────────────────────
+log "Signing release artifacts..."
+
+for tarball in *.tar.gz; do
+    sign_and_checksum "${tarball}"
+done
+
 cd "${SCRIPT_DIR}"
 
-# ─── Summary ────────────────────────────────────────────────────────────────
+# ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
-log "Release ${VERSION} complete!"
+log "Release ${VERSION} packaging complete!"
 echo ""
 echo "Release artifacts:"
 ls -lh "${SCRIPT_DIR}/${RELEASE_DIR}/"
 echo ""
 echo "Verification commands:"
 echo "  cd ${RELEASE_DIR}"
-echo "  gpg --verify ${SRC_TARBALL}.asc ${SRC_TARBALL}"
-echo "  gpg --verify ${BIN_TARBALL}.asc ${BIN_TARBALL}"
-echo "  shasum -a 512 -c ${SRC_TARBALL}.sha512"
-echo "  shasum -a 512 -c ${BIN_TARBALL}.sha512"
+for tarball in "${SCRIPT_DIR}/${RELEASE_DIR}"/*.tar.gz; do
+    f=$(basename "${tarball}")
+    echo "  gpg --verify ${f}.asc ${f}"
+    echo "  shasum -a 512 -c ${f}.sha512"
+done
 echo ""
-echo "Changelog: changes/${VERSION}.md"
-echo "Git tag:   ${TAG}"
+echo "Next steps:"
+echo "  1. Upload to Apache SVN dist/dev for voting"
+echo "  2. Send [VOTE] email to dev@skywalking.apache.org"

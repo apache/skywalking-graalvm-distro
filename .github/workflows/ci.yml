@@ -483,9 +483,21 @@ jobs:
             sha512sum "${f}" > "${f}.sha512"
           done
 
+      - name: Read changelog
+        id: changelog
+        run: |
+          # Use version-specific changelog if exists, otherwise default changes.md
+          VERSION="${{ needs.init-skywalking.outputs.version }}"
+          if [[ -f "changes/${VERSION}.md" ]]; then
+            BODY_FILE="changes/${VERSION}.md"
+          else
+            BODY_FILE="changes/changes.md"
+          fi
+          echo "body-file=${BODY_FILE}" >> "$GITHUB_OUTPUT"
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.init-skywalking.outputs.version }}
+          body_path: ${{ steps.changelog.outputs.body-file }}
           files: /tmp/tarballs/*
-          generate_release_notes: true
