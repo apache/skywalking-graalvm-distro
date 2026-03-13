@@ -1370,6 +1370,8 @@ public class Precompiler {
             "org.apache.skywalking.oap.server.core.alarm.AlarmSnapshotRecord",
             // Alarm webhook: Gson serializes AlarmMessage list to JSON for webhook POST
             "org.apache.skywalking.oap.server.core.alarm.AlarmMessage",
+            // Alarm recovery: extends AlarmMessage with recoveryTime field, serialized by Gson
+            "org.apache.skywalking.oap.server.core.alarm.AlarmRecoveryMessage",
             // LALOutputBuilder SPI: ServiceLoader instantiates to call name() for short-name resolution
             "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder",
             "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder",
