@@ -1,33 +1,46 @@
 # SkyWalking GraalVM Distro (Experimental)
 <img src="http://skywalking.apache.org/assets/logo.svg" alt="Sky Walking logo" height="90px" align="right" />
 
-SkyWalking GraalVM Distro is a re-distribution of the official Apache SkyWalking OAP server, targeting GraalVM native image on JDK 25.
+[Apache SkyWalking](https://skywalking.apache.org/) is an open-source APM and observability platform for
+distributed systems, providing metrics, tracing, logging, and profiling capabilities.
 
-This distro moves all dynamic code generation (Javassist, classpath scanning) from runtime to build time, producing a ~203MB native binary with full OAP feature set. No upstream source modifications required.
+**SkyWalking GraalVM Distro** is a distribution of the same Apache SkyWalking OAP server, compiled as a
+GraalVM native image on JDK 25. It moves all dynamic code generation (OAL, MAL, LAL, Hierarchy via
+ANTLR4 + Javassist) and classpath scanning from runtime to build time, producing a ~203MB self-contained
+native binary with the full OAP feature set. No upstream source modifications required.
 
-## Quick Start
+### Key Differences from Upstream
+
+- **Native binary** instead of JVM — instant startup, ~512MB memory footprint
+- **BanyanDB only** — the sole supported storage backend
+- **Fixed module set** — modules selected at build time, no SPI discovery
+- **Pre-compiled DSL** — all DSL rules compiled at build time
+
+All existing SkyWalking agents, UI, and tooling work unchanged.
+
+### Quick Start
 
 ```bash
-git clone --recurse-submodules https://github.com/apache/skywalking-graalvm-distro.git
-cd skywalking-graalvm-distro
-
-# First time: install upstream SkyWalking to Maven cache
-JAVA_HOME=/path/to/graalvm-jdk-25 make init-skywalking
-
-# Build distro (precompiler + tests + server)
-JAVA_HOME=/path/to/graalvm-jdk-25 make build-distro
-
-# Build native image
-JAVA_HOME=/path/to/graalvm-jdk-25 make native-image
-
-# Run with Docker Compose (BanyanDB + OAP native)
-docker compose -f docker/docker-compose.yml up
+docker run -d \
+  -p 12800:12800 \
+  -p 11800:11800 \
+  -e SW_STORAGE_BANYANDB_TARGETS=<banyandb-host>:17912 \
+  apache/skywalking-graalvm-distro:latest
 ```
+
+### Docker Images
+
+| Registry | Image |
+|----------|-------|
+| Docker Hub | `apache/skywalking-graalvm-distro` |
+| GHCR | `ghcr.io/apache/skywalking-graalvm-distro` |
+
+Available for `linux/amd64` and `linux/arm64`. macOS arm64 (Apple Silicon) native binary is available on the [GitHub Release](https://github.com/apache/skywalking-graalvm-distro/releases) page.
 
 ## Documentation
 
-Full documentation is available in [docs/](docs/) and published on the project website.
+Full documentation is available at [skywalking.apache.org/docs](https://skywalking.apache.org/docs/#ExperimentalGraalVMDistro).
 
 ## License
 
-Apache 2.0
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)

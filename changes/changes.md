@@ -1,6 +1,6 @@
 # Changes
 
-## 1.0.0
+## 0.1.0
 
 ### Highlights
 
@@ -68,7 +68,21 @@ This is the initial release, built on top of Apache SkyWalking OAP server.
 - Istio ALS test: Envoy access log service integration.
 - Event, menu, alarm, log, meter, trace-profiling, telegraf, zabbix, and zipkin test cases.
 
+### Release Tooling
+
+- `release/pre-release.sh`: bump Maven version from SNAPSHOT to release, tag, and bump to next SNAPSHOT.
+- `release/release.sh`: create source tarball, build macOS native binary locally, download Linux binaries from GitHub Release, GPG sign all artifacts.
+
+### Benchmark
+
+- Local boot test: cold/warm startup time and idle memory comparison (JVM vs GraalVM).
+- Kubernetes resource usage test: CPU and memory under sustained ~12 RPS traffic on Kind + Istio + Bookinfo.
+- CPM validation: verify entry service call rate matches expected traffic.
+
 ### CI/CD
 
-- GitHub Actions CI: build, test, license check, and E2E tests.
-- Release workflow: manual trigger with commit SHA, multi-arch Linux + macOS builds, Docker manifest with version and commit tags, GitHub Release page with checksums.
+- Unified CI/release workflow: push to main, tag push, PR, and manual `workflow_dispatch` with optional commit SHA and version.
+- Dual Docker registry: push to both GHCR and Docker Hub (Docker Hub on release only).
+- Multi-arch Docker manifest: `linux/amd64` and `linux/arm64` via push-by-digest and `imagetools create`.
+- GitHub Release page: auto-upload tarballs with SHA-512 checksums and changelog from `changes/`.
+- 12 E2E test cases on CI (non-release builds).

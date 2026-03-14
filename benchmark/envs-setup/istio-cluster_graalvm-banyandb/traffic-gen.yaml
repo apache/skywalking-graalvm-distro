@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-gen
+  labels:
+    app: traffic-gen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-gen
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app: traffic-gen
+    spec:
+      containers:
+        - name: traffic-gen
+          image: curlimages/curl:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c", "--"]
+          args:
+            - |
+              echo "Waiting 10s for services to stabilize..."
+              sleep 10
+              echo "Starting traffic at ~12 RPS"
+              while true; do
+                curl -s -o /dev/null -w "%{http_code}" \
+                  http://istio-ingressgateway.istio-system:80/productpage
+                echo " $(date +%H:%M:%S)"
+                sleep 0.083
+              done
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi

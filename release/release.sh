@@ -20,6 +20,7 @@ set -euo pipefail
 ARTIFACT_PREFIX="apache-skywalking-graalvm-distro"
 RELEASE_DIR="release-package"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO="apache/skywalking-graalvm-distro"
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
@@ -154,9 +155,9 @@ log "Source package created: dist/${SRC_TARBALL}"
 
 # ─── Step 3: Build darwin-arm64 native binary ─────────────────────────────────
 log "Building macOS arm64 (Apple Silicon) native binary..."
-make native-image
+(cd "${REPO_ROOT}" && make native-image)
 
-NATIVE_SRC=$(ls "${SCRIPT_DIR}"/oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz)
+NATIVE_SRC=$(ls "${REPO_ROOT}"/oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz)
 DARWIN_TARBALL="${ARTIFACT_PREFIX}-${VERSION}-darwin-arm64.tar.gz"
 cp "${NATIVE_SRC}" "${DIST_DIR}/${DARWIN_TARBALL}"
 

@@ -1,0 +1,6 @@
+oap:
+  config:
+    # Map Istio service labels to SkyWalking service/instance names.
+    metadata-service-mapping.yaml: |
+      serviceName: ${LABELS."service.istio.io/canonical-name",SERVICE}
+      serviceInstanceName: ${NAME}

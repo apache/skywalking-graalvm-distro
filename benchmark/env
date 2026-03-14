@@ -1,0 +1,38 @@
+# Benchmark environment configuration.
+# All environment setup scripts source this file for image repos and versions.
+
+##############################################################################
+# SkyWalking OAP (JVM)
+##############################################################################
+SW_OAP_IMAGE_REPO="ghcr.io/apache/skywalking/oap"
+SW_OAP_IMAGE_TAG="64a1795d8a582f2216f47bfe572b3ab649733c01-java21"
+
+##############################################################################
+# SkyWalking OAP (GraalVM Native)
+##############################################################################
+SW_GRAALVM_IMAGE_REPO="ghcr.io/apache/skywalking-graalvm-distro"
+SW_GRAALVM_IMAGE_TAG="0.1.0-rc1"
+
+##############################################################################
+# SkyWalking UI
+##############################################################################
+SW_UI_IMAGE_REPO="ghcr.io/apache/skywalking/ui"
+SW_UI_IMAGE_TAG="latest"
+
+##############################################################################
+# BanyanDB
+##############################################################################
+SW_BANYANDB_IMAGE_REPO="ghcr.io/apache/skywalking-banyandb"
+SW_BANYANDB_IMAGE_TAG="e1ba421bd624727760c7a69c84c6fe55878fb526"
+
+##############################################################################
+# SkyWalking Helm Chart
+##############################################################################
+SW_HELM_CHART="oci://ghcr.io/apache/skywalking-helm/skywalking-helm"
+SW_KUBERNETES_COMMIT_SHA="6fe5e6f0d3b7686c6be0457733e825ee68cb9b35"
+
+##############################################################################
+# Istio
+##############################################################################
+ISTIO_VERSION="1.25.2"
+ALS_ANALYZER="k8s-mesh"

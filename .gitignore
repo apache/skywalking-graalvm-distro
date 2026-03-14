@@ -17,3 +17,8 @@ release-package/
 
 # OS
 .DS_Store
+
+# Benchmark runtime artifacts
+benchmark/reports/
+benchmark/results/
+benchmark/.istio/
