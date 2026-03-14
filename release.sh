@@ -31,21 +31,27 @@ Package an Apache-style release for SkyWalking GraalVM Distro.
 
 Prerequisites:
   - CI release workflow must have completed for tag v<version>
-  - Binary tarballs and SHA-512 checksums are on the GitHub Release page
+    (pushes linux-amd64 and linux-arm64 tarballs to GitHub Release)
+  - GraalVM JDK 25 installed (for building darwin-arm64 native image)
   - GPG key with @apache.org email must be configured
 
 What this script does:
-  1. Creates a clean source tarball (git clone with submodules, strip .git/binaries)
-  2. Downloads binary tarballs and SHA-512 checksums from GitHub Release page
-  3. Signs all tarballs with GPG and generates SHA-512 for the source tarball
+  1. Creates a clean source tarball from git tag (not local working tree)
+  2. Builds macOS arm64 (Apple Silicon) native binary locally
+  3. Uploads darwin-arm64 tarball to GitHub Release page
+  4. Downloads Linux binary tarballs from GitHub Release
+  5. Signs all tarballs with GPG and generates SHA-512 checksums
 
-Output:
+Directory structure:
   ${RELEASE_DIR}/
-    ${ARTIFACT_PREFIX}-<version>-src.tar.gz{,.asc,.sha512}
-    ${ARTIFACT_PREFIX}-<version>-linux-amd64.tar.gz{,.asc,.sha512}
-    ${ARTIFACT_PREFIX}-<version>-linux-arm64.tar.gz{,.asc,.sha512}
-    ${ARTIFACT_PREFIX}-<version>-macos-amd64.tar.gz{,.asc,.sha512}
-    ${ARTIFACT_PREFIX}-<version>-macos-arm64.tar.gz{,.asc,.sha512}
+    tmp/                    Temporary work (cleaned at end)
+      src-clone/            Git clone from tag (deleted after source tarball)
+      download/             Downloaded CI artifacts
+    dist/                   Final release artifacts
+      ${ARTIFACT_PREFIX}-<version>-src.tar.gz{,.asc,.sha512}
+      ${ARTIFACT_PREFIX}-<version>-linux-amd64.tar.gz{,.asc,.sha512}
+      ${ARTIFACT_PREFIX}-<version>-linux-arm64.tar.gz{,.asc,.sha512}
+      ${ARTIFACT_PREFIX}-<version>-darwin-arm64.tar.gz{,.asc,.sha512}
 EOF
     exit 1
 }
@@ -58,10 +64,8 @@ sign_and_checksum() {
     local file="$1"
     log "Signing ${file}..."
     gpg --armor --detach-sign "${file}"
-    if [[ ! -f "${file}.sha512" ]]; then
-        log "Generating SHA-512 checksum for ${file}..."
-        shasum -a 512 "${file}" > "${file}.sha512"
-    fi
+    log "Generating SHA-512 checksum for ${file}..."
+    shasum -a 512 "${file}" > "${file}.sha512"
 }
 
 # ─── Validate arguments ─────────────────────────────────────────────────────
@@ -72,10 +76,10 @@ TAG="v${VERSION}"
 # ─── Pre-flight checks ──────────────────────────────────────────────────────
 log "Pre-flight checks..."
 
-command -v gpg   >/dev/null 2>&1 || error "gpg is not installed"
-command -v git   >/dev/null 2>&1 || error "git is not installed"
-command -v tar   >/dev/null 2>&1 || error "tar is not installed"
-command -v gh    >/dev/null 2>&1 || error "gh CLI is not installed (needed to download release assets)"
+# Check required tools
+for cmd in git gpg tar gh shasum make; do
+    command -v "${cmd}" >/dev/null 2>&1 || error "'${cmd}' is not installed"
+done
 
 # Verify default GPG key exists and is @apache.org
 gpg --list-secret-keys --keyid-format LONG >/dev/null 2>&1 \
@@ -84,12 +88,19 @@ GPG_KEY=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null \
     | grep -A1 "^sec" | head -2)
 GPG_EMAIL=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null \
     | grep "uid" | head -1 | sed 's/.*<\(.*\)>.*/\1/')
-log "GPG signing key:"
+[[ "${GPG_EMAIL}" == *@apache.org ]] \
+    || error "GPG key email '${GPG_EMAIL}' is not an @apache.org address. Apache releases must be signed with your Apache committer key."
+
+echo ""
+echo "Release version : ${VERSION}"
+echo "Git tag         : ${TAG}"
+echo "GPG signing key :"
 echo "${GPG_KEY}"
 echo "  uid: ${GPG_EMAIL}"
 echo ""
-[[ "${GPG_EMAIL}" == *@apache.org ]] \
-    || error "GPG key email '${GPG_EMAIL}' is not an @apache.org address. Apache releases must be signed with your Apache committer key."
+read -r -p "Proceed with this GPG key? [y/N] " confirm
+[[ "${confirm}" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+echo ""
 
 # Verify tag exists locally
 git rev-parse "${TAG}" >/dev/null 2>&1 \
@@ -102,16 +113,21 @@ gh release view "${TAG}" --repo "${REPO}" >/dev/null 2>&1 \
 # ─── Step 1: Prepare release directory ────────────────────────────────────────
 log "Preparing release directory..."
 rm -rf "${SCRIPT_DIR}/${RELEASE_DIR}"
-mkdir -p "${SCRIPT_DIR}/${RELEASE_DIR}"
+mkdir -p "${SCRIPT_DIR}/${RELEASE_DIR}/tmp/download"
+mkdir -p "${SCRIPT_DIR}/${RELEASE_DIR}/dist"
+
+TMP_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/tmp"
+DIST_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/dist"
 
 # ─── Step 2: Source package ───────────────────────────────────────────────────
-log "Creating source package..."
+log "Creating source package from tag ${TAG}..."
 
 SRC_TARBALL="${ARTIFACT_PREFIX}-${VERSION}-src.tar.gz"
-SRC_CLONE_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/src-clone"
+SRC_CLONE_DIR="${TMP_DIR}/src-clone"
 
-# Clean clone at the release tag with submodules
-git clone --branch "${TAG}" --recurse-submodules "${SCRIPT_DIR}" "${SRC_CLONE_DIR}"
+# Clone from remote at the release tag (not local working tree)
+git clone --branch "${TAG}" --recurse-submodules \
+    "https://github.com/${REPO}.git" "${SRC_CLONE_DIR}"
 
 # Remove all .git directories and files (root + submodules)
 # Submodule .git entries are files (not directories), so match both types
@@ -124,69 +140,92 @@ find "${SRC_CLONE_DIR}" -name "*.jar" -delete 2>/dev/null || true
 find "${SRC_CLONE_DIR}" -name "*.class" -delete 2>/dev/null || true
 find "${SRC_CLONE_DIR}" -name ".DS_Store" -delete 2>/dev/null || true
 rm -rf "${SRC_CLONE_DIR}/.idea" "${SRC_CLONE_DIR}/.vscode" "${SRC_CLONE_DIR}/.claude"
-rm -rf "${SRC_CLONE_DIR}/${RELEASE_DIR}"
 
 # Create tarball from clean source
-tar -czf "${SCRIPT_DIR}/${RELEASE_DIR}/${SRC_TARBALL}" \
-    -C "${SCRIPT_DIR}/${RELEASE_DIR}" \
-    --exclude="src-clone/${RELEASE_DIR}" \
+tar -czf "${DIST_DIR}/${SRC_TARBALL}" \
+    -C "${TMP_DIR}" \
     -s "/^src-clone/${ARTIFACT_PREFIX}-${VERSION}-src/" \
     src-clone
 
 # Clean up clone
 rm -rf "${SRC_CLONE_DIR}"
 
-log "Source package created: ${RELEASE_DIR}/${SRC_TARBALL}"
+log "Source package created: dist/${SRC_TARBALL}"
 
-# ─── Step 3: Download binary tarballs from GitHub Release ─────────────────────
-log "Downloading binary tarballs and checksums from GitHub Release ${TAG}..."
+# ─── Step 3: Build darwin-arm64 native binary ─────────────────────────────────
+log "Building macOS arm64 (Apple Silicon) native binary..."
+make native-image
 
-cd "${SCRIPT_DIR}/${RELEASE_DIR}"
+NATIVE_SRC=$(ls "${SCRIPT_DIR}"/oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz)
+DARWIN_TARBALL="${ARTIFACT_PREFIX}-${VERSION}-darwin-arm64.tar.gz"
+cp "${NATIVE_SRC}" "${DIST_DIR}/${DARWIN_TARBALL}"
 
-# Download all tar.gz and sha512 assets
-gh release download "${TAG}" --repo "${REPO}" \
-    --pattern "*.tar.gz" \
-    --pattern "*.sha512" \
+log "darwin-arm64 tarball created: dist/${DARWIN_TARBALL}"
+
+# ─── Step 4: Upload darwin-arm64 to GitHub Release ────────────────────────────
+log "Uploading darwin-arm64 tarball to GitHub Release ${TAG}..."
+
+DARWIN_SHA512="${DARWIN_TARBALL}.sha512"
+(cd "${DIST_DIR}" && shasum -a 512 "${DARWIN_TARBALL}" > "${DARWIN_SHA512}")
+gh release upload "${TAG}" --repo "${REPO}" \
+    "${DIST_DIR}/${DARWIN_TARBALL}" "${DIST_DIR}/${DARWIN_SHA512}" \
     --clobber
 
-# List downloaded files
-log "Downloaded assets:"
-ls -lh *.tar.gz *.sha512 2>/dev/null || true
+log "darwin-arm64 uploaded to GitHub Release"
+
+# ─── Step 5: Download Linux binary tarballs from GitHub Release ───────────────
+log "Downloading Linux binary tarballs from GitHub Release ${TAG}..."
+
+DOWNLOAD_DIR="${TMP_DIR}/download"
+
+gh release download "${TAG}" --repo "${REPO}" \
+    --pattern "*-linux-*.tar.gz" \
+    --pattern "*-linux-*.tar.gz.sha512" \
+    --dir "${DOWNLOAD_DIR}" \
+    --clobber
 
 # Verify SHA-512 checksums for downloaded binaries
-log "Verifying SHA-512 checksums..."
-for sha_file in *.sha512; do
-    if shasum -a 512 -c "${sha_file}"; then
-        log "  OK: ${sha_file}"
-    else
-        error "SHA-512 verification failed for ${sha_file}"
-    fi
+log "Verifying SHA-512 checksums for downloaded binaries..."
+for sha_file in "${DOWNLOAD_DIR}"/*.sha512; do
+    (cd "${DOWNLOAD_DIR}" && shasum -a 512 -c "$(basename "${sha_file}")") \
+        || error "SHA-512 verification failed for $(basename "${sha_file}")"
+    log "  OK: $(basename "${sha_file}")"
 done
 
-# ─── Step 4: Sign all tarballs ────────────────────────────────────────────────
-log "Signing release artifacts..."
+# Move verified tarballs to dist (discard CI sha512 — we regenerate with GPG)
+mv "${DOWNLOAD_DIR}"/*.tar.gz "${DIST_DIR}/"
 
-for tarball in *.tar.gz; do
+log "Linux tarballs verified and moved to dist/"
+
+# ─── Step 6: Sign all tarballs ────────────────────────────────────────────────
+log "Signing release artifacts with GPG..."
+
+# Remove the pre-upload darwin sha512 — will be regenerated alongside GPG signature
+rm -f "${DIST_DIR}/${DARWIN_SHA512}"
+
+for tarball in "${DIST_DIR}"/*.tar.gz; do
     sign_and_checksum "${tarball}"
 done
 
-cd "${SCRIPT_DIR}"
+# ─── Step 7: Clean up tmp ────────────────────────────────────────────────────
+log "Cleaning up temporary files..."
+rm -rf "${TMP_DIR}"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 log "Release ${VERSION} packaging complete!"
 echo ""
-echo "Release artifacts:"
-ls -lh "${SCRIPT_DIR}/${RELEASE_DIR}/"
+echo "Release artifacts in ${RELEASE_DIR}/dist/:"
+ls -lh "${DIST_DIR}/"
 echo ""
 echo "Verification commands:"
-echo "  cd ${RELEASE_DIR}"
-for tarball in "${SCRIPT_DIR}/${RELEASE_DIR}"/*.tar.gz; do
+echo "  cd ${RELEASE_DIR}/dist"
+for tarball in "${DIST_DIR}"/*.tar.gz; do
     f=$(basename "${tarball}")
     echo "  gpg --verify ${f}.asc ${f}"
     echo "  shasum -a 512 -c ${f}.sha512"
 done
 echo ""
 echo "Next steps:"
-echo "  1. Upload to Apache SVN dist/dev for voting"
+echo "  1. Upload dist/ contents to Apache SVN dist/dev for voting"
 echo "  2. Send [VOTE] email to dev@skywalking.apache.org"
