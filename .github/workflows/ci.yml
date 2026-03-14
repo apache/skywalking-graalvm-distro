@@ -38,7 +38,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE: ghcr.io/apache/skywalking-graalvm-distro
+  GHCR_IMAGE: ghcr.io/apache/skywalking-graalvm-distro
+  DOCKERHUB_IMAGE: apache/skywalking-graalvm-distro
 
 jobs:
   license-header:
@@ -198,9 +199,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push by digest
+      - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
-        id: build
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push by digest (GHCR)
+        if: github.event_name != 'pull_request'
+        id: build-ghcr
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -208,14 +216,28 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             DIST=${{ steps.dist.outputs.path }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
-      - name: Export digest
+      - name: Build and push by digest (Docker Hub)
+        if: github.event_name != 'pull_request'
+        id: build-dockerhub
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.native
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            DIST=${{ steps.dist.outputs.path }}
+          outputs: type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digests
         if: github.event_name != 'pull_request'
         run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          mkdir -p /tmp/digests/ghcr /tmp/digests/dockerhub
+          digest="${{ steps.build-ghcr.outputs.digest }}"
+          touch "/tmp/digests/ghcr/${digest#sha256:}"
+          digest="${{ steps.build-dockerhub.outputs.digest }}"
+          touch "/tmp/digests/dockerhub/${digest#sha256:}"
 
       - name: Rename tarball with arch and version
         if: github.event_name != 'pull_request'
@@ -227,12 +249,12 @@ jobs:
           cp "${SRC}" "${DEST}"
           echo "path=${DEST}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload digest
+      - name: Upload digests
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v5
         with:
           name: digests-${{ matrix.arch }}
-          path: /tmp/digests/*
+          path: /tmp/digests/
           if-no-files-found: error
           retention-days: 1
 
@@ -376,19 +398,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create and push manifest
-        working-directory: /tmp/digests
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push GHCR manifest
+        working-directory: /tmp/digests/ghcr
         run: |
           VERSION="${{ needs.init-skywalking.outputs.version }}"
           COMMIT_SHA="${{ needs.init-skywalking.outputs.commit-sha }}"
           IS_RELEASE="${{ needs.init-skywalking.outputs.is-release }}"
-          TAGS="-t ${{ env.IMAGE }}:${COMMIT_SHA}"
+          TAGS="-t ${{ env.GHCR_IMAGE }}:${COMMIT_SHA}"
           if [[ "${IS_RELEASE}" == "true" ]]; then
-            TAGS="${TAGS} -t ${{ env.IMAGE }}:${VERSION} -t ${{ env.IMAGE }}:latest"
+            TAGS="${TAGS} -t ${{ env.GHCR_IMAGE }}:${VERSION} -t ${{ env.GHCR_IMAGE }}:latest"
           fi
           docker buildx imagetools create \
             ${TAGS} \
-            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+            $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
+
+      - name: Create and push Docker Hub manifest
+        working-directory: /tmp/digests/dockerhub
+        run: |
+          VERSION="${{ needs.init-skywalking.outputs.version }}"
+          COMMIT_SHA="${{ needs.init-skywalking.outputs.commit-sha }}"
+          IS_RELEASE="${{ needs.init-skywalking.outputs.is-release }}"
+          TAGS="-t ${{ env.DOCKERHUB_IMAGE }}:${COMMIT_SHA}"
+          if [[ "${IS_RELEASE}" == "true" ]]; then
+            TAGS="${TAGS} -t ${{ env.DOCKERHUB_IMAGE }}:${VERSION} -t ${{ env.DOCKERHUB_IMAGE }}:latest"
+          fi
+          docker buildx imagetools create \
+            ${TAGS} \
+            $(printf '${{ env.DOCKERHUB_IMAGE }}@sha256:%s ' *)
 
   # ── Upload tarballs to GitHub Release (release builds only) ──
   github-release:
