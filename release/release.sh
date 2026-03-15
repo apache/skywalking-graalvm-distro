@@ -42,6 +42,7 @@ What this script does:
   3. Uploads darwin-arm64 tarball to GitHub Release page
   4. Downloads Linux binary tarballs from GitHub Release
   5. Signs all tarballs with GPG and generates SHA-512 checksums
+  6. Uploads all artifacts to Apache SVN dist/dev for voting
 
 Directory structure:
   ${RELEASE_DIR}/
@@ -78,7 +79,7 @@ TAG="v${VERSION}"
 log "Pre-flight checks..."
 
 # Check required tools
-for cmd in git gpg tar gh shasum make; do
+for cmd in git gpg tar gh shasum make svn; do
     command -v "${cmd}" >/dev/null 2>&1 || error "'${cmd}' is not installed"
 done
 
@@ -212,12 +213,56 @@ done
 log "Cleaning up temporary files..."
 rm -rf "${TMP_DIR}"
 
+# ─── Step 8: Upload to Apache SVN dist/dev ───────────────────────────────────
+SVN_DEV_BASE="https://dist.apache.org/repos/dist/dev/skywalking/graalvm-distro"
+SVN_DEV_DIR="${SVN_DEV_BASE}/${VERSION}"
+
+echo ""
+log "Uploading release artifacts to Apache SVN dist/dev..."
+echo "  SVN target: ${SVN_DEV_DIR}"
+echo ""
+read -r -p "Apache SVN username (LDAP): " SVN_USER
+[[ -n "${SVN_USER}" ]] || error "SVN username is required"
+read -r -s -p "Apache SVN password: " SVN_PASS
+echo ""
+[[ -n "${SVN_PASS}" ]] || error "SVN password is required"
+
+SVN_CHECKOUT_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/svn-checkout"
+mkdir -p "${SVN_CHECKOUT_DIR}"
+
+# Checkout the parent directory (sparse — just top level)
+svn checkout --depth empty "${SVN_DEV_BASE}" "${SVN_CHECKOUT_DIR}" \
+    --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
+
+# Create version directory and add all artifacts
+mkdir -p "${SVN_CHECKOUT_DIR}/${VERSION}"
+cp "${DIST_DIR}"/* "${SVN_CHECKOUT_DIR}/${VERSION}/"
+svn add "${SVN_CHECKOUT_DIR}/${VERSION}"
+
+log "Files to upload:"
+ls -lh "${SVN_CHECKOUT_DIR}/${VERSION}/"
+
+echo ""
+read -r -p "Commit to SVN? [y/N] " svn_confirm
+[[ "${svn_confirm}" =~ ^[Yy]$ ]] || { echo "SVN upload aborted. Files remain in ${DIST_DIR}/"; exit 0; }
+
+svn commit "${SVN_CHECKOUT_DIR}" \
+    -m "Upload Apache SkyWalking GraalVM Distro ${VERSION} for voting" \
+    --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
+
+log "Uploaded to ${SVN_DEV_DIR}"
+
+# Clean up SVN checkout
+rm -rf "${SVN_CHECKOUT_DIR}"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
-log "Release ${VERSION} packaging complete!"
+log "Release ${VERSION} packaging and upload complete!"
 echo ""
 echo "Release artifacts in ${RELEASE_DIR}/dist/:"
 ls -lh "${DIST_DIR}/"
+echo ""
+echo "SVN dist/dev: ${SVN_DEV_DIR}"
 echo ""
 echo "Verification commands:"
 echo "  cd ${RELEASE_DIR}/dist"
@@ -228,5 +273,4 @@ for tarball in "${DIST_DIR}"/*.tar.gz; do
 done
 echo ""
 echo "Next steps:"
-echo "  1. Upload dist/ contents to Apache SVN dist/dev for voting"
-echo "  2. Send [VOTE] email to dev@skywalking.apache.org"
+echo "  1. Send [VOTE] email to dev@skywalking.apache.org"
