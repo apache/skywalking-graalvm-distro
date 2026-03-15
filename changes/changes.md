@@ -1,5 +1,47 @@
 # Changes
 
+## 0.2.0
+
+### Highlights
+
+Upgrade to the latest Apache SkyWalking OAP server, with documentation restructure and CI/CD improvements.
+
+### Upstream Sync
+
+- Sync SkyWalking submodule to upstream commit `64a1795d8a`.
+
+### Documentation
+
+- Add user-facing docs: Quick Start, Supported Features, FAQ.
+- Move internal build-time docs to `docs/internals/`.
+- Update `docs/README.md` with "For Users" / "For Contributors" sections and official doc site link.
+- Add Docker Hub README (`docker/DOCKERHUB_README.md`).
+- Add release guide (`docs/release-guide.md`).
+- Update root `README.md` with project intro, quick start, and image registry table.
+
+### CI/CD
+
+- Push Docker images to Docker Hub (release only) in addition to GHCR.
+- Docker Hub only receives `latest` and version tags — no commit SHA tags.
+- Add `.asf.yaml` branch protection.
+- PR-only `cancel-in-progress` to avoid cancelling release builds.
+
+### Release Tooling
+
+- `release/release.sh`: auto-create SVN `graalvm-distro` directory if it doesn't exist.
+- `release/full-release.sh`: end-to-end release script.
+- Generate vote email template with GPG signer info and submodule commit IDs.
+
+### Testing
+
+- Replacement class staleness detector: add auto-discovery coverage check for untracked same-FQCN replacements in `oap-libs-for-graalvm/`.
+
+### E2E Tests
+
+- Update BanyanDB to `e1ba421` (fixes Zipkin `minDuration` trace query).
+- Bump Istio to 1.28.0.
+- Add Baseline e2e test case.
+
 ## 0.1.0
 
 ### Highlights

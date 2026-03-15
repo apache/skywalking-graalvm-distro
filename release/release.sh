@@ -112,6 +112,18 @@ git rev-parse "${TAG}" >/dev/null 2>&1 \
 gh release view "${TAG}" --repo "${REPO}" >/dev/null 2>&1 \
     || error "GitHub Release for ${TAG} not found. Run the CI release workflow first."
 
+# Verify changes/changes.md contains a section for this version
+CHANGES_FILE="${REPO_ROOT}/changes/changes.md"
+[[ -f "${CHANGES_FILE}" ]] || error "changes/changes.md not found"
+if ! grep -q "^## ${VERSION}$" "${CHANGES_FILE}"; then
+    error "changes/changes.md does not contain a '## ${VERSION}' section. Add release notes before releasing."
+fi
+# Verify the section has content (at least one non-empty line before next ## or EOF)
+SECTION_CONTENT=$(sed -n "/^## ${VERSION}$/,/^## /p" "${CHANGES_FILE}" | sed '1d;/^## /d' | grep -v '^$' | head -1)
+[[ -n "${SECTION_CONTENT}" ]] \
+    || error "changes/changes.md has a '## ${VERSION}' section but it is empty. Add release notes."
+log "changes/changes.md: found release notes for ${VERSION}"
+
 # ─── Step 1: Prepare release directory ────────────────────────────────────────
 log "Preparing release directory..."
 rm -rf "${SCRIPT_DIR}/${RELEASE_DIR}"
