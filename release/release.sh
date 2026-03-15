@@ -230,6 +230,14 @@ echo ""
 SVN_CHECKOUT_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/svn-checkout"
 mkdir -p "${SVN_CHECKOUT_DIR}"
 
+# Create the parent directory in SVN if it does not exist yet
+if ! svn info "${SVN_DEV_BASE}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1; then
+    log "SVN directory ${SVN_DEV_BASE} does not exist, creating..."
+    svn mkdir "${SVN_DEV_BASE}" \
+        -m "Create graalvm-distro directory for release staging" \
+        --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
+fi
+
 # Checkout the parent directory (sparse — just top level)
 svn checkout --depth empty "${SVN_DEV_BASE}" "${SVN_CHECKOUT_DIR}" \
     --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
