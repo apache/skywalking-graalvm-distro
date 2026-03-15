@@ -66,6 +66,7 @@ docker compose -f docker/docker-compose.yml up
 
 ## Git Commit Rules
 - **No Co-Authored-By**: Do not add `Co-Authored-By` lines to commit messages.
+- **No auto commit or push**: Do not commit or push unless explicitly asked by the user.
 
 ## CI Rules
 - **Docker tags must use full commit SHA** (`git rev-parse HEAD`), never short SHA (`--short`). This applies to the `commit-sha` output in CI workflows.
