@@ -255,6 +255,65 @@ log "Uploaded to ${SVN_DEV_DIR}"
 # Clean up SVN checkout
 rm -rf "${SVN_CHECKOUT_DIR}"
 
+# ─── Step 9: Generate vote email ─────────────────────────────────────────────
+log "Generating vote email..."
+
+COMMIT_ID=$(git rev-parse "${TAG}")
+
+# Collect submodule commit IDs
+SKYWALKING_COMMIT=$(git -C "${REPO_ROOT}" ls-tree "${TAG}" skywalking | awk '{print $3}')
+
+# Build sha512 checksums block
+SHA512_BLOCK=""
+for sha_file in "${DIST_DIR}"/*.sha512; do
+    SHA512_BLOCK="${SHA512_BLOCK}   - $(cat "${sha_file}")
+"
+done
+
+VOTE_DATE=$(date -u +"%B %d, %Y")
+
+MAIL_FILE="${DIST_DIR}/vote-email.txt"
+cat > "${MAIL_FILE}" <<MAILEOF
+Mail title: [VOTE] Release Apache SkyWalking GraalVM Distro version ${VERSION}
+
+Mail content:
+Hi All,
+This is a call for vote to release Apache SkyWalking GraalVM Distro version ${VERSION}.
+
+Release notes:
+
+ * https://github.com/apache/skywalking-graalvm-distro/blob/v${VERSION}/changes/changes.md
+
+Release Candidate:
+
+ * ${SVN_DEV_DIR}
+ * sha512 checksums
+${SHA512_BLOCK}
+Release Tag :
+
+ * (Git Tag) v${VERSION}
+
+Release CommitID :
+
+ * https://github.com/apache/skywalking-graalvm-distro/tree/${COMMIT_ID}
+ * Git submodule
+   * skywalking: https://github.com/apache/skywalking/tree/${SKYWALKING_COMMIT}
+
+Keys to verify the Release Candidate :
+
+ * https://dist.apache.org/repos/dist/release/skywalking/KEYS
+ * Signed by ${GPG_EMAIL}
+
+Guide to build the release from source :
+
+ * https://github.com/apache/skywalking-graalvm-distro/blob/v${VERSION}/docs/quick-start.md
+
+Voting will start now (${VOTE_DATE}) and will remain open for at least 72 hours, Request all PMC members to give their vote.
+[ ] +1 Release this package.
+[ ] +0 No opinion.
+[ ] -1 Do not release this package because...., if you have any doubt, ask me.
+MAILEOF
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 log "Release ${VERSION} packaging and upload complete!"
@@ -272,5 +331,13 @@ for tarball in "${DIST_DIR}"/*.tar.gz; do
     echo "  shasum -a 512 -c ${f}.sha512"
 done
 echo ""
-echo "Next steps:"
-echo "  1. Send [VOTE] email to dev@skywalking.apache.org"
+echo "========================================="
+echo "          VOTE EMAIL"
+echo "========================================="
+cat "${MAIL_FILE}"
+echo "========================================="
+echo ""
+echo "Vote email saved to: ${MAIL_FILE}"
+echo ""
+echo "Next step:"
+echo "  Send the above email to dev@skywalking.apache.org"
