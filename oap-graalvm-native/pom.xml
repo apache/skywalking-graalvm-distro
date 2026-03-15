@@ -24,7 +24,7 @@
     <parent>
         <groupId>org.apache.skywalking</groupId>
         <artifactId>skywalking-graalvm-distro</artifactId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.1.1</version>
     </parent>
 
     <artifactId>oap-graalvm-native</artifactId>
