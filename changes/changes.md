@@ -42,7 +42,7 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 
 ### Build
 
-- Fix source tarball build: use `git-commit-id-plugin` (same as upstream) for `version.properties` generation with `failOnNoGitDirectory=false`.
+- Fix source tarball build: set `failonerror=false` for version generation; `release.sh` pre-generates `version.properties` in the source tarball.
 
 ### Testing
 
