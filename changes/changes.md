@@ -42,7 +42,7 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 
 ### Build
 
-- Fix source tarball build: gracefully handle absent `.git` in version generation (no git required for Apache source release builds).
+- Fix source tarball build: use `git-commit-id-plugin` (same as upstream) for `version.properties` generation with `failOnNoGitDirectory=false`.
 
 ### Testing
 
