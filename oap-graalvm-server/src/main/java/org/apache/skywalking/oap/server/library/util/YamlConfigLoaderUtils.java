@@ -31,6 +31,7 @@ import org.apache.skywalking.oap.query.debug.StatusQueryConfig;
 import org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig;
 import org.apache.skywalking.oap.query.logql.LogQLConfig;
 import org.apache.skywalking.oap.query.promql.PromQLConfig;
+import org.apache.skywalking.oap.query.traceql.TraceQLConfig;
 import org.apache.skywalking.oap.query.zipkin.ZipkinQueryConfig;
 import org.apache.skywalking.oap.server.ai.pipeline.AIPipelineConfig;
 import org.apache.skywalking.oap.server.analyzer.agent.kafka.module.KafkaFetcherConfig;
@@ -148,6 +149,8 @@ public class YamlConfigLoaderUtils {
             copyToPromQLConfig((PromQLConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof LogQLConfig) {
             copyToLogQLConfig((LogQLConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof TraceQLConfig) {
+            copyToTraceQLConfig((TraceQLConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof PrometheusConfig) {
             copyToPrometheusConfig((PrometheusConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ExporterSetting) {
@@ -835,6 +838,48 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "restContextPath":
                     cfg.setRestContextPath((String) value);
+                    break;
+                case "restIdleTimeOut":
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
+                    break;
+                case "restAcceptQueueSize":
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToTraceQLConfig(
+            final TraceQLConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "restHost":
+                    cfg.setRestHost((String) value);
+                    break;
+                case "restPort":
+                    cfg.setRestPort(((Number) value).intValue());
+                    break;
+                case "enableDatasourceZipkin":
+                    cfg.setEnableDatasourceZipkin((boolean) value);
+                    break;
+                case "enableDatasourceSkywalking":
+                    cfg.setEnableDatasourceSkywalking((boolean) value);
+                    break;
+                case "restContextPathZipkin":
+                    cfg.setRestContextPathZipkin((String) value);
+                    break;
+                case "restContextPathSkywalking":
+                    cfg.setRestContextPathSkywalking((String) value);
                     break;
                 case "restIdleTimeOut":
                     cfg.setRestIdleTimeOut(((Number) value).longValue());

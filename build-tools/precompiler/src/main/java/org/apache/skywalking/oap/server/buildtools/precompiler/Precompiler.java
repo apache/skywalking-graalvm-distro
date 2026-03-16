@@ -926,23 +926,20 @@ public class Precompiler {
             if (!name.startsWith("org.apache.skywalking.oap.query.")) {
                 continue;
             }
-            // Check that the package contains ".entity." or ends with ".entity"
+            // Check that the package contains ".entity."
             String afterQuery = name.substring("org.apache.skywalking.oap.query.".length());
-            int entityIdx = afterQuery.indexOf(".entity.");
-            boolean inEntityPkg = entityIdx >= 0
-                || afterQuery.matches("[^.]+\\.entity\\.[^.]+");
-            if (!inEntityPkg) {
+            if (afterQuery.indexOf(".entity.") < 0) {
                 continue;
             }
             try {
                 Class<?> aClass = classInfo.load();
-                if (aClass.isEnum()) {
+                if (aClass.isInterface()) {
                     continue;
                 }
                 result.add(aClass.getName());
                 // Also include inner static classes (e.g. SearchResponse$Trace, StreamLog$Result)
                 for (Class<?> inner : aClass.getDeclaredClasses()) {
-                    if (!inner.isEnum()) {
+                    if (!inner.isInterface()) {
                         result.add(inner.getName());
                     }
                 }
