@@ -8,7 +8,7 @@ JVM distribution and the GraalVM native image binary.
 - **GraalVM JDK 25** with `native-image` installed
 - **Maven 3.9+** (the Maven wrapper `./mvnw` is included)
 - **Docker** (for macOS cross-compilation and container packaging)
-- **Git** (with submodule support)
+- **Git** (with submodule support; not required when building from Apache source tarball)
 
 Set `JAVA_HOME` to your GraalVM installation for all commands below:
 
@@ -16,7 +16,28 @@ Set `JAVA_HOME` to your GraalVM installation for all commands below:
 export JAVA_HOME=/path/to/graalvm-jdk-25
 ```
 
-## Step 1: Clone the Repository
+## Building from Apache Source Tarball
+
+If you are building from the official Apache source release tarball (no Git required):
+
+```bash
+tar -xzf apache-skywalking-graalvm-distro-<version>-src.tar.gz
+cd apache-skywalking-graalvm-distro-<version>-src
+
+# Install SkyWalking submodule artifacts to local Maven repo
+cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dgpg.skip=true
+cd ..
+
+# Build the distro
+make build-distro
+
+# Build the native image
+make native-image
+```
+
+## Building from Git Repository
+
+### Step 1: Clone the Repository
 
 ```bash
 git clone --recurse-submodules https://github.com/apache/skywalking-graalvm-distro.git
@@ -29,7 +50,7 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
-## Step 2: Install SkyWalking Submodule (First Time Only)
+### Step 2: Install SkyWalking Submodule (First Time Only)
 
 The upstream SkyWalking artifacts must be installed into your local Maven repository before
 the distro modules can compile against them:
@@ -41,7 +62,7 @@ make init-skywalking
 This runs `mvn install` on the `skywalking/` submodule. The result is cached in `~/.m2/repository`
 and only needs to be re-run when the submodule is updated.
 
-## Step 3: Build the JVM Distribution
+### Step 3: Build the JVM Distribution
 
 ```bash
 make build-distro
@@ -78,7 +99,7 @@ make shutdown
 make docker-down
 ```
 
-## Step 4: Build the Native Image
+### Step 4: Build the Native Image
 
 After `make build-distro` (or `make compile`), build the native binary:
 
@@ -116,7 +137,7 @@ make native-image-macos
 This runs the `native-image` step inside a `ghcr.io/graalvm/native-image-community:25`
 container, producing a Linux binary while reusing your host's Maven cache and compiled classes.
 
-## Step 5: Package as Docker Image
+### Step 5: Package as Docker Image
 
 After building the native image:
 
