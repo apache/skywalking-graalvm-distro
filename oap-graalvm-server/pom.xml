@@ -316,6 +316,10 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>zipkin-query-plugin</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>traceql-plugin</artifactId>
+        </dependency>
         <!-- Alarm -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>

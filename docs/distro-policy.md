@@ -18,7 +18,7 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 | **Configuration** | ConfigurationModule | Kubernetes |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
 | **Analyzers** | AnalyzerModule, LogAnalyzerModule, EventAnalyzerModule | default providers |
-| **Query** | QueryModule (GraphQL), PromQLModule, LogQLModule, ZipkinQueryModule, StatusQueryModule | default providers |
+| **Query** | QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule, StatusQueryModule | default providers |
 | **Alarm** | AlarmModule | default |
 | **Telemetry** | TelemetryModule | Prometheus |
 | **Other** | ExporterModule, HealthCheckerModule, AIPipelineModule | default providers |
@@ -289,7 +289,7 @@ All four DSL compilers (OAL/MAL/LAL/Hierarchy) use ANTLR4 + Javassist v2 engines
 
 ### Remaining Verification
 - Verify all receiver plugins work (gRPC + HTTP endpoints)
-- Verify all query APIs work (GraphQL, PromQL, LogQL, Zipkin)
+- Verify all query APIs work (GraphQL, PromQL, LogQL, TraceQL, Zipkin)
 - Verify cluster mode (K8s)
 - Verify alarm module
 - Performance benchmarking vs JVM

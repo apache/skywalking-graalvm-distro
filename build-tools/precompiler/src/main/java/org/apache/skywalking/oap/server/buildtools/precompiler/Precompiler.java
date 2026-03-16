@@ -837,8 +837,8 @@ public class Precompiler {
                 if (aClass.isInterface() || Modifier.isAbstract(aClass.getModifiers())) {
                     continue;
                 }
-                // Check if any method has Armeria routing annotations
-                for (Method method : aClass.getDeclaredMethods()) {
+                // Check if any method (including inherited) has Armeria routing annotations
+                for (Method method : aClass.getMethods()) {
                     if ((postAnno != null && method.isAnnotationPresent(postAnno))
                         || (getAnno != null && method.isAnnotationPresent(getAnno))
                         || (pathAnno != null && method.isAnnotationPresent(pathAnno))) {

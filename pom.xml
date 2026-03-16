@@ -297,6 +297,11 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
+                <artifactId>traceql-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
                 <artifactId>zipkin-query-plugin</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
