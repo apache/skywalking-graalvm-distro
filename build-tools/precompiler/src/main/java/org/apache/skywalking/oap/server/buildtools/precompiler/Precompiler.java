@@ -844,15 +844,23 @@ public class Precompiler {
                     continue;
                 }
                 // Check if any method (including inherited) has Armeria routing annotations
+                boolean matched = false;
                 for (Method method : aClass.getMethods()) {
                     if ((postAnno != null && method.isAnnotationPresent(postAnno))
                         || (getAnno != null && method.isAnnotationPresent(getAnno))
                         || (pathAnno != null && method.isAnnotationPresent(pathAnno))) {
-                        result.add(aClass.getName());
-                        // Also collect @ExceptionHandler referenced classes
-                        collectExceptionHandlerClasses(aClass, result);
-                        break;
+                        matched = true;
+                        // Include declaring class of inherited annotated methods (e.g. abstract base handlers)
+                        // so Armeria can reflect on their @Get/@Path annotations at runtime
+                        Class<?> declaring = method.getDeclaringClass();
+                        if (declaring != aClass && declaring != Object.class) {
+                            result.add(declaring.getName());
+                        }
                     }
+                }
+                if (matched) {
+                    result.add(aClass.getName());
+                    collectExceptionHandlerClasses(aClass, result);
                 }
             } catch (NoClassDefFoundError | Exception ignored) {
             }

@@ -48,4 +48,4 @@ verify:
     interval: 3s
   cases:
     - includes:
-        - ../../../../skywalking/test/e2e-v2/cases/promql/promql-cases.yaml
+        - promql-cases.yaml
