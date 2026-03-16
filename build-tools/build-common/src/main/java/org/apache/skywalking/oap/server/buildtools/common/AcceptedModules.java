@@ -86,6 +86,7 @@ public final class AcceptedModules {
         new ModuleProviderPair("query-zipkin", "default"),
         new ModuleProviderPair("promql", "default"),
         new ModuleProviderPair("logql", "default"),
+        new ModuleProviderPair("traceQL", "default"),
         new ModuleProviderPair("status-query", "default"),
         // Alarm
         new ModuleProviderPair("alarm", "default"),

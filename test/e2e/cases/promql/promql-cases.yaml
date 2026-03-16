@@ -1,0 +1,155 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# PromQL E2E cases for native image distro.
+# Based on upstream promql-cases.yaml but excludes service_percentile_old cases
+# (that metric requires a custom core.oal which native image cannot load at runtime).
+
+cases:
+  # traffics query
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=service_traffic{layer="GENERAL"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-traffic.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=service_traffic{layer="GENERAL"}&limit=1&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-traffic-limit.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=service_traffic{layer="GENERAL",limit="1"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-traffic-limit.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=service_traffic{layer="GENERAL",service=~".*-provider"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-traffic-limit.yml
+    #RFC3339
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=service_traffic{layer="GENERAL"}&start='$(($(date +%s)-1800))'&end='$(date -u +%Y-%m-%dT%H:%M:%S.111Z)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-traffic.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=instance_traffic{layer="GENERAL", service="e2e-service-provider"}&limit=1&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-traffic.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=instance_traffic{layer="GENERAL", service="e2e-service-provider", service_instance=~"provider1|provider2"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-traffic.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=endpoint_traffic{layer="GENERAL", service="e2e-service-provider", keyword="POST:/users"}&limit=1&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-traffic.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=endpoint_traffic{layer="GENERAL", service="e2e-service-provider", endpoint=~"^POST:.*"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-traffic.yml
+  # metrics series
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=service_cpm&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-series.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=service_instance_cpm&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-metric-series.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/series -d 'match[]=endpoint_cpm&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-metric-series.yml
+  # traffic names query
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/service/values -d 'match[]=service_traffic{layer="GENERAL"}&start='$(($(date +%s)-1800))'&end='$(date -u +%Y-%m-%dT%H:%M:%S.111Z)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-names.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/service/values -d 'match[]=service_traffic{layer="GENERAL",limit="1"}&start='$(($(date +%s)-1800))'&end='$(date -u +%Y-%m-%dT%H:%M:%S.111Z)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-names-limit.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/service/values -d 'match[]=service_traffic{layer="GENERAL"}&limit=1'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-names-limit.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/service/values -d 'match[]=service_traffic{layer="GENERAL",service=~".*-provider"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-names-limit.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/service_instance/values -d 'match[]=instance_traffic{layer="GENERAL", service="e2e-service-provider"}&limit=1'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-names.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/service_instance/values -d 'match[]=instance_traffic{layer="GENERAL", service="e2e-service-provider", service_instance=~"provider1|provider2"}&limit=1'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-names.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/endpoint/values -d 'match[]=endpoint_traffic{layer="GENERAL", service="e2e-service-provider", keyword="POST:/users"}&limit=1'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-names.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/endpoint/values -d 'match[]=endpoint_traffic{layer="GENERAL", service="e2e-service-provider", endpoint=~"^POST:.*"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-names.yml
+  # metrics names query
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/__name__/values
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/metrics-names.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/label/__name__/values -d 'start='$(($(date +%s)-1800))'&end='$(date -u +%Y-%m-%dT%H:%M:%S.111Z)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/metrics-names.yml
+  # labels query
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/labels -d 'match[]=service_cpm'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-label.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/labels -d 'match[]=service_cpm&start='$(($(date +%s)-1800))'&end='$(date -u +%Y-%m-%dT%H:%M:%S.111Z)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-label.yml
+  - query: |
+      sleep 30;
+      curl -X GET http://${oap_host}:${oap_9090}/api/v1/labels -d 'match[]=service_percentile'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-labeled-metric-label-p.yml
+  # NOTE: service_percentile_old case excluded — requires custom core.oal not available in native image
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/labels -d 'match[]=service_instance_cpm'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-metric-label.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/labels -d 'match[]=endpoint_cpm'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-metric-label.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/labels -d 'match[]=endpoint_percentile'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-labeled-metric-label.yml
+  # metadata query
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/metadata -d 'metric=service_cpm&limit=10'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/metric-metadata.yml
+  # metrics query
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-vector.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"}[30m]'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-matrix.yml
+    #RFC3339
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"}[30m]&time='$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-matrix.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_percentile{service="e2e-service-consumer", layer="GENERAL", p="50,75,90"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-labeled-vector.yml
+  # NOTE: service_percentile_old case excluded — requires custom core.oal not available in native image
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_percentile{service="e2e-service-consumer", layer="GENERAL", p="50,75,90"}[30m]'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-labeled-matrix.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_cpm{layer="GENERAL",top_n="10", order="DES"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-sort-vector.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_cpm{layer="GENERAL",top_n="10", order="DES"}[30m]'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-sort-matrix.yml
+  ## multiple metrics operation query
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"} %2B service_sla{service="e2e-service-consumer", layer="GENERAL"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-vector-add.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"}[30m] %2B service_sla{service="e2e-service-consumer", layer="GENERAL"}[30m]'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-matrix-add.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"}[30m] == service_sla{service="e2e-service-consumer", layer="GENERAL"}[30m]'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-matrix-compare.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_percentile{service="e2e-service-consumer", layer="GENERAL", p="99"} - service_percentile{service="e2e-service-consumer", layer="GENERAL", p="99"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-labeled-compare-matrix.yml
+  ## query_range
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-matrix.yml
+    #RFC3339
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=service_sla{service="e2e-service-consumer", layer="GENERAL"}&start='$(($(date +%s)-1800))'&end='$(date -u +%Y-%m-%dT%H:%M:%S.0Z)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-matrix.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=service_percentile{service="e2e-service-consumer", layer="GENERAL", p="50,75,90"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-labeled-matrix.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=sum by (p) (service_percentile{service="e2e-service-consumer", layer="GENERAL", p="50,75,90"})&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-labeled-matrix-aggregate-by-p.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=sum by (p) (service_percentile{service="e2e-service-consumer", layer="GENERAL", p="50,75,90"}[30m])'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-labeled-matrix-aggregate-by-p.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=sum without (p) (service_percentile{service="e2e-service-consumer", layer="GENERAL", p="50,75,90"})&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-labeled-matrix-aggregate-without-p.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=service_cpm{layer="GENERAL",top_n="10", order="DES"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/service-metric-sort-matrix.yml
+  ## instance
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_instance_sla{service="e2e-service-consumer", layer="GENERAL", service_instance="consumer1"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-metric-vector.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=service_instance_sla{service="e2e-service-consumer", layer="GENERAL", service_instance="consumer1"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-metric-matrix.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=service_instance_cpm{parent_service="e2e-service-consumer", layer="GENERAL",top_n="10", order="DES"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/instance-metric-sort-matrix.yml
+  ## endpoint
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=endpoint_sla{service="e2e-service-consumer", layer="GENERAL", endpoint="POST:/users"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-metric-vector.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=endpoint_sla{service="e2e-service-consumer", layer="GENERAL", endpoint="POST:/users"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-metric-matrix.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=endpoint_percentile{service="e2e-service-consumer", layer="GENERAL", p="50,75,90", endpoint="POST:/users"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-metric-labeled-matrix.yml
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query_range -d 'query=endpoint_cpm{parent_service="e2e-service-consumer", layer="GENERAL",top_n="10", order="DES"}&start='$(($(date +%s)-1800))'&end='$(date +%s)
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/endpoint-metric-sort-matrix.yml
+  ## ServiceRelation
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_relation_client_cpm{service="e2e-service-consumer", dest_service="e2e-service-provider",layer="GENERAL", dest_layer="GENERAL"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/relation-metric-vector.yml
+  ## ServiceInstanceRelation
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=service_instance_relation_client_cpm{service="e2e-service-consumer", dest_service="e2e-service-provider",layer="GENERAL", dest_layer="GENERAL",dest_service_instance="provider1",service_instance="consumer1"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/relation-metric-vector.yml
+  ## EndPointRelation
+  - query: curl -X GET http://${oap_host}:${oap_9090}/api/v1/query -d 'query=endpoint_relation_cpm{service="e2e-service-consumer", dest_service="e2e-service-provider",layer="GENERAL", dest_layer="GENERAL",dest_endpoint="POST:/users",endpoint="POST:/users"}'
+    expected: ../../../../skywalking/test/e2e-v2/cases/promql/expected/relation-metric-vector.yml
