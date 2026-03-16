@@ -463,7 +463,7 @@
                                 <!-- Generate version.properties from submodule git metadata.
                                      Does not depend on upstream's git-commit-id-plugin output. -->
                                 <exec executable="git" dir="${project.basedir}/../skywalking"
-                                      outputproperty="upstream.git.commit.id" failonerror="true">
+                                      outputproperty="upstream.git.commit.id" failonerror="false">
                                     <arg value="rev-parse"/>
                                     <arg value="HEAD"/>
                                 </exec>
