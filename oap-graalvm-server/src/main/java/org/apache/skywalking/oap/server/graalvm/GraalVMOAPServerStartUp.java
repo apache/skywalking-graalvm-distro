@@ -111,6 +111,8 @@ import org.apache.skywalking.oap.query.promql.PromQLModule;
 import org.apache.skywalking.oap.query.promql.PromQLProvider;
 import org.apache.skywalking.oap.query.logql.LogQLModule;
 import org.apache.skywalking.oap.query.logql.LogQLProvider;
+import org.apache.skywalking.oap.query.traceql.TraceQLModule;
+import org.apache.skywalking.oap.query.traceql.TraceQLProvider;
 import org.apache.skywalking.oap.query.debug.StatusQueryModule;
 import org.apache.skywalking.oap.query.debug.StatusQueryProvider;
 // Exporter
@@ -252,6 +254,9 @@ public class GraalVMOAPServerStartUp {
         }
         manager.register(new PromQLModule(), new PromQLProvider());
         manager.register(new LogQLModule(), new LogQLProvider());
+        if (configuration.has("traceQL")) {
+            manager.register(new TraceQLModule(), new TraceQLProvider());
+        }
         manager.register(new StatusQueryModule(), new StatusQueryProvider());
 
         // Alarm

@@ -1,8 +1,9 @@
-org.apache.skywalking.oap.log.analyzer.provider.LogAnalyzerModuleConfig
+org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig
 org.apache.skywalking.oap.query.debug.StatusQueryConfig
 org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig
 org.apache.skywalking.oap.query.logql.LogQLConfig
 org.apache.skywalking.oap.query.promql.PromQLConfig
+org.apache.skywalking.oap.query.traceql.TraceQLConfig
 org.apache.skywalking.oap.query.zipkin.ZipkinQueryConfig
 org.apache.skywalking.oap.server.ai.pipeline.AIPipelineConfig
 org.apache.skywalking.oap.server.analyzer.agent.kafka.module.KafkaFetcherConfig

@@ -111,6 +111,10 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>logql-plugin</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>traceql-plugin</artifactId>
+        </dependency>
 
         <!-- Health checker (HealthCheckerHttpService) -->
         <dependency>

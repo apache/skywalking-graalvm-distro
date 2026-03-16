@@ -32,15 +32,26 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 - `release/full-release.sh`: end-to-end release script.
 - Generate vote email template with GPG signer info and submodule commit IDs.
 
+### New Module
+
+- Add TraceQL module (Tempo-compatible trace query API) with Zipkin and SkyWalking datasource support.
+
 ### Testing
 
 - Replacement class staleness detector: add auto-discovery coverage check for untracked same-FQCN replacements in `oap-libs-for-graalvm/`.
 
 ### E2E Tests
 
+- Add PromQL e2e test case (Prometheus-compatible query API).
+- Add LogQL e2e test case (Loki-compatible log query API).
+- Add TraceQL e2e test case (Tempo-compatible trace query API with Zipkin datasource).
 - Update BanyanDB to `e1ba421` (fixes Zipkin `minDuration` trace query).
 - Bump Istio to 1.28.0.
 - Add Baseline e2e test case.
+
+### Build
+
+- Fix Armeria handler scan to detect inherited `@Get`/`@Path` annotations (precompiler).
 
 ## 0.1.0
 

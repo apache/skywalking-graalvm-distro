@@ -236,6 +236,12 @@ public class Precompiler {
         writeManifest(annotationScanDir.resolve("GraphQLTypes.txt"),
             scanGraphQLTypes(allClasses));
 
+        // ---- Query plugin entity class scanning ----
+        // Auto-discover all classes under org.apache.skywalking.oap.query.*.entity packages
+        // (including inner classes and codec serializers) for Jackson reflection config.
+        writeManifest(annotationScanDir.resolve("QueryEntityClasses.txt"),
+            scanQueryEntityClasses(allClasses));
+
         // ---- MAL pre-compilation (v2 ANTLR4 + Javassist) ----
         compileMAL(outputDir, allClasses);
 
@@ -837,16 +843,24 @@ public class Precompiler {
                 if (aClass.isInterface() || Modifier.isAbstract(aClass.getModifiers())) {
                     continue;
                 }
-                // Check if any method has Armeria routing annotations
-                for (Method method : aClass.getDeclaredMethods()) {
+                // Check if any method (including inherited) has Armeria routing annotations
+                boolean matched = false;
+                for (Method method : aClass.getMethods()) {
                     if ((postAnno != null && method.isAnnotationPresent(postAnno))
                         || (getAnno != null && method.isAnnotationPresent(getAnno))
                         || (pathAnno != null && method.isAnnotationPresent(pathAnno))) {
-                        result.add(aClass.getName());
-                        // Also collect @ExceptionHandler referenced classes
-                        collectExceptionHandlerClasses(aClass, result);
-                        break;
+                        matched = true;
+                        // Include declaring class of inherited annotated methods (e.g. abstract base handlers)
+                        // so Armeria can reflect on their @Get/@Path annotations at runtime
+                        Class<?> declaring = method.getDeclaringClass();
+                        if (declaring != aClass && declaring != Object.class) {
+                            result.add(declaring.getName());
+                        }
                     }
+                }
+                if (matched) {
+                    result.add(aClass.getName());
+                    collectExceptionHandlerClasses(aClass, result);
                 }
             } catch (NoClassDefFoundError | Exception ignored) {
             }
@@ -900,6 +914,51 @@ public class Precompiler {
             }
         } catch (NoClassDefFoundError | Exception ignored) {
         }
+    }
+
+    /**
+     * Auto-discover all classes under {@code org.apache.skywalking.oap.query.*.entity} packages.
+     * These are Jackson-serialized POJOs (Lombok {@code @Data}) returned by Armeria HTTP handlers
+     * in query plugins (PromQL, LogQL, TraceQL, etc.). Inner static classes and codec serializers
+     * are included. Enums are excluded (Jackson handles them without reflection metadata).
+     *
+     * <p>This replaces hardcoded class lists — new query plugins are picked up automatically.
+     */
+    private static List<String> scanQueryEntityClasses(
+        ImmutableSet<ClassPath.ClassInfo> allClasses) {
+
+        // Match: org.apache.skywalking.oap.query.<plugin>.entity[.<sub>].<ClassName>
+        Set<String> result = new HashSet<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            String name = classInfo.getName();
+            if (!name.startsWith("org.apache.skywalking.oap.query.")) {
+                continue;
+            }
+            // Check that the package contains ".entity."
+            String afterQuery = name.substring("org.apache.skywalking.oap.query.".length());
+            if (afterQuery.indexOf(".entity.") < 0) {
+                continue;
+            }
+            try {
+                Class<?> aClass = classInfo.load();
+                if (aClass.isInterface()) {
+                    continue;
+                }
+                result.add(aClass.getName());
+                // Also include inner static classes (e.g. SearchResponse$Trace, StreamLog$Result)
+                for (Class<?> inner : aClass.getDeclaredClasses()) {
+                    if (!inner.isInterface()) {
+                        result.add(inner.getName());
+                    }
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+            }
+        }
+
+        List<String> sorted = new ArrayList<>(result);
+        Collections.sort(sorted);
+        log.info("Scanned query entity classes: {} classes", sorted.size());
+        return sorted;
     }
 
     @SuppressWarnings("unchecked")
@@ -1328,8 +1387,10 @@ public class Precompiler {
         }
 
         // Armeria HTTP handlers — full access (Armeria reflects on @Post/@Get/@Path method annotations)
+        // Query entity classes — full access (Jackson serializes @Data POJOs in HTTP responses)
         String[] httpHandlerManifests = {
-            "ArmeriaHandlers.txt", "GraphQLResolvers.txt", "GraphQLTypes.txt"
+            "ArmeriaHandlers.txt", "GraphQLResolvers.txt", "GraphQLTypes.txt",
+            "QueryEntityClasses.txt"
         };
         for (String manifest : httpHandlerManifests) {
             Path file = annotationScanDir.resolve(manifest);
