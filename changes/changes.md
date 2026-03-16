@@ -18,6 +18,7 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 - Add Docker Hub README (`docker/DOCKERHUB_README.md`).
 - Add release guide (`docs/release-guide.md`).
 - Update root `README.md` with project intro, quick start, and image registry table.
+- Add "Building from Apache Source Tarball" section to `docs/compiling.md`.
 
 ### CI/CD
 
@@ -29,8 +30,15 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 ### Release Tooling
 
 - `release/release.sh`: auto-create SVN `graalvm-distro` directory if it doesn't exist.
+- `release/release.sh`: fix SHA-512 checksum files to contain only hash + filename (no local paths).
+- `release/release.sh`: re-upload darwin SHA-512 to GitHub Release after GPG signing.
+- `release/release.sh`: link vote email to `compiling.md` instead of `quick-start.md`.
 - `release/full-release.sh`: end-to-end release script.
 - Generate vote email template with GPG signer info and submodule commit IDs.
+
+### Build
+
+- Fix source tarball build: gracefully handle absent `.git` in version generation (no git required for Apache source release builds).
 
 ### Testing
 
