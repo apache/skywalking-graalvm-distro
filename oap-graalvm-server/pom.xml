@@ -470,8 +470,6 @@
                     <verbose>false</verbose>
                     <generateGitPropertiesFile>true</generateGitPropertiesFile>
                     <generateGitPropertiesFilename>${project.build.outputDirectory}/version.properties</generateGitPropertiesFilename>
-                    <dateFormatTimeZone>UTC</dateFormatTimeZone>
-                    <dateFormat>yyyyMMddHHmmss</dateFormat>
                     <failOnNoGitDirectory>false</failOnNoGitDirectory>
                     <includeOnlyProperties>
                         <includeOnlyProperty>^git.build.version$</includeOnlyProperty>
