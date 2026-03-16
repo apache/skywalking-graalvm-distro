@@ -236,6 +236,12 @@ public class Precompiler {
         writeManifest(annotationScanDir.resolve("GraphQLTypes.txt"),
             scanGraphQLTypes(allClasses));
 
+        // ---- Query plugin entity class scanning ----
+        // Auto-discover all classes under org.apache.skywalking.oap.query.*.entity packages
+        // (including inner classes and codec serializers) for Jackson reflection config.
+        writeManifest(annotationScanDir.resolve("QueryEntityClasses.txt"),
+            scanQueryEntityClasses(allClasses));
+
         // ---- MAL pre-compilation (v2 ANTLR4 + Javassist) ----
         compileMAL(outputDir, allClasses);
 
@@ -902,6 +908,54 @@ public class Precompiler {
         }
     }
 
+    /**
+     * Auto-discover all classes under {@code org.apache.skywalking.oap.query.*.entity} packages.
+     * These are Jackson-serialized POJOs (Lombok {@code @Data}) returned by Armeria HTTP handlers
+     * in query plugins (PromQL, LogQL, TraceQL, etc.). Inner static classes and codec serializers
+     * are included. Enums are excluded (Jackson handles them without reflection metadata).
+     *
+     * <p>This replaces hardcoded class lists — new query plugins are picked up automatically.
+     */
+    private static List<String> scanQueryEntityClasses(
+        ImmutableSet<ClassPath.ClassInfo> allClasses) {
+
+        // Match: org.apache.skywalking.oap.query.<plugin>.entity[.<sub>].<ClassName>
+        Set<String> result = new HashSet<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            String name = classInfo.getName();
+            if (!name.startsWith("org.apache.skywalking.oap.query.")) {
+                continue;
+            }
+            // Check that the package contains ".entity." or ends with ".entity"
+            String afterQuery = name.substring("org.apache.skywalking.oap.query.".length());
+            int entityIdx = afterQuery.indexOf(".entity.");
+            boolean inEntityPkg = entityIdx >= 0
+                || afterQuery.matches("[^.]+\\.entity\\.[^.]+");
+            if (!inEntityPkg) {
+                continue;
+            }
+            try {
+                Class<?> aClass = classInfo.load();
+                if (aClass.isEnum()) {
+                    continue;
+                }
+                result.add(aClass.getName());
+                // Also include inner static classes (e.g. SearchResponse$Trace, StreamLog$Result)
+                for (Class<?> inner : aClass.getDeclaredClasses()) {
+                    if (!inner.isEnum()) {
+                        result.add(inner.getName());
+                    }
+                }
+            } catch (NoClassDefFoundError | Exception ignored) {
+            }
+        }
+
+        List<String> sorted = new ArrayList<>(result);
+        Collections.sort(sorted);
+        log.info("Scanned query entity classes: {} classes", sorted.size());
+        return sorted;
+    }
+
     @SuppressWarnings("unchecked")
     private static Class<? extends Annotation> loadAnnotation(String fqcn) {
         try {
@@ -1328,8 +1382,10 @@ public class Precompiler {
         }
 
         // Armeria HTTP handlers — full access (Armeria reflects on @Post/@Get/@Path method annotations)
+        // Query entity classes — full access (Jackson serializes @Data POJOs in HTTP responses)
         String[] httpHandlerManifests = {
-            "ArmeriaHandlers.txt", "GraphQLResolvers.txt", "GraphQLTypes.txt"
+            "ArmeriaHandlers.txt", "GraphQLResolvers.txt", "GraphQLTypes.txt",
+            "QueryEntityClasses.txt"
         };
         for (String manifest : httpHandlerManifests) {
             Path file = annotationScanDir.resolve(manifest);
@@ -1379,68 +1435,7 @@ public class Precompiler {
             // LALSourceTypeProvider SPI: ServiceLoader instantiates for per-layer input/output type resolution
             "org.apache.skywalking.oap.server.receiver.envoy.EnvoyHTTPLALSourceTypeProvider",
             // TTL status REST endpoint: Jackson serializes TTLDefinition returned by /status/config/ttl
-            "org.apache.skywalking.oap.server.core.storage.ttl.TTLDefinition",
-
-            // PromQL entity classes: Jackson serializes @Data POJOs in Armeria HTTP responses
-            "org.apache.skywalking.oap.query.promql.entity.BuildInfo",
-            "org.apache.skywalking.oap.query.promql.entity.LabelValuePair",
-            "org.apache.skywalking.oap.query.promql.entity.MetricData",
-            "org.apache.skywalking.oap.query.promql.entity.MetricInfo",
-            "org.apache.skywalking.oap.query.promql.entity.MetricInstantData",
-            "org.apache.skywalking.oap.query.promql.entity.MetricMetadata",
-            "org.apache.skywalking.oap.query.promql.entity.MetricRangeData",
-            "org.apache.skywalking.oap.query.promql.entity.ResponseData",
-            "org.apache.skywalking.oap.query.promql.entity.TimeValuePair",
-            "org.apache.skywalking.oap.query.promql.entity.codec.MetricInfoSerializer",
-            "org.apache.skywalking.oap.query.promql.entity.codec.TimeValuePairSerializer",
-            "org.apache.skywalking.oap.query.promql.entity.response.BuildInfoRsp",
-            "org.apache.skywalking.oap.query.promql.entity.response.ExprQueryRsp",
-            "org.apache.skywalking.oap.query.promql.entity.response.LabelValuesQueryRsp",
-            "org.apache.skywalking.oap.query.promql.entity.response.LabelsQueryRsp",
-            "org.apache.skywalking.oap.query.promql.entity.response.MetadataQueryRsp",
-            "org.apache.skywalking.oap.query.promql.entity.response.MetricRspData",
-            "org.apache.skywalking.oap.query.promql.entity.response.QueryFormatRsp",
-            "org.apache.skywalking.oap.query.promql.entity.response.QueryResponse",
-            "org.apache.skywalking.oap.query.promql.entity.response.ScalarRspData",
-            "org.apache.skywalking.oap.query.promql.entity.response.SeriesQueryRsp",
-
-            // LogQL entity classes: Jackson serializes @Data POJOs in Armeria HTTP responses
-            "org.apache.skywalking.oap.query.logql.entity.response.QueryResponse",
-            "org.apache.skywalking.oap.query.logql.entity.response.LabelValuesQueryRsp",
-            "org.apache.skywalking.oap.query.logql.entity.response.LabelsQueryRsp",
-            "org.apache.skywalking.oap.query.logql.entity.response.LogRangeQueryRsp",
-            "org.apache.skywalking.oap.query.logql.entity.response.StreamLog",
-            "org.apache.skywalking.oap.query.logql.entity.response.StreamLog$Result",
-            "org.apache.skywalking.oap.query.logql.entity.response.TimeValuePair",
-            "org.apache.skywalking.oap.query.logql.entity.codec.TimeValuePairSerializer",
-
-            // TraceQL entity classes: Jackson serializes @Data POJOs in Armeria HTTP responses
-            "org.apache.skywalking.oap.query.traceql.entity.BuildInfoResponse",
-            "org.apache.skywalking.oap.query.traceql.entity.ErrorResponse",
-            "org.apache.skywalking.oap.query.traceql.entity.QueryResponse",
-            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse",
-            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Trace",
-            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$SpanSet",
-            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Span",
-            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Attribute",
-            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Value",
-            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$ServiceStat",
-            "org.apache.skywalking.oap.query.traceql.entity.TagNamesResponse",
-            "org.apache.skywalking.oap.query.traceql.entity.TagNamesV2Response",
-            "org.apache.skywalking.oap.query.traceql.entity.TagNamesV2Response$Scope",
-            "org.apache.skywalking.oap.query.traceql.entity.TagValuesResponse",
-            "org.apache.skywalking.oap.query.traceql.entity.TagValuesResponse$TagValue",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$TraceData",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$ResourceSpans",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Resource",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$ScopeSpans",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Scope",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Span",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Event",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Status",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$KeyValue",
-            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$AnyValue"
+            "org.apache.skywalking.oap.server.core.storage.ttl.TTLDefinition"
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));
