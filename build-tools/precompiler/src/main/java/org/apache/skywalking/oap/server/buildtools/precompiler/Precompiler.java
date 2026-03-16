@@ -1379,7 +1379,68 @@ public class Precompiler {
             // LALSourceTypeProvider SPI: ServiceLoader instantiates for per-layer input/output type resolution
             "org.apache.skywalking.oap.server.receiver.envoy.EnvoyHTTPLALSourceTypeProvider",
             // TTL status REST endpoint: Jackson serializes TTLDefinition returned by /status/config/ttl
-            "org.apache.skywalking.oap.server.core.storage.ttl.TTLDefinition"
+            "org.apache.skywalking.oap.server.core.storage.ttl.TTLDefinition",
+
+            // PromQL entity classes: Jackson serializes @Data POJOs in Armeria HTTP responses
+            "org.apache.skywalking.oap.query.promql.entity.BuildInfo",
+            "org.apache.skywalking.oap.query.promql.entity.LabelValuePair",
+            "org.apache.skywalking.oap.query.promql.entity.MetricData",
+            "org.apache.skywalking.oap.query.promql.entity.MetricInfo",
+            "org.apache.skywalking.oap.query.promql.entity.MetricInstantData",
+            "org.apache.skywalking.oap.query.promql.entity.MetricMetadata",
+            "org.apache.skywalking.oap.query.promql.entity.MetricRangeData",
+            "org.apache.skywalking.oap.query.promql.entity.ResponseData",
+            "org.apache.skywalking.oap.query.promql.entity.TimeValuePair",
+            "org.apache.skywalking.oap.query.promql.entity.codec.MetricInfoSerializer",
+            "org.apache.skywalking.oap.query.promql.entity.codec.TimeValuePairSerializer",
+            "org.apache.skywalking.oap.query.promql.entity.response.BuildInfoRsp",
+            "org.apache.skywalking.oap.query.promql.entity.response.ExprQueryRsp",
+            "org.apache.skywalking.oap.query.promql.entity.response.LabelValuesQueryRsp",
+            "org.apache.skywalking.oap.query.promql.entity.response.LabelsQueryRsp",
+            "org.apache.skywalking.oap.query.promql.entity.response.MetadataQueryRsp",
+            "org.apache.skywalking.oap.query.promql.entity.response.MetricRspData",
+            "org.apache.skywalking.oap.query.promql.entity.response.QueryFormatRsp",
+            "org.apache.skywalking.oap.query.promql.entity.response.QueryResponse",
+            "org.apache.skywalking.oap.query.promql.entity.response.ScalarRspData",
+            "org.apache.skywalking.oap.query.promql.entity.response.SeriesQueryRsp",
+
+            // LogQL entity classes: Jackson serializes @Data POJOs in Armeria HTTP responses
+            "org.apache.skywalking.oap.query.logql.entity.response.QueryResponse",
+            "org.apache.skywalking.oap.query.logql.entity.response.LabelValuesQueryRsp",
+            "org.apache.skywalking.oap.query.logql.entity.response.LabelsQueryRsp",
+            "org.apache.skywalking.oap.query.logql.entity.response.LogRangeQueryRsp",
+            "org.apache.skywalking.oap.query.logql.entity.response.StreamLog",
+            "org.apache.skywalking.oap.query.logql.entity.response.StreamLog$Result",
+            "org.apache.skywalking.oap.query.logql.entity.response.TimeValuePair",
+            "org.apache.skywalking.oap.query.logql.entity.codec.TimeValuePairSerializer",
+
+            // TraceQL entity classes: Jackson serializes @Data POJOs in Armeria HTTP responses
+            "org.apache.skywalking.oap.query.traceql.entity.BuildInfoResponse",
+            "org.apache.skywalking.oap.query.traceql.entity.ErrorResponse",
+            "org.apache.skywalking.oap.query.traceql.entity.QueryResponse",
+            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse",
+            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Trace",
+            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$SpanSet",
+            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Span",
+            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Attribute",
+            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$Value",
+            "org.apache.skywalking.oap.query.traceql.entity.SearchResponse$ServiceStat",
+            "org.apache.skywalking.oap.query.traceql.entity.TagNamesResponse",
+            "org.apache.skywalking.oap.query.traceql.entity.TagNamesV2Response",
+            "org.apache.skywalking.oap.query.traceql.entity.TagNamesV2Response$Scope",
+            "org.apache.skywalking.oap.query.traceql.entity.TagValuesResponse",
+            "org.apache.skywalking.oap.query.traceql.entity.TagValuesResponse$TagValue",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$TraceData",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$ResourceSpans",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Resource",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$ScopeSpans",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Scope",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Span",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Event",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$Status",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$KeyValue",
+            "org.apache.skywalking.oap.query.traceql.entity.OtlpTraceResponse$AnyValue"
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));
