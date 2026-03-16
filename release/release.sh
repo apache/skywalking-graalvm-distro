@@ -67,7 +67,7 @@ sign_and_checksum() {
     log "Signing ${file}..."
     gpg --armor --detach-sign "${file}"
     log "Generating SHA-512 checksum for ${file}..."
-    (cd "$(dirname "${file}")" && shasum -a 512 "$(basename "${file}")" > "$(basename "${file}").sha512")
+    shasum -a 512 "${file}" > "${file}.sha512"
 }
 
 # ─── Validate arguments ─────────────────────────────────────────────────────
@@ -221,12 +221,6 @@ for tarball in "${DIST_DIR}"/*.tar.gz; do
     sign_and_checksum "${tarball}"
 done
 
-# Re-upload darwin sha512 to GitHub Release (regenerated after GPG signing)
-log "Uploading darwin SHA-512 checksum to GitHub Release..."
-gh release upload "${TAG}" --repo "${REPO}" \
-    "${DIST_DIR}/${DARWIN_SHA512}" \
-    --clobber
-
 # ─── Step 7: Clean up tmp ────────────────────────────────────────────────────
 log "Cleaning up temporary files..."
 rm -rf "${TMP_DIR}"
@@ -332,7 +326,7 @@ Keys to verify the Release Candidate :
 
 Guide to build the release from source :
 
- * https://github.com/apache/skywalking-graalvm-distro/blob/v${VERSION}/docs/compiling.md
+ * https://github.com/apache/skywalking-graalvm-distro/blob/v${VERSION}/docs/quick-start.md
 
 Voting will start now (${VOTE_DATE}) and will remain open for at least 72 hours, Request all PMC members to give their vote.
 [ ] +1 Release this package.

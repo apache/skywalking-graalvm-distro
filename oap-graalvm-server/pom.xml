@@ -414,12 +414,7 @@
                     </argLine>
                 </configuration>
             </plugin>
-            <!-- Generate VERSION file and version.properties with build version info.
-                 Version format:
-                   SNAPSHOT + git : {distro}-{commit}-distro-{sw}-{sw_commit}  e.g. 0.2.0-abc1234-distro-10.4.0-def5678
-                   Release  + git : {distro}-distro-{sw}-{sw_commit}           e.g. 0.2.0-distro-10.4.0-def5678
-                   Release  no git: {distro}-distro-{sw}                       e.g. 0.2.0-distro-10.4.0 (source tarball)
-            -->
+            <!-- Generate VERSION file with pom version + git commit ID -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
@@ -453,6 +448,10 @@
                             </target>
                         </configuration>
                     </execution>
+                    <!-- Copy version.properties from submodule, patch version for graal-distro.
+                         If version has -SNAPSHOT, replace it with the short commit ID.
+                         e.g. 10.4.0-SNAPSHOT -> 10.4.0-b537891-graal-distro
+                         Release versions just get the suffix: 10.4.0 -> 10.4.0-graal-distro -->
                     <execution>
                         <id>copy-version-properties</id>
                         <phase>generate-resources</phase>
@@ -460,83 +459,29 @@
                             <goal>run</goal>
                         </goals>
                         <configuration>
-                            <target xmlns:if="ant:if" xmlns:unless="ant:unless">
-                                <!-- Strip -SNAPSHOT from versions -->
-                                <loadresource property="distro.version.base">
-                                    <string value="${project.version}"/>
+                            <target>
+                                <!-- Generate version.properties from submodule git metadata.
+                                     Does not depend on upstream's git-commit-id-plugin output. -->
+                                <exec executable="git" dir="${project.basedir}/../skywalking"
+                                      outputproperty="upstream.git.commit.id" failonerror="true">
+                                    <arg value="rev-parse"/>
+                                    <arg value="HEAD"/>
+                                </exec>
+                                <loadresource property="upstream.git.commit.id.short">
+                                    <string value="${upstream.git.commit.id}"/>
                                     <filterchain>
-                                        <replaceregex pattern="-SNAPSHOT$" replace=""/>
+                                        <replaceregex pattern="^(.{7}).*$" replace="\1"/>
                                     </filterchain>
                                 </loadresource>
-                                <loadresource property="sw.version.base">
+                                <!-- Build version: replace -SNAPSHOT with -<short-commit>, then append -graal-distro -->
+                                <loadresource property="upstream.build.version">
                                     <string value="${skywalking.version}"/>
                                     <filterchain>
-                                        <replaceregex pattern="-SNAPSHOT$" replace=""/>
+                                        <replaceregex pattern="-SNAPSHOT$" replace="-${upstream.git.commit.id.short}"/>
                                     </filterchain>
                                 </loadresource>
-
-                                <!-- Detect SNAPSHOT -->
-                                <condition property="is.snapshot">
-                                    <contains string="${project.version}" substring="-SNAPSHOT"/>
-                                </condition>
-
-                                <!-- Check if .git exists (absent in source tarball).
-                                     Submodule .git can be a file (gitlink) or directory. -->
-                                <condition property="distro.git.available">
-                                    <available file="${project.basedir}/../.git"/>
-                                </condition>
-                                <condition property="upstream.git.available">
-                                    <or>
-                                        <available file="${project.basedir}/../skywalking/.git" type="dir"/>
-                                        <available file="${project.basedir}/../skywalking/.git" type="file"/>
-                                    </or>
-                                </condition>
-
-                                <!-- Only run git when .git exists (if:set requires Ant 1.9.1+) -->
-                                <exec executable="git" outputproperty="distro.git.short"
-                                      failonerror="false" if:set="distro.git.available">
-                                    <arg value="rev-parse"/>
-                                    <arg value="--short"/>
-                                    <arg value="HEAD"/>
-                                </exec>
-                                <exec executable="git" dir="${project.basedir}/../skywalking"
-                                      outputproperty="upstream.git.short"
-                                      failonerror="false" if:set="upstream.git.available">
-                                    <arg value="rev-parse"/>
-                                    <arg value="--short"/>
-                                    <arg value="HEAD"/>
-                                </exec>
-                                <exec executable="git" dir="${project.basedir}/../skywalking"
-                                      outputproperty="upstream.git.full"
-                                      failonerror="false" if:set="upstream.git.available">
-                                    <arg value="rev-parse"/>
-                                    <arg value="HEAD"/>
-                                </exec>
-
-                                <!-- Distro commit part: "-{short}" only for SNAPSHOT with git -->
-                                <condition property="distro.commit.part" value="-${distro.git.short}">
-                                    <and>
-                                        <isset property="is.snapshot"/>
-                                        <isset property="distro.git.available"/>
-                                    </and>
-                                </condition>
-                                <property name="distro.commit.part" value=""/>
-
-                                <!-- Upstream commit part: "-{short}" only when upstream .git exists -->
-                                <condition property="upstream.commit.part" value="-${upstream.git.short}">
-                                    <isset property="upstream.git.available"/>
-                                </condition>
-                                <property name="upstream.commit.part" value=""/>
-
-                                <!-- Defaults when git is absent -->
-                                <property name="upstream.git.full" value=""/>
-
-                                <!-- Final: e.g. 0.2.0-abc1234-distro-10.4.0-def5678 -->
-                                <property name="build.version"
-                                          value="${distro.version.base}${distro.commit.part}-distro-${sw.version.base}${upstream.commit.part}"/>
-
                                 <echo file="${project.build.outputDirectory}/version.properties"
-                                      message="#Generated by skywalking-graalvm-distro${line.separator}git.build.version=${build.version}${line.separator}git.commit.id=${upstream.git.full}${line.separator}"/>
+                                      message="#Generated by skywalking-graalvm-distro${line.separator}git.build.version=${upstream.build.version}-graal-distro${line.separator}git.commit.id=${upstream.git.commit.id}${line.separator}"/>
                             </target>
                         </configuration>
                     </execution>
