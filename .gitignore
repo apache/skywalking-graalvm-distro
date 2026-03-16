@@ -12,9 +12,6 @@ dependency-reduced-pom.xml
 # Claude Code
 .claude/settings.local.json
 
-# Generated at build time by git-commit-id-plugin (same as upstream)
-oap-graalvm-server/src/main/resources/version.properties
-
 # Release
 release-package/
 
