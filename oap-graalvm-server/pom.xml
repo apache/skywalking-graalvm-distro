@@ -463,13 +463,13 @@
                         <goals>
                             <goal>revision</goal>
                         </goals>
-                        <phase>compile</phase>
+                        <phase>initialize</phase>
                     </execution>
                 </executions>
                 <configuration>
                     <verbose>false</verbose>
                     <generateGitPropertiesFile>true</generateGitPropertiesFile>
-                    <generateGitPropertiesFilename>${project.build.outputDirectory}/version.properties</generateGitPropertiesFilename>
+                    <generateGitPropertiesFilename>${project.basedir}/src/main/resources/version.properties</generateGitPropertiesFilename>
                     <failOnNoGitDirectory>false</failOnNoGitDirectory>
                     <includeOnlyProperties>
                         <includeOnlyProperty>^git.build.version$</includeOnlyProperty>
