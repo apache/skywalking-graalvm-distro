@@ -483,14 +483,19 @@ jobs:
       - name: Read changelog
         id: changelog
         run: |
-          # Use version-specific changelog if exists, otherwise default changes.md
           VERSION="${{ needs.init-skywalking.outputs.version }}"
-          if [[ -f "changes/${VERSION}.md" ]]; then
-            BODY_FILE="changes/${VERSION}.md"
-          else
-            BODY_FILE="changes/changes.md"
-          fi
-          echo "body-file=${BODY_FILE}" >> "$GITHUB_OUTPUT"
+          # Extract only the section for this version from changes.md
+          # (from "## {version}" up to the next "## " heading or EOF)
+          found=false
+          while IFS= read -r line; do
+            if [[ "${line}" == "## ${VERSION}" ]]; then
+              found=true
+            elif [[ "${line}" == "## "* ]] && $found; then
+              break
+            fi
+            $found && echo "${line}"
+          done < changes/changes.md > /tmp/release-notes.md
+          echo "body-file=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
