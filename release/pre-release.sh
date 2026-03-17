@@ -107,17 +107,23 @@ git tag "v${RELEASE_VERSION}"
 log "Switching back to main..."
 git checkout main
 
-log "Bumping version to ${NEXT_VERSION}..."
+MAIN_NEEDS_BUMP=true
+if [[ "${CURRENT_VERSION}" == "${NEXT_VERSION}" ]]; then
+    log "Main already at ${NEXT_VERSION} — skipping version bump"
+    MAIN_NEEDS_BUMP=false
+else
+    log "Bumping version to ${NEXT_VERSION}..."
 
-find "${REPO_ROOT}" -name pom.xml -not -path '*/skywalking/*' \
-    -exec sed -i '' "s/${CURRENT_VERSION}/${NEXT_VERSION}/g" {} \;
+    find "${REPO_ROOT}" -name pom.xml -not -path '*/skywalking/*' \
+        -exec sed -i '' "s/${CURRENT_VERSION}/${NEXT_VERSION}/g" {} \;
 
-VERIFY_VERSION=$(sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' "${REPO_ROOT}/pom.xml" | head -1)
-[[ "${VERIFY_VERSION}" == "${NEXT_VERSION}" ]] || error "Version bump failed. pom.xml shows '${VERIFY_VERSION}'"
+    VERIFY_VERSION=$(sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' "${REPO_ROOT}/pom.xml" | head -1)
+    [[ "${VERIFY_VERSION}" == "${NEXT_VERSION}" ]] || error "Version bump failed. pom.xml shows '${VERIFY_VERSION}'"
 
-log "Committing next development version..."
-git add $(find . -name pom.xml -not -path '*/skywalking/*')
-git commit -m "Bump version to ${NEXT_VERSION}"
+    log "Committing next development version..."
+    git add $(find . -name pom.xml -not -path '*/skywalking/*')
+    git commit -m "Bump version to ${NEXT_VERSION}"
+fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
@@ -127,13 +133,19 @@ echo "Created:"
 echo "  - Branch: ${RELEASE_BRANCH}"
 echo "    - Commit: Release ${RELEASE_VERSION}"
 echo "    - Tag:    v${RELEASE_VERSION}"
-echo "  - On main:"
-echo "    - Commit: Bump version to ${NEXT_VERSION}"
+if [[ "${MAIN_NEEDS_BUMP}" == "true" ]]; then
+    echo "  - On main:"
+    echo "    - Commit: Bump version to ${NEXT_VERSION}"
+else
+    echo "  - Main: already at ${NEXT_VERSION} (no changes)"
+fi
 echo ""
 echo "Next steps:"
-echo "  1. Review:            git log --oneline -2 && git log --oneline ${RELEASE_BRANCH} -1"
+echo "  1. Review:            git log --oneline ${RELEASE_BRANCH} -1"
 echo "  2. Push tag:          git push origin v${RELEASE_VERSION}"
 echo "  3. Push release:      git push origin ${RELEASE_BRANCH}"
-echo "  4. Push main:         git push origin main"
+if [[ "${MAIN_NEEDS_BUMP}" == "true" ]]; then
+    echo "  4. Push main:         git push origin main"
+fi
 echo "  5. Wait for CI release workflow to complete"
 echo "  6. Run:               release/release.sh ${RELEASE_VERSION}"
