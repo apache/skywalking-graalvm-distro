@@ -1,5 +1,16 @@
 # Changes
 
+## 0.2.1
+
+### Build
+
+- Fix `version.properties` generation for source tarball builds: move antrun `copy-version-properties` to a Maven profile that only activates when `.git` exists, so pre-generated `version.properties` from `release.sh` is used in source tarball builds.
+
+### Release Tooling
+
+- Rewrite `release/pre-release.sh` to create a release branch (`release/v<version>`) instead of committing directly to main.
+- Add `changes/changes.md` verification to `release/pre-release.sh` (requires release notes section before proceeding).
+
 ## 0.2.0
 
 ### Highlights
@@ -33,7 +44,6 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 - `release/release.sh`: fix SHA-512 checksum files to contain only hash + filename (no local paths).
 - `release/release.sh`: re-upload darwin SHA-512 to GitHub Release after GPG signing.
 - `release/release.sh`: link vote email to `compiling.md` instead of `quick-start.md`.
-- `release/full-release.sh`: end-to-end release script.
 - Generate vote email template with GPG signer info and submodule commit IDs.
 
 ### New Module
@@ -42,7 +52,7 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 
 ### Build
 
-- Fix source tarball build: set `failonerror=false` for version generation; `release.sh` pre-generates `version.properties` in the source tarball.
+- Fix Armeria handler scan to detect inherited `@Get`/`@Path` annotations (precompiler).
 
 ### Testing
 
@@ -57,9 +67,11 @@ Upgrade to the latest Apache SkyWalking OAP server, with documentation restructu
 - Bump Istio to 1.28.0.
 - Add Baseline e2e test case.
 
-### Build
+## 0.1.1
 
-- Fix Armeria handler scan to detect inherited `@Get`/`@Path` annotations (precompiler).
+### Release Tooling
+
+- `release/full-release.sh`: end-to-end release script.
 
 ## 0.1.0
 
