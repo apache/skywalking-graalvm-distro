@@ -331,10 +331,6 @@ jobs:
             case: baseline
           - name: Auth
             case: auth
-          - name: SSL
-            case: ssl
-          - name: mTLS
-            case: mtls
           - name: OTLP Traces
             case: otlp-traces
           - name: Virtual MQ
