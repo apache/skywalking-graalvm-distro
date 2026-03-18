@@ -2,6 +2,10 @@
 
 ## 0.3.0
 
+### Documentation
+
+- Document TLS/SSL limitation: native image lacks `netty_tcnative`, recommend service mesh for mTLS.
+
 ### E2E Tests
 
 - Add Auth e2e test case (token-based agent-to-OAP authentication).
