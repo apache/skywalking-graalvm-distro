@@ -1,5 +1,18 @@
 # Changes
 
+## 0.3.0
+
+### E2E Tests
+
+- Add Auth e2e test case (token-based agent-to-OAP authentication).
+- Add SSL e2e test case (TLS-encrypted gRPC communication).
+- Add mTLS e2e test case (mutual TLS with client certificates).
+- Add OTLP Traces e2e test case (OpenTelemetry trace ingestion via Zipkin API).
+- Add Virtual MQ e2e test case (Kafka-instrumented virtual MQ layer metrics).
+- Add Kafka Exporter e2e test case (trace and log export to Kafka).
+- Add Self-Observability e2e test case (OAP Prometheus telemetry via OTEL collector).
+- Add MQE e2e test case (Metrics Query Engine expression evaluation with baseline).
+
 ## 0.2.1
 
 ### Build

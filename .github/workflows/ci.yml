@@ -329,6 +329,22 @@ jobs:
             case: traceql
           - name: Baseline
             case: baseline
+          - name: Auth
+            case: auth
+          - name: SSL
+            case: ssl
+          - name: mTLS
+            case: mtls
+          - name: OTLP Traces
+            case: otlp-traces
+          - name: Virtual MQ
+            case: virtual-mq
+          - name: Kafka Exporter
+            case: exporter
+          - name: Self Observability
+            case: so11y
+          - name: MQE
+            case: mqe
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5
@@ -344,15 +360,15 @@ jobs:
       - name: Load Docker image
         run: docker load -i /tmp/skywalking-oap-native.tar
 
-      - name: Set up JDK 17 (baseline mock-sender)
-        if: matrix.test.case == 'baseline'
+      - name: Set up JDK 17 (test service build)
+        if: matrix.test.case == 'baseline' || matrix.test.case == 'mqe'
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Restore Maven cache (baseline mock-sender)
-        if: matrix.test.case == 'baseline'
+      - name: Restore Maven cache (test service build)
+        if: matrix.test.case == 'baseline' || matrix.test.case == 'mqe'
         uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
@@ -365,6 +381,14 @@ jobs:
           cd skywalking && ./mvnw -B -q \
             -f test/e2e-v2/java-test-service/pom.xml \
             -pl e2e-mock-sender -am \
+            package -DskipTests -Dmaven.javadoc.skip
+
+      - name: Build mock baseline server jar (mqe only)
+        if: matrix.test.case == 'mqe'
+        run: |
+          cd skywalking && ./mvnw -B -q \
+            -f test/e2e-v2/java-test-service/pom.xml \
+            -pl e2e-mock-baseline-server -am \
             package -DskipTests -Dmaven.javadoc.skip
 
       - name: Run E2E test

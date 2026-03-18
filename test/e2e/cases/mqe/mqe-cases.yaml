@@ -1,0 +1,120 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# MQE test cases for native image.
+# Adapted from upstream mqe-cases.yaml:
+#   - Removed service_percentile_old (not in standard pre-compiled OAL)
+#   - Removed disable-metrics test (can't disable OAL metrics at runtime in native image)
+
+cases:
+  # service metrics
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=service_sla --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/no-OP.yml
+
+  # binary-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="service_sla * 2 /100 + 500 - 50" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/binary-OP.yml
+
+  # compare-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="(service_cpm + 1) > 2" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/compare-OP.yml
+
+  # bool-OP (SINGLE_VALUE)
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="avg(service_cpm + 1) > 2 && avg(service_sla/100) > 95" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/bool-OP.yml
+  # bool-OP (TIME_SERIES_VALUES)
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="(service_cpm + 1) > 2 && (service_sla/100) > 95" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/compare-OP.yml
+
+  # aggregation-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="avg(service_sla/100)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/aggregation-OP.yml
+
+  # func-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="abs(service_sla-10300)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/func-OP.yml
+
+  # topN-OP-service Global
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="top_n(service_resp_time,3,des)"
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/topN-OP-service.yml
+  # topN-OP-service Global with attrs
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="top_n(service_resp_time,3,des,attr0='GENERAL')/100"
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/topN-OP-service.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="top_n(service_resp_time,3,des,attr0!='Not_GENERAL')/100"
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/topN-OP-service.yml
+
+  # topN-OP-instance
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="top_n(service_instance_resp_time,3,des)/100" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/topN-OP-instance.yml
+
+  # topN-Of-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="top_n_of(top_n(service_resp_time,3,des,attr0='GENERAL'), top_n(service_cpm,3,des,attr0='GENERAL'), 2, des)"
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/topN-OP-service.yml
+
+  # select labels and relabels
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="relabels(relabels(service_percentile{p='50,75,90'},p='50,75',p='P50,P75'),p='90',p='P90')" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/relabels-OP.yml
+
+  # relabels and calculate
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="relabels(service_percentile{p='50,75,90'},p='50',p='P50')/relabels(service_percentile{p='50,75,90'},p='50',p='P50')" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/relabels-binary-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="relabels(service_percentile{p='50,75,90'}/service_percentile{p='50,75,90'},p='50',p='P50')" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/relabels-binary-OP.yml
+
+  # aggregateLabels-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="aggregate_labels(service_percentile,avg)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/aggregateLabels-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="aggregate_labels(service_percentile,sum)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/aggregateLabels-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="aggregate_labels(service_percentile,max)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/aggregateLabels-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="aggregate_labels(service_percentile,min)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/aggregateLabels-OP.yml
+
+  # viewAsSeq-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="view_as_seq(mq_service_consume_sla,service_sla)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/viewAsSeq-OP.yml
+
+  # isPresent-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="is_present(service_sla)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/isPresent-OP-true.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="is_present(not_exist_meter,mq_service_consume_cpm)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/isPresent-OP-false.yml
+
+  # trend-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="increase(service_resp_time,1)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/trend-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="rate(service_resp_time,1)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/trend-OP.yml
+
+  # sort-value-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="sort_values(service_percentile,2,asc,avg)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/sort-value-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="sort_values(service_percentile,1,des,avg)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/sort-value-OP.yml
+
+  # sort-label-value-OP
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="sort_label_values(service_percentile{p='50,75,90'},des,p)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/sort-label-value-OP.yml
+
+  # baseline
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="baseline(service_cpm,upper)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/baseline-upper-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="baseline(service_cpm,lower)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/baseline-lower-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="baseline(service_cpm,value)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/baseline-OP.yml
+  - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="baseline(service_percentile{p='95,99'},upper)" --service-name=e2e-service-provider
+    expected: ../../../../skywalking/test/e2e-v2/cases/mqe/expected/baseline-label-OP.yml
