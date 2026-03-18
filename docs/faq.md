@@ -31,6 +31,20 @@ on port 12800. No changes needed.
 All official SkyWalking agents work with this distro — they communicate via the same
 gRPC/HTTP protocols. OpenTelemetry agents sending OTLP data also work.
 
+### Can I enable TLS/SSL for gRPC?
+
+No. The native image does not support TLS-encrypted gRPC (`SW_CORE_GRPC_SSL_ENABLED`,
+`SW_RECEIVER_GRPC_SSL_ENABLED`, mTLS). The underlying Netty TLS implementation requires
+`netty_tcnative` native libraries that are not bundled in the native image.
+
+**Recommended alternative**: Deploy with a service mesh such as **Istio** or **Linkerd**.
+The mesh handles mTLS transparently at the infrastructure layer — all agent-to-OAP traffic
+is encrypted without any application-level TLS configuration. This also provides automatic
+certificate rotation and policy enforcement.
+
+If you require application-level TLS without a service mesh, use the standard upstream
+SkyWalking JVM distribution.
+
 ---
 
 ## Deployment

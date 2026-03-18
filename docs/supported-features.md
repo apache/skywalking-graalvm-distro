@@ -97,6 +97,30 @@ These modules are disabled by default. Enable them with environment variables:
 | Cilium Fetcher | `SW_CILIUM_FETCHER=default` |
 | Exporter | `SW_EXPORTER=default` |
 
+## Known Limitations
+
+### No TLS/SSL Support for gRPC
+
+The native image does **not** support TLS-encrypted gRPC communication. This affects:
+
+- Agent-to-OAP gRPC connections (`SW_CORE_GRPC_SSL_ENABLED`)
+- Receiver gRPC SSL (`SW_RECEIVER_GRPC_SSL_ENABLED`)
+- Any mTLS (mutual TLS) configuration between agents and OAP
+
+**Root cause**: The Netty TLS implementation requires `netty_tcnative` platform-specific native
+libraries (`.so` files) that are not bundled in the GraalVM native image.
+
+**Workaround**: Use a service mesh (e.g., **Istio**, **Linkerd**) to handle mTLS at the
+infrastructure layer. The mesh transparently encrypts all pod-to-pod traffic, including
+agent-to-OAP gRPC connections, without requiring application-level TLS configuration.
+
+```
+Agent Pod ──(plaintext gRPC)──► Istio Sidecar ══(mTLS)══► Istio Sidecar ──► OAP Pod
+```
+
+This is the recommended approach for Kubernetes deployments and provides stronger security
+guarantees than application-level TLS (automatic certificate rotation, policy enforcement).
+
 ## Differences from Upstream SkyWalking
 
 | Aspect | Upstream | This Distro |
@@ -108,6 +132,7 @@ These modules are disabled by default. Enable them with environment variables:
 | Cluster | ZK, K8s, Consul, Etcd, Nacos | Standalone, K8s |
 | Config | All dynamic config providers | K8s ConfigMap or none |
 | Module loading | SPI discovery at runtime | Fixed at build time |
+| TLS/SSL | Supported (gRPC SSL, mTLS) | Not supported (use service mesh) |
 
 ## Compatibility
 
