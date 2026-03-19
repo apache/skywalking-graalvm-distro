@@ -21,12 +21,6 @@ import com.google.common.collect.ImmutableMap;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.invoke.CallSite;
-import java.lang.invoke.LambdaMetafactory;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,7 +31,6 @@ import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Result;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
-import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyFunctions;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterEntity;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
@@ -190,65 +183,7 @@ class PrecompiledMALExecutionTest {
 
         Class<?> exprClass = Class.forName(className);
         MalExpression malExpr = (MalExpression) exprClass.getDeclaredConstructor().newInstance();
-        wireClosures(exprClass, malExpr);
         return new Expression(metricName, expression, malExpr);
-    }
-
-    private static final Map<String, ClosureInfo> CLOSURE_TYPES = new HashMap<>();
-
-    private record ClosureInfo(Class<?> interfaceClass, String samName,
-                               MethodType samType, MethodType instantiatedType,
-                               MethodType methodType) {
-    }
-
-    static {
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.TagFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.TagFunction.class, "apply",
-                MethodType.methodType(Object.class, Object.class),
-                MethodType.methodType(Map.class, Map.class),
-                MethodType.methodType(Map.class, Map.class)));
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.PropertiesExtractor.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.PropertiesExtractor.class, "apply",
-                MethodType.methodType(Object.class, Object.class),
-                MethodType.methodType(Map.class, Map.class),
-                MethodType.methodType(Map.class, Map.class)));
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.ForEachFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.ForEachFunction.class, "accept",
-                MethodType.methodType(void.class, String.class, Map.class),
-                MethodType.methodType(void.class, String.class, Map.class),
-                MethodType.methodType(void.class, String.class, Map.class)));
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.DecorateFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.DecorateFunction.class, "accept",
-                MethodType.methodType(void.class, Object.class),
-                MethodType.methodType(void.class, Object.class),
-                MethodType.methodType(void.class, Object.class)));
-    }
-
-    private static void wireClosures(final Class<?> clazz, final Object instance) throws Exception {
-        try {
-            MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(clazz, MethodHandles.lookup());
-            for (Field field : clazz.getFields()) {
-                ClosureInfo info = CLOSURE_TYPES.get(field.getType().getName());
-                if (info == null) {
-                    continue;
-                }
-                String methodName = field.getName() + "_" + info.samName;
-                MethodHandle mh = lookup.findVirtual(clazz, methodName, info.methodType);
-                CallSite site = LambdaMetafactory.metafactory(
-                    lookup, info.samName,
-                    MethodType.methodType(info.interfaceClass, clazz),
-                    info.samType, mh, info.instantiatedType);
-                field.set(instance, site.getTarget().invoke(instance));
-            }
-        } catch (Exception e) {
-            throw e;
-        } catch (Throwable t) {
-            throw new RuntimeException("Failed to wire closures for " + clazz.getName(), t);
-        }
     }
 
     private static Map<String, String> loadExpressionMap() throws Exception {
