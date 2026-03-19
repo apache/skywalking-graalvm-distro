@@ -54,6 +54,12 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 | `HierarchyService` | `server-core/.../hierarchy/HierarchyService.java` | Support for Java-backed closures | No |
 | `HttpAlarmCallback` | `server-core/.../alarm/HttpAlarmCallback.java` | Lazy HttpClient init (static final breaks in native image) | No |
 
+### library-server-for-graalvm (1 class)
+
+| Replacement Class | Upstream Source | Change | Staleness Tracked |
+|---|---|---|---|
+| `DynamicSslContext` | `library-server/.../grpc/ssl/DynamicSslContext.java` | `SslProvider.JDK` instead of `SslProvider.OPENSSL` (no `netty_tcnative` needed for native image) | **Yes** |
+
 ### meter-analyzer-for-graalvm (2 classes)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
