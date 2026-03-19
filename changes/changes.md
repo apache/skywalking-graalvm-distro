@@ -16,6 +16,7 @@
 
 ### E2E Tests
 
+- Add SSL e2e test case (gRPC TLS with JDK SSL provider in native image).
 - Add Auth e2e test case (token-based agent-to-OAP authentication).
 - Add OTLP Traces e2e test case (OpenTelemetry trace ingestion via Zipkin API).
 - Add Virtual MQ e2e test case (Kafka-instrumented virtual MQ layer metrics).
