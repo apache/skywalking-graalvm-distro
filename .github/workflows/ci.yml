@@ -339,6 +339,32 @@ jobs:
             case: exporter
           - name: SSL
             case: ssl
+          - name: mTLS
+            case: mtls
+          - name: RabbitMQ
+            case: rabbitmq
+          - name: RocketMQ
+            case: rocketmq
+          - name: ActiveMQ
+            case: activemq
+          - name: Pulsar
+            case: pulsar
+          - name: Kafka Monitoring
+            case: kafka-monitoring
+          - name: Redis
+            case: redis
+          - name: MongoDB
+            case: mongodb
+          - name: Flink
+            case: flink
+          - name: AWS DynamoDB
+            case: aws-dynamodb
+          - name: AWS S3
+            case: aws-s3
+          - name: AWS EKS
+            case: aws-eks
+          - name: AWS API Gateway
+            case: aws-api-gateway
           - name: Self Observability
             case: so11y
           - name: MQE
@@ -373,8 +399,8 @@ jobs:
           key: ${{ needs.init-skywalking.outputs.cache-key }}
           restore-keys: m2-skywalking-
 
-      - name: Build mock sender jar (baseline only)
-        if: matrix.test.case == 'baseline'
+      - name: Build mock sender jar
+        if: contains(fromJSON('["baseline","aws-dynamodb","aws-s3","aws-eks","aws-api-gateway"]'), matrix.test.case)
         run: |
           cd skywalking && ./mvnw -B -q \
             -f test/e2e-v2/java-test-service/pom.xml \
