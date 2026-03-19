@@ -22,12 +22,6 @@ import com.google.common.collect.ImmutableMap;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.invoke.CallSite;
-import java.lang.invoke.LambdaMetafactory;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -48,7 +42,6 @@ import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Result;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
-import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyFunctions;
 import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule;
 import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterEntity;
@@ -288,80 +281,11 @@ abstract class MALScriptComparisonBase {
             Class<?> exprClass = Class.forName(className);
             MalExpression malExpr =
                 (MalExpression) exprClass.getDeclaredConstructor().newInstance();
-            wireClosures(exprClass, malExpr);
             return new Expression(metricName, expression, malExpr);
         } catch (Exception e) {
             throw new AssertionError(
                 "Failed to load pre-compiled class for " + metricName
                     + " (class: " + className + ")", e);
-        }
-    }
-
-    // ---------------------------------------------------------------
-    // Closure wiring for pre-compiled classes
-    // ---------------------------------------------------------------
-
-    private record ClosureInfo(Class<?> interfaceClass, String samName,
-                               MethodType samType, MethodType instantiatedType,
-                               MethodType methodType) {
-    }
-
-    private static final Map<String, ClosureInfo> CLOSURE_TYPES = new HashMap<>();
-
-    static {
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.TagFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.TagFunction.class, "apply",
-                MethodType.methodType(Object.class, Object.class),
-                MethodType.methodType(Map.class, Map.class),
-                MethodType.methodType(Map.class, Map.class)));
-
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.PropertiesExtractor.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.PropertiesExtractor.class, "apply",
-                MethodType.methodType(Object.class, Object.class),
-                MethodType.methodType(Map.class, Map.class),
-                MethodType.methodType(Map.class, Map.class)));
-
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.ForEachFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.ForEachFunction.class, "accept",
-                MethodType.methodType(void.class, String.class, Map.class),
-                MethodType.methodType(void.class, String.class, Map.class),
-                MethodType.methodType(void.class, String.class, Map.class)));
-
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.DecorateFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.DecorateFunction.class, "accept",
-                MethodType.methodType(void.class, Object.class),
-                MethodType.methodType(void.class, Object.class),
-                MethodType.methodType(void.class, Object.class)));
-    }
-
-    private static void wireClosures(final Class<?> clazz, final Object instance) {
-        try {
-            final MethodHandles.Lookup lookup =
-                MethodHandles.privateLookupIn(clazz, MethodHandles.lookup());
-
-            for (final Field field : clazz.getFields()) {
-                final ClosureInfo info = CLOSURE_TYPES.get(field.getType().getName());
-                if (info == null) {
-                    continue;
-                }
-                final String methodName = field.getName() + "_" + info.samName;
-                final MethodHandle mh = lookup.findVirtual(
-                    clazz, methodName, info.methodType);
-                final CallSite site = LambdaMetafactory.metafactory(
-                    lookup,
-                    info.samName,
-                    MethodType.methodType(info.interfaceClass, clazz),
-                    info.samType,
-                    mh,
-                    info.instantiatedType);
-                field.set(instance, site.getTarget().invoke(instance));
-            }
-        } catch (Throwable e) {
-            throw new AssertionError("Failed to wire closures for " + clazz.getName(), e);
         }
     }
 

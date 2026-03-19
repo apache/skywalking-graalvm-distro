@@ -21,12 +21,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.invoke.CallSite;
-import java.lang.invoke.LambdaMetafactory;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -48,6 +42,11 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p>At runtime, all per-file configs are loaded once and indexed by
  * expression text for O(1) lookup in {@link #parse(String, String, String)}.
+ *
+ * <p>Closure fields (TagFunction, ForEachFunction, etc.) are now self-wired
+ * via companion classes generated at build time. The main class static
+ * initializer instantiates each companion class directly — no external
+ * LambdaMetafactory wiring is needed.
  */
 @Slf4j
 public final class DSL {
@@ -76,7 +75,6 @@ public final class DSL {
         try {
             final Class<?> exprClass = Class.forName(className);
             final MalExpression malExpr = (MalExpression) exprClass.getDeclaredConstructor().newInstance();
-            wireClosures(exprClass, malExpr);
             final int count = LOADED_COUNT.incrementAndGet();
             log.debug("Loaded pre-compiled MAL expression [{}/{}]: {} -> {}",
                 count, EXPRESSION_MAP.size(), metricName, className);
@@ -177,88 +175,6 @@ public final class DSL {
             }
         } catch (IOException e) {
             log.warn("Failed to load MAL v2 per-file config: {}", configPath, e);
-        }
-    }
-
-    /**
-     * Closure type metadata for LambdaMetafactory wiring.
-     * Maps functional interface type name to SAM method info.
-     */
-    private static final Map<String, ClosureInfo> CLOSURE_TYPES = new HashMap<>();
-
-    static {
-        // TagFunction extends Function<Map, Map>
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.TagFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.TagFunction.class, "apply",
-                MethodType.methodType(Object.class, Object.class),
-                MethodType.methodType(Map.class, Map.class),
-                MethodType.methodType(Map.class, Map.class)));
-
-        // PropertiesExtractor extends Function<Map, Map>
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.PropertiesExtractor.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.PropertiesExtractor.class, "apply",
-                MethodType.methodType(Object.class, Object.class),
-                MethodType.methodType(Map.class, Map.class),
-                MethodType.methodType(Map.class, Map.class)));
-
-        // ForEachFunction — not generic, SAM = instantiated
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.ForEachFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.ForEachFunction.class, "accept",
-                MethodType.methodType(void.class, String.class, Map.class),
-                MethodType.methodType(void.class, String.class, Map.class),
-                MethodType.methodType(void.class, String.class, Map.class)));
-
-        // DecorateFunction extends Consumer<MeterEntity>
-        CLOSURE_TYPES.put(
-            SampleFamilyFunctions.DecorateFunction.class.getName(),
-            new ClosureInfo(SampleFamilyFunctions.DecorateFunction.class, "accept",
-                MethodType.methodType(void.class, Object.class),
-                MethodType.methodType(void.class, Object.class),
-                MethodType.methodType(void.class, Object.class)));
-    }
-
-    private record ClosureInfo(Class<?> interfaceClass, String samName,
-                               MethodType samType, MethodType instantiatedType,
-                               MethodType methodType) {
-    }
-
-    /**
-     * Wire closure fields on a pre-compiled MalExpression instance.
-     *
-     * <p>Generated classes have public fields typed as functional interfaces
-     * (TagFunction, ForEachFunction, etc.) with corresponding methods that
-     * implement the closure body. MALClassGenerator normally wires these via
-     * LambdaMetafactory after compilation. When loading from the manifest JAR,
-     * we replicate that wiring here.
-     */
-    static void wireClosures(final Class<?> clazz,
-                             final Object instance) {
-        try {
-            final MethodHandles.Lookup lookup =
-                MethodHandles.privateLookupIn(clazz, MethodHandles.lookup());
-
-            for (final Field field : clazz.getFields()) {
-                final ClosureInfo info = CLOSURE_TYPES.get(field.getType().getName());
-                if (info == null) {
-                    continue;
-                }
-                final String methodName = field.getName() + "_" + info.samName;
-                final MethodHandle mh = lookup.findVirtual(
-                    clazz, methodName, info.methodType);
-                final CallSite site = LambdaMetafactory.metafactory(
-                    lookup,
-                    info.samName,
-                    MethodType.methodType(info.interfaceClass, clazz),
-                    info.samType,
-                    mh,
-                    info.instantiatedType);
-                field.set(instance, site.getTarget().invoke(instance));
-            }
-        } catch (Throwable e) {
-            log.warn("Failed to wire closures for {}", clazz.getName(), e);
         }
     }
 }

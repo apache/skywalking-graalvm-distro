@@ -2,12 +2,21 @@
 
 ## 0.3.0
 
+### Upstream Sync
+
+- Sync SkyWalking submodule to upstream commit `726ebcc321` (MAL v2 companion class closures).
+
+### GraalVM Native Image Compatibility
+
+- Add `library-server-for-graalvm`: replace `DynamicSslContext` to use `SslProvider.JDK` instead of `SslProvider.OPENSSL`, enabling gRPC TLS in native images without `netty_tcnative`.
+
 ### Documentation
 
 - Document TLS/SSL limitation: native image lacks `netty_tcnative`, recommend service mesh for mTLS.
 
 ### E2E Tests
 
+- Add SSL e2e test case (gRPC TLS with JDK SSL provider in native image).
 - Add Auth e2e test case (token-based agent-to-OAP authentication).
 - Add OTLP Traces e2e test case (OpenTelemetry trace ingestion via Zipkin API).
 - Add Virtual MQ e2e test case (Kafka-instrumented virtual MQ layer metrics).

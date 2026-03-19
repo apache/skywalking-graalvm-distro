@@ -54,11 +54,17 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 | `HierarchyService` | `server-core/.../hierarchy/HierarchyService.java` | Support for Java-backed closures | No |
 | `HttpAlarmCallback` | `server-core/.../alarm/HttpAlarmCallback.java` | Lazy HttpClient init (static final breaks in native image) | No |
 
+### library-server-for-graalvm (1 class)
+
+| Replacement Class | Upstream Source | Change | Staleness Tracked |
+|---|---|---|---|
+| `DynamicSslContext` | `library-server/.../grpc/ssl/DynamicSslContext.java` | `SslProvider.JDK` instead of `SslProvider.OPENSSL` (no `netty_tcnative` needed for native image) | **Yes** |
+
 ### meter-analyzer-for-graalvm (2 classes)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
-| `DSL` | `meter-analyzer/.../v2/dsl/DSL.java` | Load pre-compiled `MalExpression` from per-file configs (`META-INF/mal-v2/`); look up by expression text; wires closure fields via `LambdaMetafactory` after instantiation | No |
+| `DSL` | `meter-analyzer/.../v2/dsl/DSL.java` | Load pre-compiled `MalExpression` from per-file configs (`META-INF/mal-v2/`); look up by expression text; closure fields are self-wired by companion classes in the static initializer (no `LambdaMetafactory`) | No |
 | `FilterExpression` | `meter-analyzer/.../v2/dsl/FilterExpression.java` | Load pre-compiled `MalFilter` from v2 manifest | No |
 
 ### log-analyzer-for-graalvm (1 class)

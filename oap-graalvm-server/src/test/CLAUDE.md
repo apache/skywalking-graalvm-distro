@@ -34,9 +34,10 @@ Each metric expression is run through two independent paths:
 
 **Path B (Pre-compiled)**: Loads the `.class` file from per-file configs under
 `META-INF/mal-v2/` (mirroring original YAML directory structure) via
-`Class.forName()` using expression text as lookup key, then wires closure
-fields (TagFunction, ForEachFunction, PropertiesExtractor, DecorateFunction)
-via `LambdaMetafactory`.
+`Class.forName()` using expression text as lookup key. Closure fields
+(TagFunction, ForEachFunction, PropertiesExtractor, DecorateFunction) are
+self-wired via companion classes in the `static {}` initializer — no external
+`LambdaMetafactory` wiring needed.
 
 If both paths produce identical `Result` (same success flag, same sample values
 within 0.001 tolerance, same labels), then the build-time compilation is

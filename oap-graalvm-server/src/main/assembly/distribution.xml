@@ -127,6 +127,7 @@
             <excludes>
                 <exclude>org.apache.skywalking:server-core</exclude>
                 <exclude>org.apache.skywalking:server-starter</exclude>
+                <exclude>org.apache.skywalking:library-server</exclude>
                 <exclude>org.apache.skywalking:library-util</exclude>
                 <exclude>org.apache.skywalking:meter-analyzer</exclude>
                 <exclude>org.apache.skywalking:log-analyzer</exclude>

@@ -337,6 +337,8 @@ jobs:
             case: virtual-mq
           - name: Kafka Exporter
             case: exporter
+          - name: SSL
+            case: ssl
           - name: Self Observability
             case: so11y
           - name: MQE
