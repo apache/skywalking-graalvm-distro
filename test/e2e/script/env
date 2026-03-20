@@ -26,6 +26,12 @@ SW_UPSTREAM_COMMIT=a0cec0ca237792497d2da0b65757d11f58c3f342
 # Last upstream commit that touched test/e2e-v2/java-test-service/
 SW_E2E_SERVICE_COMMIT=5e3b3853f5742f906655f3e332459c74b58cfb43
 
+# OTEL collector version for infrastructure monitoring tests
+OTEL_COLLECTOR_VERSION=0.102.1
+
+# Java agent JDK version for agent-based tests (ssl, mtls)
+SW_AGENT_JDK_VERSION=8
+
 # Not used by distro tests, but defined to silence docker-compose warnings
 # from upstream base-compose.yml which references it for skypredictor service.
 SW_PREDICTOR_COMMIT=54a0197654a3781a6f73ce35146c712af297c994

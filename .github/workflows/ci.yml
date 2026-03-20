@@ -140,6 +140,11 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Verify version-mapping doc
+        run: |
+          git fetch --tags --no-recurse-submodules origin
+          bash test/doc-scripts/verify-version-mapping.sh
+
       - name: Build distribution
         run: make build-distro
 
@@ -339,6 +344,32 @@ jobs:
             case: exporter
           - name: SSL
             case: ssl
+          - name: mTLS
+            case: mtls
+          - name: RabbitMQ
+            case: rabbitmq
+          - name: RocketMQ
+            case: rocketmq
+          - name: ActiveMQ
+            case: activemq
+          - name: Pulsar
+            case: pulsar
+          - name: Kafka Monitoring
+            case: kafka-monitoring
+          - name: Redis
+            case: redis
+          - name: MongoDB
+            case: mongodb
+          - name: Flink
+            case: flink
+          - name: AWS DynamoDB
+            case: aws-dynamodb
+          - name: AWS S3
+            case: aws-s3
+          - name: AWS EKS
+            case: aws-eks
+          - name: AWS API Gateway
+            case: aws-api-gateway
           - name: Self Observability
             case: so11y
           - name: MQE
@@ -359,22 +390,22 @@ jobs:
         run: docker load -i /tmp/skywalking-oap-native.tar
 
       - name: Set up JDK 17 (test service build)
-        if: matrix.test.case == 'baseline' || matrix.test.case == 'mqe'
+        if: contains(fromJSON('["baseline","mqe","aws-dynamodb","aws-s3","aws-eks","aws-api-gateway"]'), matrix.test.case)
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Restore Maven cache (test service build)
-        if: matrix.test.case == 'baseline' || matrix.test.case == 'mqe'
+        if: contains(fromJSON('["baseline","mqe","aws-dynamodb","aws-s3","aws-eks","aws-api-gateway"]'), matrix.test.case)
         uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
           key: ${{ needs.init-skywalking.outputs.cache-key }}
           restore-keys: m2-skywalking-
 
-      - name: Build mock sender jar (baseline only)
-        if: matrix.test.case == 'baseline'
+      - name: Build mock sender jar
+        if: contains(fromJSON('["baseline","aws-dynamodb","aws-s3","aws-eks","aws-api-gateway"]'), matrix.test.case)
         run: |
           cd skywalking && ./mvnw -B -q \
             -f test/e2e-v2/java-test-service/pom.xml \

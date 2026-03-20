@@ -17,6 +17,9 @@
 ### E2E Tests
 
 - Add SSL e2e test case (gRPC TLS with JDK SSL provider in native image).
+- Add mTLS e2e test case (mutual TLS with client certificates).
+- Add RabbitMQ, RocketMQ, ActiveMQ, Pulsar, Kafka, Redis, MongoDB, Flink monitoring e2e test cases (OTEL metrics collection).
+- Add AWS DynamoDB, S3, EKS, API Gateway e2e test cases (mock sender metrics).
 - Add Auth e2e test case (token-based agent-to-OAP authentication).
 - Add OTLP Traces e2e test case (OpenTelemetry trace ingestion via Zipkin API).
 - Add Virtual MQ e2e test case (Kafka-instrumented virtual MQ layer metrics).
