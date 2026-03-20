@@ -82,12 +82,32 @@ public class Rules {
                 .collect(Collectors.toSet());
 
             List<Rule> result = allRules.stream()
-                .filter(r -> normalizedEnabled.contains(r.getName()))
+                .filter(r -> matchesAny(r.getName(), normalizedEnabled))
                 .collect(Collectors.toList());
 
             LOG.info("Loaded {} pre-compiled rules from {} (filtered from {} available, enabled: {})",
                 result.size(), path, allRules.size(), normalizedEnabled);
             return result;
         }
+    }
+
+    /**
+     * Check if a rule name matches any of the enabled patterns.
+     * Supports glob patterns: {@code rabbitmq/*} matches {@code rabbitmq/rabbitmq-cluster}.
+     * A pattern ending with {@code /*} matches any rule whose name starts with the prefix before {@code /*}.
+     * Patterns without wildcards require exact match.
+     */
+    private static boolean matchesAny(final String ruleName, final Set<String> patterns) {
+        for (final String pattern : patterns) {
+            if (pattern.endsWith("/*")) {
+                String prefix = pattern.substring(0, pattern.length() - 1);
+                if (ruleName.startsWith(prefix)) {
+                    return true;
+                }
+            } else if (pattern.equals(ruleName)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
