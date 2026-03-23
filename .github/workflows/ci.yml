@@ -87,7 +87,7 @@ jobs:
           fi
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@v1
+        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -120,7 +120,7 @@ jobs:
           submodules: recursive
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@v1
+        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -174,7 +174,7 @@ jobs:
           submodules: recursive
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@v1
+        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -194,11 +194,11 @@ jobs:
 
       - name: Set up Docker Buildx
         if: github.event_name != 'pull_request'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -206,7 +206,7 @@ jobs:
 
       - name: Log in to Docker Hub (release only)
         if: github.event_name != 'pull_request' && needs.init-skywalking.outputs.is-release == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -214,7 +214,7 @@ jobs:
       - name: Build and push by digest (GHCR)
         if: github.event_name != 'pull_request'
         id: build-ghcr
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
         with:
           context: .
           file: docker/Dockerfile.native
@@ -226,7 +226,7 @@ jobs:
       - name: Build and push by digest (Docker Hub, release only)
         if: github.event_name != 'pull_request' && needs.init-skywalking.outputs.is-release == 'true'
         id: build-dockerhub
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
         with:
           context: .
           file: docker/Dockerfile.native
@@ -450,10 +450,10 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -461,7 +461,7 @@ jobs:
 
       - name: Log in to Docker Hub (release only)
         if: needs.init-skywalking.outputs.is-release == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
