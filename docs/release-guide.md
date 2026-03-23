@@ -40,6 +40,7 @@ All scripts are in the `release/` directory:
 | `full-release.sh` | Automated end-to-end pipeline (recommended) |
 | `pre-release.sh` | Bump version, tag, bump to next SNAPSHOT |
 | `release.sh` | Package, sign, SVN upload, vote email |
+| `post-vote.sh` | After vote passes: SVN move, website PR |
 
 ## Automated Release (Recommended)
 
@@ -150,6 +151,31 @@ Send the generated vote email to `dev@skywalking.apache.org`.
 
 The vote remains open for at least 72 hours and requires PMC approval.
 
+## After the Vote Passes
+
+Once the vote passes (72+ hours, PMC approval), run:
+
+```bash
+release/post-vote.sh 0.1.0
+```
+
+The script first shows a full briefing of all planned changes and asks for confirmation before
+executing anything. It then performs:
+
+| Step | What | Notes |
+|------|------|-------|
+| SVN move | `svn mv` from dist/dev to dist/release | Creates `dist/release/graalvm-distro/{version}/` |
+| Old release cleanup | Optionally remove older versions from dist/release | Apache policy: only keep latest; older releases auto-archived at archive.apache.org |
+| releases.yml | Add new version with `closer.cgi` / `downloads.apache.org` URLs | Migrates previous version URLs to `archive.apache.org/dist/` |
+| docs.yml | Add new version entry, update `Latest` commitId | Keeps all previous version entries |
+| Event post | Create `content/events/release-apache-skywalking-graalvm-distro-{version}/index.md` | Content from `changes/changes.md` |
+| PR | Create a single PR on `apache/skywalking-website` with all above changes | Branch: `graalvm-distro-{version}-release` |
+
+After the script completes:
+
+1. Review and merge the website PR
+2. Send `[ANNOUNCE]` email to `dev@skywalking.apache.org`
+
 ## Quick Reference
 
 ```bash
@@ -162,4 +188,7 @@ git push origin v0.1.0            #    push tag (triggers CI)
 git push origin main              #    push next SNAPSHOT
                                   # 2. wait for CI to go green
 release/release.sh 0.1.0          # 3. package, sign, SVN upload, vote email
+
+# After vote passes
+release/post-vote.sh 0.1.0        # 4. SVN move, website PR
 ```
