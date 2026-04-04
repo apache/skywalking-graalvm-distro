@@ -29,7 +29,8 @@ setup:
     - name: install swctl
       command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
     - name: Pull Ollama model
-      command: docker compose -f test/e2e/cases/envoy-ai-gateway/docker-compose.yml exec ollama ollama pull qwen2.5:0.5b
+      command: |
+        curl -s http://${ollama_host}:${ollama_11434}/api/pull -d '{"name":"qwen2.5:0.5b"}' --max-time 300
     - name: Send error requests for log sampling verification
       command: |
         for i in 1 2 3; do
