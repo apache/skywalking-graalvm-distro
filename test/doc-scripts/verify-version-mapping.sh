@@ -34,6 +34,9 @@ fi
 
 errors=0
 
+# Ensure submodule tags are available (CI shallow clones may not have them).
+(cd "$REPO_ROOT/skywalking" && git fetch --tags --quiet 2>/dev/null) || true
+
 # Resolve acceptable upstream version strings for a submodule commit.
 # Returns both the tag-based version (if available) and the commit-based format,
 # separated by newline. The doc may use either format.
