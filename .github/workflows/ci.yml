@@ -374,6 +374,12 @@ jobs:
             case: so11y
           - name: MQE
             case: mqe
+          - name: Virtual GenAI
+            case: virtual-genai
+          - name: Envoy AI Gateway
+            case: envoy-ai-gateway
+          - name: TraceQL SkyWalking
+            case: traceql-skywalking
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5

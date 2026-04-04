@@ -66,6 +66,8 @@
                                 <exclude>org/apache/skywalking/oap/log/analyzer/v2/dsl/DSL$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/log/analyzer/v2/provider/LALConfigs.class</exclude>
                                 <exclude>org/apache/skywalking/oap/log/analyzer/v2/provider/LALConfigs$*.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/v2/provider/LogAnalyzerModuleConfig.class</exclude>
+                                <exclude>org/apache/skywalking/oap/log/analyzer/v2/provider/LogAnalyzerModuleConfig$*.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

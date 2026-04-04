@@ -159,6 +159,11 @@
                 <artifactId>event-analyzer</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>gen-ai-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
 
             <!-- Receivers -->
             <dependency>

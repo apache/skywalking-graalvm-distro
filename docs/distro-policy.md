@@ -17,7 +17,7 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 | **Cluster** | ClusterModule | Standalone, Kubernetes |
 | **Configuration** | ConfigurationModule | Kubernetes |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
-| **Analyzers** | AnalyzerModule, LogAnalyzerModule, EventAnalyzerModule | default providers |
+| **Analyzers** | AnalyzerModule, LogAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule | default providers |
 | **Query** | QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule, StatusQueryModule | default providers |
 | **Alarm** | AlarmModule | default |
 | **Telemetry** | TelemetryModule | Prometheus |

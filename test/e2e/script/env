@@ -15,16 +15,16 @@
 
 # Pre-built images from ghcr.io/apache/skywalking and ghcr.io/apache/skywalking-java.
 # Update when syncing the skywalking submodule.
-SW_AGENT_JAVA_COMMIT=2a61027e5eb74ed1258c764ae2ffeabd499416a6
-SW_BANYANDB_COMMIT=e1ba421bd624727760c7a69c84c6fe55878fb526
+SW_AGENT_JAVA_COMMIT=ac0df43d7140e726eba9e5e5b1b75cf364c71dff
+SW_BANYANDB_COMMIT=d0f41f9ad139c917c1398c2e62a9f7034214495f
 SW_CTL_COMMIT=9a1beab08413ce415a00a8547a238a14691c5655
 SW_KUBERNETES_COMMIT_SHA=6fe5e6f0d3b7686c6be0457733e825ee68cb9b35
 
 # Skywalking submodule commit — used for pre-built images (ui, e2e-service, etc.)
-SW_UPSTREAM_COMMIT=a0cec0ca237792497d2da0b65757d11f58c3f342
+SW_UPSTREAM_COMMIT=b272da3cc196c2455bf86e911c427d302f68b950
 
 # Last upstream commit that touched test/e2e-v2/java-test-service/
-SW_E2E_SERVICE_COMMIT=5e3b3853f5742f906655f3e332459c74b58cfb43
+SW_E2E_SERVICE_COMMIT=f79451d3de23edb15277f5b6e315dc6779e73e1f
 
 # OTEL collector version for infrastructure monitoring tests
 OTEL_COLLECTOR_VERSION=0.102.1
