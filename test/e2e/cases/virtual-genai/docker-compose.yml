@@ -63,7 +63,7 @@ services:
     networks:
       - e2e
     environment:
-      OPENAI_API_KEY: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      OPENAI_API_KEY: dummy-key-not-used
       SPRING_AI_OPENAI_BASE_URL: http://provider:9090/llm
       SW_AGENT_COLLECTOR_BACKEND_SERVICES: oap:11800
       SW_LOGGING_OUTPUT: CONSOLE

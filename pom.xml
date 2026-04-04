@@ -34,7 +34,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <!-- Injected by Makefile from skywalking submodule's <revision> property.
              Do not hardcode — always build via `make`. -->
-        <skywalking.version>10.4.0-SNAPSHOT</skywalking.version>
+        <skywalking.version>10.4.0</skywalking.version>
         <graalvm.version>25.0.0</graalvm.version>
         <graalvm.buildtools.version>0.10.4</graalvm.buildtools.version>
         <lombok.version>1.18.40</lombok.version>
