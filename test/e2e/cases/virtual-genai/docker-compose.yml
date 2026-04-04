@@ -79,7 +79,7 @@ services:
       provider-jar:
         condition: service_completed_successfully
 
-  spring-ai-examples:
+  spring_ai:
     build:
       context: ../../../../skywalking/test/e2e-v2/cases/virtual-genai
       dockerfile: Dockerfile.provider
@@ -87,7 +87,7 @@ services:
         - SW_AGENT_JDK_VERSION=17
         - SW_AGENT_JAVA_COMMIT=${SW_AGENT_JAVA_COMMIT}
     ports:
-      - "9260:8080"
+      - 8080
     networks:
       - e2e
     environment:
@@ -96,7 +96,7 @@ services:
       SW_AGENT_COLLECTOR_BACKEND_SERVICES: oap:11800
       SW_LOGGING_OUTPUT: CONSOLE
       SW_AGENT_NAME: e2e-spring-ai
-      SW_AGENT_INSTANCE_NAME: spring-ai-examples
+      SW_AGENT_INSTANCE_NAME: spring_ai
     healthcheck:
       test: ["CMD", "sh", "-c", "nc -nz 127.0.0.1 8080"]
       interval: 5s
