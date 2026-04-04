@@ -87,7 +87,7 @@ jobs:
           fi
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
+        uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1  # v1.5.0
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -120,7 +120,7 @@ jobs:
           submodules: recursive
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
+        uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1  # v1.5.0
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -174,7 +174,7 @@ jobs:
           submodules: recursive
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
+        uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1  # v1.5.0
         with:
           java-version: '25'
           distribution: 'graalvm'
