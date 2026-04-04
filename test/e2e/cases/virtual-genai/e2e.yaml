@@ -33,7 +33,7 @@ trigger:
   action: http
   interval: 3s
   times: 5
-  url: http://${spring_ai_host}:${spring_ai_8080}/ai/generateStream
+  url: http://localhost:9260/ai/generateStream
   method: GET
 
 verify:

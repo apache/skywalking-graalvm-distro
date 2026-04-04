@@ -87,7 +87,7 @@ services:
         - SW_AGENT_JDK_VERSION=17
         - SW_AGENT_JAVA_COMMIT=${SW_AGENT_JAVA_COMMIT}
     ports:
-      - 8080
+      - "9260:8080"
     networks:
       - e2e
     environment:
