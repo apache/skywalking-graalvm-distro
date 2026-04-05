@@ -102,6 +102,25 @@ echo "  uid: ${GPG_EMAIL}"
 echo ""
 read -r -p "Proceed with this GPG key? [y/N] " confirm
 [[ "${confirm}" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+
+# Verify GPG signing works before starting the release process.
+export GPG_TTY=$(tty)
+echo ""
+echo "Please sign a test file to verify GPG and cache your passphrase."
+echo "Run this command now:"
+echo ""
+echo "    echo test | gpg -s > /dev/null"
+echo ""
+read -r -p "Press Enter after signing succeeds... "
+
+GPG_TEST_FILE=$(mktemp)
+echo "release-preflight-check" > "${GPG_TEST_FILE}"
+if ! gpg --armor --detach-sign "${GPG_TEST_FILE}" 2>/dev/null; then
+    rm -f "${GPG_TEST_FILE}" "${GPG_TEST_FILE}.asc"
+    error "GPG signing failed. Ensure gpg-agent is running. Try: export GPG_TTY=\$(tty)"
+fi
+rm -f "${GPG_TEST_FILE}" "${GPG_TEST_FILE}.asc"
+log "GPG signing verified"
 echo ""
 
 # Verify tag exists locally
