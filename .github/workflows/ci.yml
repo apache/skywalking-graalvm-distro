@@ -376,8 +376,10 @@ jobs:
             case: mqe
           - name: Virtual GenAI
             case: virtual-genai
-          - name: Envoy AI Gateway
-            case: envoy-ai-gateway
+          # Envoy AI Gateway: requires ~400MB Ollama model download at runtime,
+          # not practical for CI. Run manually. Upstream also doesn't run this in CI.
+          # - name: Envoy AI Gateway
+          #   case: envoy-ai-gateway
           - name: TraceQL SkyWalking
             case: traceql-skywalking
     steps:

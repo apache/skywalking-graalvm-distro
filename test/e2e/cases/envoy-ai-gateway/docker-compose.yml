@@ -49,8 +49,6 @@ services:
       - e2e
     expose:
       - 11434
-    ports:
-      - "11434:11434"
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 5s

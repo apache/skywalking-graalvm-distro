@@ -15,11 +15,15 @@
 
 # Envoy AI Gateway E2E — native OAP with BanyanDB
 # Validates ENVOY_AI_GATEWAY layer metrics and logs via OTLP from ai-gateway-cli.
+#
+# NOTE: This test requires downloading a ~400MB Ollama model at runtime.
+# Not suitable for CI (upstream also doesn't run this in CI).
+# Run manually with: e2e run -c test/e2e/cases/envoy-ai-gateway/e2e.yaml
 
 setup:
   env: compose
   file: docker-compose.yml
-  timeout: 20m
+  timeout: 25m
   init-system-environment: ../../script/env
   steps:
     - name: set PATH
@@ -29,8 +33,7 @@ setup:
     - name: install swctl
       command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
     - name: Pull Ollama model
-      command: |
-        curl -sS http://localhost:11434/api/pull -d '{"name":"qwen2.5:0.5b"}' --max-time 600 -o /dev/null
+      command: docker compose -f test/e2e/cases/envoy-ai-gateway/docker-compose.yml exec ollama ollama pull qwen2.5:0.5b
     - name: Send error requests for log sampling verification
       command: |
         for i in 1 2 3; do
