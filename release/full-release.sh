@@ -63,7 +63,26 @@ GPG_EMAIL=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null \
     | grep "uid" | head -1 | sed 's/.*<\(.*\)>.*/\1/')
 [[ "${GPG_EMAIL}" == *@apache.org ]] \
     || error "GPG key email '${GPG_EMAIL}' is not an @apache.org address."
-log "  GPG signer: ${GPG_EMAIL}"
+
+# Verify GPG signing works before starting the release process.
+# The user must sign a test file to cache the passphrase in gpg-agent.
+export GPG_TTY=$(tty)
+echo ""
+echo "Please sign a test file to verify GPG and cache your passphrase."
+echo "Run this command now:"
+echo ""
+echo "    echo test | gpg -s > /dev/null"
+echo ""
+read -r -p "Press Enter after signing succeeds... "
+
+GPG_TEST_FILE=$(mktemp)
+echo "release-preflight-check" > "${GPG_TEST_FILE}"
+if ! gpg --armor --detach-sign "${GPG_TEST_FILE}" 2>/dev/null; then
+    rm -f "${GPG_TEST_FILE}" "${GPG_TEST_FILE}.asc"
+    error "GPG signing still fails. Check: export GPG_TTY=\$(tty) and try again."
+fi
+rm -f "${GPG_TEST_FILE}" "${GPG_TEST_FILE}.asc"
+log "  GPG signer: ${GPG_EMAIL} (signing verified)"
 
 gh auth status --hostname github.com >/dev/null 2>&1 \
     || error "'gh' is not authenticated. Run: gh auth login"
@@ -76,66 +95,40 @@ echo ""
 "${SCRIPT_DIR}/pre-release.sh"
 
 # ─── Step 3: Extract versions from what pre-release.sh created ───────────────
-# After pre-release.sh, find the tag that was just created.
-# If main already had the next SNAPSHOT version, HEAD was not changed;
-# otherwise HEAD is the "Bump version to X.Y.Z-SNAPSHOT" commit.
-NEXT_VERSION=$(sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' "${REPO_ROOT}/pom.xml" | head -1)
-
-# Find the most recent release tag reachable from the release branch
-# The tag is always on the release branch, not necessarily on main
-LATEST_RELEASE_BRANCH=$(git branch --list 'release/v*' --sort=-creatordate | head -1 | tr -d ' ')
-TAG=$(git describe --tags --abbrev=0 "${LATEST_RELEASE_BRANCH}")
+# After pre-release.sh, we're back on main (unchanged). The release branch has
+# two commits: release version + next SNAPSHOT, with the tag on the first.
+RELEASE_BRANCH=$(git branch --list 'release/v*' --sort=-creatordate | head -1 | tr -d ' ')
+TAG=$(git describe --tags --abbrev=0 "${RELEASE_BRANCH}~1" 2>/dev/null \
+    || git describe --tags --abbrev=0 "${RELEASE_BRANCH}")
 RELEASE_VERSION="${TAG#v}"
 
-log "Detected: release=${RELEASE_VERSION}, tag=${TAG}, next=${NEXT_VERSION}"
+log "Detected: release=${RELEASE_VERSION}, tag=${TAG}, branch=${RELEASE_BRANCH}"
 
-# ─── Step 4: Handle snapshot version bump on main ────────────────────────────
-# Check if pre-release.sh created a snapshot bump commit on main
-HEAD_MSG=$(git log -1 --format=%s)
-
-if [[ "${HEAD_MSG}" == "Bump version to ${NEXT_VERSION}" ]]; then
-    # Main has a new snapshot bump commit — move it to a PR branch
-    SNAPSHOT_BRANCH="version/${NEXT_VERSION}"
-    log "Moving snapshot commit to branch ${SNAPSHOT_BRANCH}..."
-
-    git checkout -b "${SNAPSHOT_BRANCH}"
-    git checkout main
-    git reset --hard "${TAG}"
-
-    NEEDS_SNAPSHOT_PR=true
-else
-    # Main already had the correct SNAPSHOT version — no bump needed
-    log "Main already at ${NEXT_VERSION} — no version bump PR needed"
-    NEEDS_SNAPSHOT_PR=false
-fi
-
-# ─── Step 5: Push tag (and PR branch if needed) ─────────────────────────────
+# ─── Step 4: Push tag and release branch, create PR ─────────────────────────
 log "Pushing tag ${TAG}..."
 git push origin "${TAG}"
 
-log "Pushing release branch ${LATEST_RELEASE_BRANCH}..."
-git push origin "${LATEST_RELEASE_BRANCH}"
+log "Pushing release branch ${RELEASE_BRANCH}..."
+git push -u origin "${RELEASE_BRANCH}"
 
-if [[ "${NEEDS_SNAPSHOT_PR}" == "true" ]]; then
-    log "Pushing branch ${SNAPSHOT_BRANCH}..."
-    git push -u origin "${SNAPSHOT_BRANCH}"
+log "Creating PR for release branch..."
+PR_URL=$(gh pr create \
+    --repo "${REPO}" \
+    --title "Release ${RELEASE_VERSION}: bump version to next SNAPSHOT" \
+    --body "$(cat <<EOF
+Release branch for ${RELEASE_VERSION}.
 
-    log "Creating PR for version bump..."
-    PR_URL=$(gh pr create \
-        --repo "${REPO}" \
-        --title "Bump version to ${NEXT_VERSION}" \
-        --body "$(cat <<EOF
-Automated version bump after release ${RELEASE_VERSION}.
+- Commit 1: Bump version to \`${RELEASE_VERSION}\` (tagged \`v${RELEASE_VERSION}\`)
+- Commit 2: Bump version to next SNAPSHOT
 
-- Bumps all pom.xml from \`${RELEASE_VERSION}\` to \`${NEXT_VERSION}\`
-- Created by \`release/full-release.sh\`
+Merge after release vote passes to update main to the next development version.
+Created by \`release/full-release.sh\`.
 EOF
 )" \
-        --base main \
-        --head "${SNAPSHOT_BRANCH}" \
-        2>&1)
-    log "PR created: ${PR_URL}"
-fi
+    --base main \
+    --head "${RELEASE_BRANCH}" \
+    2>&1)
+log "PR created: ${PR_URL}"
 
 # ─── Step 6: Wait for CI on tag ──────────────────────────────────────────────
 log "Waiting for CI workflow on tag ${TAG}..."
