@@ -30,7 +30,7 @@ setup:
       command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
     - name: Pull Ollama model
       command: |
-        curl -s http://localhost:11434/api/pull -d '{"name":"qwen2.5:0.5b"}' --max-time 300
+        curl -sS http://localhost:11434/api/pull -d '{"name":"qwen2.5:0.5b"}' --max-time 600 -o /dev/null
     - name: Send error requests for log sampling verification
       command: |
         for i in 1 2 3; do
