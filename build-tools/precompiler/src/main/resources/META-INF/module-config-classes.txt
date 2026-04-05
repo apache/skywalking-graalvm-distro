@@ -1,3 +1,6 @@
+org.apache.skywalking.oap.analyzer.genai.config.GenAIConfig
+org.apache.skywalking.oap.analyzer.genai.config.GenAIConfig$Model
+org.apache.skywalking.oap.analyzer.genai.config.GenAIConfig$Provider
 org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig
 org.apache.skywalking.oap.query.debug.StatusQueryConfig
 org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig

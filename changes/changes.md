@@ -4,7 +4,10 @@
 
 ### Upstream Sync
 
-- Sync SkyWalking submodule to upstream commit `726ebcc321` (MAL v2 companion class closures).
+- Sync SkyWalking submodule to upstream v10.4.0 release tag.
+- Add `gen-ai-analyzer` module: GenAI provider/model metrics from virtual-gen-ai.oal.
+- Add Envoy AI Gateway MAL/LAL rules and config.
+- Add TraceQL config properties: `lookback`, `zipkinTracesListResultTags`, `skywalkingTracesListResultTags`.
 
 ### GraalVM Native Image Compatibility
 
@@ -24,6 +27,10 @@
 - Add OTLP Traces e2e test case (OpenTelemetry trace ingestion via Zipkin API).
 - Add Virtual MQ e2e test case (Kafka-instrumented virtual MQ layer metrics).
 - Add Kafka Exporter e2e test case (trace and log export to Kafka).
+- Add Virtual GenAI e2e test case (GenAI provider/model metrics via Spring AI + Java agent).
+- Add Envoy AI Gateway e2e test case (ENVOY_AI_GATEWAY layer metrics/logs via OTLP).
+- Add TraceQL SkyWalking e2e test case (Tempo API with SkyWalking native trace datasource).
+- Add Envoy AI Gateway MAL comparison tests (34 tests for gateway-service and gateway-instance rules).
 - Add Self-Observability e2e test case (OAP Prometheus telemetry via OTEL collector).
 - Add MQE e2e test case (Metrics Query Engine expression evaluation with baseline).
 

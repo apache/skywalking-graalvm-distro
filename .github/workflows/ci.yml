@@ -87,7 +87,7 @@ jobs:
           fi
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
+        uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1  # v1.5.0
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -120,7 +120,7 @@ jobs:
           submodules: recursive
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
+        uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1  # v1.5.0
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -174,7 +174,7 @@ jobs:
           submodules: recursive
 
       - name: Set up GraalVM JDK 25
-        uses: graalvm/setup-graalvm@eec48106e0bf45f2976c2ff0c3e22395cced8243  # v1
+        uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1  # v1.5.0
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -374,6 +374,14 @@ jobs:
             case: so11y
           - name: MQE
             case: mqe
+          - name: Virtual GenAI
+            case: virtual-genai
+          # Envoy AI Gateway: requires ~400MB Ollama model download at runtime,
+          # not practical for CI. Run manually. Upstream also doesn't run this in CI.
+          # - name: Envoy AI Gateway
+          #   case: envoy-ai-gateway
+          - name: TraceQL SkyWalking
+            case: traceql-skywalking
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5

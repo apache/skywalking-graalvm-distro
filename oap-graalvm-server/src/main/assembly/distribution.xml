@@ -103,6 +103,8 @@
                 <include>service-apdex-threshold.yml</include>
                 <!-- Trace sampling policy (loaded by TraceSamplingPolicyWatcher) -->
                 <include>trace-sampling-policy-settings.yml</include>
+                <!-- GenAI pricing configuration (loaded by GenAIConfigLoader) -->
+                <include>gen-ai-config.yml</include>
             </includes>
         </fileSet>
         <!-- logs/ — empty directory for runtime logs -->

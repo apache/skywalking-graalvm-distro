@@ -196,6 +196,10 @@ public class ConfigInitializerGenerator {
         // Collect all imports needed for config classes and their field types
         TreeMap<String, String> imports = new TreeMap<>();
         for (var entry : configClasses.entrySet()) {
+            // Skip imports for config classes with no fields (not used in generated code)
+            if (entry.getValue().fields.isEmpty()) {
+                continue;
+            }
             String fqcn = entry.getKey();
             if (fqcn.contains("$")) {
                 String enclosing = fqcn.substring(0, fqcn.indexOf('$'));

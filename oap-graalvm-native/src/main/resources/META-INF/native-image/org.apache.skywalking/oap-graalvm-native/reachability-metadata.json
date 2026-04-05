@@ -12983,6 +12983,160 @@
       "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.ServiceThroughputSentMetrics"
     },
     {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelAvgEstimatedCostMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelCallCpmMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelInputTokensAvgMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelInputTokensSumMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelLatencyAvgMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelLatencyPercentileMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelOutputTokensAvgMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelOutputTokensSumMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelSlaMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelTotalEstimatedCostMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelTtftAvgMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiModelTtftPercentileMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderAvgEstimatedCostMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderCpmMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderInputTokensAvgMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderInputTokensSumMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderLatencyPercentileMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderOutputTokensAvgMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderOutputTokensSumMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderRespTimeMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderSlaMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.GenAiProviderTotalEstimatedCostMetrics"
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelAvgEstimatedCostMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelCallCpmMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelInputTokensAvgMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelInputTokensSumMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelLatencyAvgMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelLatencyPercentileMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelOutputTokensAvgMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelOutputTokensSumMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelSlaMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelTotalEstimatedCostMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelTtftAvgMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiModelTtftPercentileMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderAvgEstimatedCostMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderCpmMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderInputTokensAvgMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderInputTokensSumMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderLatencyPercentileMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderOutputTokensAvgMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderOutputTokensSumMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderRespTimeMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderSlaMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.GenAiProviderTotalEstimatedCostMetricsBuilder",
+      "methods": [{ "name": "<init>", "parameterTypes": [] }]
+    },
+    {
       "type": "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.BrowserAppErrorRateMetricsBuilder",
       "methods": [
         {

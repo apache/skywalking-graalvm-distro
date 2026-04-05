@@ -55,6 +55,8 @@ import org.apache.skywalking.oap.log.analyzer.v2.module.LogAnalyzerModule;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleProvider;
 import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModule;
 import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModuleProvider;
+import org.apache.skywalking.oap.analyzer.genai.module.GenAIAnalyzerModule;
+import org.apache.skywalking.oap.analyzer.genai.GenAIAnalyzerModuleProvider;
 // Receivers
 import org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModule;
 import org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModuleProvider;
@@ -211,6 +213,7 @@ public class GraalVMOAPServerStartUp {
         manager.register(new AnalyzerModule(), new AnalyzerModuleProvider());
         manager.register(new LogAnalyzerModule(), new LogAnalyzerModuleProvider());
         manager.register(new EventAnalyzerModule(), new EventAnalyzerModuleProvider());
+        manager.register(new GenAIAnalyzerModule(), new GenAIAnalyzerModuleProvider());
 
         // Receivers
         manager.register(new SharingServerModule(), new SharingServerModuleProvider());

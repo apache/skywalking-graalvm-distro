@@ -34,21 +34,40 @@ fi
 
 errors=0
 
-# Resolve upstream version string for a submodule commit.
-# If the commit has an upstream tag (vX.Y.Z), return that version.
-# Otherwise, return "{short-commit}-SNAPSHOT".
-resolve_upstream_version() {
+# Ensure submodule tags are available (CI shallow clones may not have them).
+(cd "$REPO_ROOT/skywalking" && git fetch --tags --quiet 2>/dev/null) || true
+
+# Resolve acceptable upstream version strings for a submodule commit.
+# Returns both the tag-based version (if available) and the commit-based format,
+# separated by newline. The doc may use either format.
+resolve_upstream_versions() {
     local commit="$1"
     local short
     short=$(echo "$commit" | cut -c1-12)
     local tag
-    tag=$(cd "$REPO_ROOT/skywalking" && git tag --points-at "$commit" 2>/dev/null | grep "^v" | head -1)
+    tag=$(cd "$REPO_ROOT/skywalking" && git tag --points-at "$commit" 2>/dev/null | grep "^v" | head -1) || true
     if [ -n "$tag" ]; then
-        # Strip leading 'v' from tag
         echo "${tag#v}"
-    else
-        echo "\`${short}\`-SNAPSHOT"
     fi
+    echo "\`${short}\`-SNAPSHOT"
+}
+
+# Check if a doc value matches any of the acceptable versions.
+matches_any_version() {
+    local doc_value="$1"
+    local commit="$2"
+    local version
+    while IFS= read -r version; do
+        if [ "$doc_value" = "$version" ]; then
+            return 0
+        fi
+    done < <(resolve_upstream_versions "$commit")
+    return 1
+}
+
+# Return the first (preferred) version string for display.
+resolve_upstream_version() {
+    resolve_upstream_versions "$1" | head -1
 }
 
 # Parse table rows between DOC-CHECK markers.
@@ -78,13 +97,13 @@ while IFS= read -r line; do
     if echo "$distro_ver" | grep -q "(dev)"; then
         # Dev row: verify against current submodule commit
         actual_commit=$(git -C "$REPO_ROOT" ls-tree HEAD skywalking | awk '{print $3}')
-        expected=$(resolve_upstream_version "$actual_commit")
 
-        if [ "$doc_upstream" != "$expected" ]; then
+        if matches_any_version "$doc_upstream" "$actual_commit"; then
+            echo "OK [dev]: $distro_ver -> $doc_upstream"
+        else
+            expected=$(resolve_upstream_version "$actual_commit")
             echo "MISMATCH [dev]: doc says '$doc_upstream' but submodule is at '$expected'"
             errors=$((errors + 1))
-        else
-            echo "OK [dev]: $distro_ver -> $doc_upstream"
         fi
     else
         # Released version: verify against git tag
@@ -100,12 +119,12 @@ while IFS= read -r line; do
             continue
         fi
 
-        expected=$(resolve_upstream_version "$actual_commit")
-        if [ "$doc_upstream" != "$expected" ]; then
+        if matches_any_version "$doc_upstream" "$actual_commit"; then
+            echo "OK [$distro_ver]: $tag -> $doc_upstream"
+        else
+            expected=$(resolve_upstream_version "$actual_commit")
             echo "MISMATCH [$distro_ver]: doc says '$doc_upstream' but tag $tag has '$expected'"
             errors=$((errors + 1))
-        else
-            echo "OK [$distro_ver]: $tag -> $doc_upstream"
         fi
     fi
 done < "$DOC"
