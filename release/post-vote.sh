@@ -86,6 +86,9 @@ for cmd in git gh svn sed date python3; do
     command -v "${cmd}" >/dev/null 2>&1 || error "'${cmd}' is not installed"
 done
 
+# Validate python3 actually works (not just exists as a broken shim)
+python3 --version >/dev/null 2>&1 || error "'python3' found but not functional — check your PATH or asdf/pyenv shims"
+
 # Verify tag exists
 git rev-parse "${TAG}" >/dev/null 2>&1 \
     || error "Tag ${TAG} not found locally. Run: git fetch --tags"
@@ -110,7 +113,7 @@ TAG_COMMIT=$(git rev-parse "${TAG}")
 # Determine the upstream SkyWalking version label used in website entries
 # Format: X.Y.Z (10.3.0-dev-<short-commit>)
 SW_VERSION_RAW=$(git show "${TAG}:skywalking/pom.xml" 2>/dev/null \
-    | sed -n '/<version>/{s/.*<version>\(.*\)<\/version>.*/\1/;p;q;}')
+    | sed -n '/<version>/{s/.*<version>\(.*\)<\/version>.*/\1/;p;q;}' || true)
 if [[ -n "${SW_VERSION_RAW}" ]]; then
     VERSION_LABEL="${VERSION} (${SW_VERSION_RAW}-${SW_COMMIT_SHORT})"
 else
@@ -203,24 +206,29 @@ echo ""
 [[ -n "${SVN_PASS}" ]] || error "SVN password is required"
 
 # ─── Step 2: SVN move from dist/dev to dist/release ─────────────────────────
-log "SVN: Verifying source exists in dist/dev..."
-svn info "${SVN_DEV_DIR}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1 \
-    || error "SVN source not found: ${SVN_DEV_DIR}"
+# Check if already moved (idempotent)
+if svn info "${SVN_RELEASE_DIR}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1; then
+    log "SVN: ${SVN_RELEASE_DIR} already exists — skipping move (already done)."
+else
+    log "SVN: Verifying source exists in dist/dev..."
+    svn info "${SVN_DEV_DIR}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1 \
+        || error "SVN source not found: ${SVN_DEV_DIR}"
 
-# Create parent directory in dist/release if needed
-if ! svn info "${SVN_RELEASE_BASE}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1; then
-    log "Creating ${SVN_RELEASE_BASE}..."
-    svn mkdir "${SVN_RELEASE_BASE}" \
-        -m "Create graalvm-distro directory in dist/release" \
+    # Create parent directory in dist/release if needed
+    if ! svn info "${SVN_RELEASE_BASE}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1; then
+        log "Creating ${SVN_RELEASE_BASE}..."
+        svn mkdir "${SVN_RELEASE_BASE}" \
+            -m "Create graalvm-distro directory in dist/release" \
+            --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
+    fi
+
+    log "SVN: Moving dist/dev/${VERSION} → dist/release/${VERSION}..."
+    svn mv "${SVN_DEV_DIR}" "${SVN_RELEASE_DIR}" \
+        -m "Release Apache SkyWalking GraalVM Distro ${VERSION}" \
         --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
+
+    log "SVN move complete: ${SVN_RELEASE_DIR}"
 fi
-
-log "SVN: Moving dist/dev/${VERSION} → dist/release/${VERSION}..."
-svn mv "${SVN_DEV_DIR}" "${SVN_RELEASE_DIR}" \
-    -m "Release Apache SkyWalking GraalVM Distro ${VERSION}" \
-    --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
-
-log "SVN move complete: ${SVN_RELEASE_DIR}"
 
 # ─── Step 3: Ask whether to remove oldest release from dist/release ─────────
 # Apache policy: only the latest release should remain in dist/release.
@@ -255,11 +263,15 @@ if [[ -n "${OLD_VERSIONS}" ]]; then
     read -r -p "  Remove older version(s) from dist/release? [y/N] " remove_old
     if [[ "${remove_old}" =~ ^[Yy]$ ]]; then
         for old_ver in ${OLD_VERSIONS}; do
-            log "SVN: Removing ${SVN_RELEASE_BASE}/${old_ver}..."
-            svn rm "${SVN_RELEASE_BASE}/${old_ver}" \
-                -m "Remove old GraalVM Distro ${old_ver} from dist/release (archived at archive.apache.org)" \
-                --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
-            log "Removed: ${old_ver}"
+            if ! svn info "${SVN_RELEASE_BASE}/${old_ver}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1; then
+                log "SVN: ${old_ver} already removed — skipping."
+            else
+                log "SVN: Removing ${SVN_RELEASE_BASE}/${old_ver}..."
+                svn rm "${SVN_RELEASE_BASE}/${old_ver}" \
+                    -m "Remove old GraalVM Distro ${old_ver} from dist/release (archived at archive.apache.org)" \
+                    --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive
+                log "Removed: ${old_ver}"
+            fi
             REMOVED_VERSIONS="${REMOVED_VERSIONS}${old_ver} "
         done
         REMOVED_VERSIONS=$(echo "${REMOVED_VERSIONS}" | xargs)
@@ -292,7 +304,7 @@ RELEASES_FILE="data/releases.yml"
 #   1. Add new version entry with closer.cgi / downloads.apache.org URLs
 #   2. For kept old versions: migrate URLs to archive.apache.org
 #   3. For removed versions: delete their entries entirely
-python3 <<'PYEOF'
+python3 - "${RELEASES_FILE}" "${VERSION}" "${VERSION_LABEL}" "${RELEASE_DATE}" "${REMOVED_VERSIONS}" <<'PYEOF'
 import sys
 
 releases_file = sys.argv[1]
@@ -457,14 +469,13 @@ if removed_versions:
 actions.append("migrated kept old version URLs to archive.apache.org")
 print(f"releases.yml: {'; '.join(actions)}")
 PYEOF
-"${RELEASES_FILE}" "${VERSION}" "${VERSION_LABEL}" "${RELEASE_DATE}" "${REMOVED_VERSIONS}"
 
 # ─── Step 6: Update data/docs.yml ────────────────────────────────────────────
 log "Updating data/docs.yml..."
 
 DOCS_FILE="data/docs.yml"
 
-python3 <<'PYEOF'
+python3 - "${DOCS_FILE}" "${VERSION}" "${VERSION_LABEL}" "${TAG_COMMIT}" "${REMOVED_VERSIONS}" <<'PYEOF'
 import sys
 
 docs_file = sys.argv[1]
@@ -570,7 +581,6 @@ if removed_versions:
     actions.append(f"removed doc entries for {', '.join(sorted(removed_versions))}")
 print(f"docs.yml: {'; '.join(actions)}")
 PYEOF
-"${DOCS_FILE}" "${VERSION}" "${VERSION_LABEL}" "${TAG_COMMIT}" "${REMOVED_VERSIONS}"
 
 # ─── Step 7: Create release event post ──────────────────────────────────────
 log "Creating release event post..."
