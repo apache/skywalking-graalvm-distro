@@ -1,0 +1,39 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Live Debugging E2E — native OAP with BanyanDB.
+# The SWIP-13 DSL live debugger (/dsl-debugging/*) and runtime-rule hot-update (/runtime/*)
+# generate fresh MAL/LAL/OAL bytecode with Javassist at runtime, which a closed-world native
+# image cannot do. This distro pre-compiles all DSL at build time and serves a structured
+# HTTP 501 for those admin-server endpoints. This case verifies that contract.
+# Verify-only (no trigger): infra-e2e's trigger step aborts on a non-2xx response, so the
+# 501 is asserted through verify cases that curl the admin-server (port 17128) directly.
+
+setup:
+  env: compose
+  file: docker-compose.yml
+  timeout: 20m
+  init-system-environment: ../../script/env
+  steps:
+    - name: set PATH
+      command: export PATH=/tmp/skywalking-infra-e2e/bin:$PATH
+
+verify:
+  retry:
+    count: 60
+    interval: 3s
+  cases:
+    - includes:
+        - live-debugging-cases.yaml

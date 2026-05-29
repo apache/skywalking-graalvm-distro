@@ -16,6 +16,7 @@
 - Port the new upstream runtime-rule DSL overloads into the same-FQCN replacements: meter `DSL.parse(..., ClassPool, ClassLoader)`, `FilterExpression(..., ClassPool, ClassLoader)`, and log `DSL.of(..., ClassPool, ClassLoader)`.
 - The precompiler and the MAL comparison tests now compose expressions via the real upstream `MetricConvert.formatExp` (ANTLR `injectExpPrefix`) instead of a hand-rolled replica, fixing pre-compiled class lookup for chained expressions (`.sum` / `.rate` / `.downsampling`).
 - Register protobuf descriptor **editions** classes (`com.google.protobuf.DescriptorProtos$*`, incl. `FeatureSet`) and **protoc-gen-validate** classes (`io.envoyproxy.pgv.validate.Validate$*`) for native-image reflection. protobuf-java 4.33 (pulled by the sync) reflects on these when parsing the BanyanDB measure descriptors (editions features + field-validation options); without the metadata, BanyanDB metrics queries failed at runtime with `Generated message class ... missing method` (e.g. `FeatureSet.getFieldPresence`).
+- Register `UnsupportedAdminFeatureHandler` for native-image reflection in `reachability-metadata.json`. Armeria builds its annotated routes by reflection, but this distro-only 501 stub is not on the build-time precompiler's classpath (it depends on the precompiler output), so its routes were never registered — the DSL live debugger (`/dsl-debugging/*`) and runtime-rule (`/runtime/*`) prefixes returned 404 instead of the intended 501. Caught by the new `live-debugging` e2e.
 
 ### Documentation
 
@@ -30,6 +31,7 @@
 - Bump pinned dependency images for the 11.0.0 sync: BanyanDB `84b919e`, Kubernetes `da0e267`, e2e java-test-service `7754e3e`.
 - Bump `skywalking-infra-e2e` to upstream's pin (`0d917694`) — the synced e2e expected-output templates use the `containsOnce` verify function, which the prior pin predated.
 - Remove the `menu` e2e case (CI matrix + wrapper): upstream dropped the bundled UI in 11.0.0 (#13877), deleting `test/e2e-v2/cases/menu/`, so the distro wrapper referenced a non-existent reuse file.
+- Add the `live-debugging` e2e case: boots the native OAP and asserts the admin-server (`:17128`) returns the structured HTTP 501 for the DSL live debugger (`/dsl-debugging/*`) and runtime-rule (`/runtime/*`) endpoints. The first e2e to exercise the admin port — it caught the missing reflection registration noted above (the stub had been returning 404).
 
 ## 0.3.0
 

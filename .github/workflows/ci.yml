@@ -380,6 +380,8 @@ jobs:
           #   case: envoy-ai-gateway
           - name: TraceQL SkyWalking
             case: traceql-skywalking
+          - name: Live Debugging
+            case: live-debugging
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5

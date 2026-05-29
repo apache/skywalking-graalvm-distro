@@ -38,6 +38,12 @@ import com.linecorp.armeria.server.annotation.Put;
  * <p>Routes are registered with Armeria {@code prefix:} patterns so every verb and sub-path
  * under the two roots resolves here, returning a structured payload the Horizon UI can render
  * instead of hitting a connection error.
+ *
+ * <p>This distro-only class is not on the build-time precompiler's classpath (it depends on the
+ * precompiler output), so the precompiler's Armeria-handler scan cannot register it. Its
+ * reflection metadata is maintained by hand in {@code oap-graalvm-native}'s
+ * {@code reachability-metadata.json}; without it Armeria silently builds zero routes and these
+ * prefixes return 404 instead of 501.
  */
 public class UnsupportedAdminFeatureHandler {
 

@@ -1,0 +1,43 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Asserts the GraalVM native distro returns a structured HTTP 501 for the DSL live debugger
+# (SWIP-13) and runtime-rule hot-update endpoints — both unsupported under a native image.
+# The response body carries status/error/feature/path/message; the message directs users to
+# the standard JVM OAP distribution. The body's `status: 501` is set by the same handler that
+# sets the HTTP 501 status line, which the dedicated httpStatus cases verify independently.
+cases:
+  # --- DSL live debugger (/dsl-debugging/*) -> 501, feature=dsl-debugging ---
+  - query: curl -s http://${oap_host}:${oap_17128}/dsl-debugging/status
+    expected: expected/dsl-debugging-status.yml
+  - query: curl -s -X POST http://${oap_host}:${oap_17128}/dsl-debugging/session
+    expected: expected/dsl-debugging-session.yml
+  - query: curl -s http://${oap_host}:${oap_17128}/dsl-debugging/sessions
+    expected: expected/dsl-debugging-sessions.yml
+
+  # --- runtime-rule hot-update (/runtime/*) -> 501, feature=runtime-rule ---
+  - query: curl -s -X POST http://${oap_host}:${oap_17128}/runtime/rule/addOrUpdate
+    expected: expected/runtime-rule-addorupdate.yml
+  - query: curl -s http://${oap_host}:${oap_17128}/runtime/rule/list
+    expected: expected/runtime-rule-list.yml
+  - query: curl -s http://${oap_host}:${oap_17128}/runtime/oal/files
+    expected: expected/runtime-oal-files.yml
+
+  # --- HTTP status line is exactly 501 (one per feature root) ---
+  # Quoted in YAML because the echoed "httpStatus:" carries a colon-space.
+  - query: "echo httpStatus: $(curl -s -o /dev/null -w '%{http_code}' http://${oap_host}:${oap_17128}/dsl-debugging/status)"
+    expected: expected/http-status-501.yml
+  - query: "echo httpStatus: $(curl -s -o /dev/null -w '%{http_code}' http://${oap_host}:${oap_17128}/runtime/rule/list)"
+    expected: expected/http-status-501.yml
