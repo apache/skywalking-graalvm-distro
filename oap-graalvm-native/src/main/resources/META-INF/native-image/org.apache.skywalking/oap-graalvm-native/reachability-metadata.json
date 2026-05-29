@@ -1,5 +1,6 @@
 {
   "reflection": [
+    { "type": "org.apache.skywalking.oap.server.graalvm.admin.UnsupportedAdminFeatureHandler", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true },
     { "type": "io.envoyproxy.pgv.validate.Validate$AnyRules", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true },
     { "type": "io.envoyproxy.pgv.validate.Validate$AnyRules$Builder", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true },
     { "type": "io.envoyproxy.pgv.validate.Validate$BoolRules", "allDeclaredFields": true, "allDeclaredMethods": true, "allDeclaredConstructors": true },
