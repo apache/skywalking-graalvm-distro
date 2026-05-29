@@ -23,13 +23,13 @@ SW_UI_IMAGE_TAG="latest"
 # BanyanDB
 ##############################################################################
 SW_BANYANDB_IMAGE_REPO="ghcr.io/apache/skywalking-banyandb"
-SW_BANYANDB_IMAGE_TAG="e1ba421bd624727760c7a69c84c6fe55878fb526"
+SW_BANYANDB_IMAGE_TAG="84b919efca3fee3d51df9e97a734a9f10ae6f1d2"
 
 ##############################################################################
 # SkyWalking Helm Chart
 ##############################################################################
 SW_HELM_CHART="oci://ghcr.io/apache/skywalking-helm/skywalking-helm"
-SW_KUBERNETES_COMMIT_SHA="6fe5e6f0d3b7686c6be0457733e825ee68cb9b35"
+SW_KUBERNETES_COMMIT_SHA="da0e267f877b9b8e5f7728ae4ea7dc7723a2a073"
 
 ##############################################################################
 # Istio

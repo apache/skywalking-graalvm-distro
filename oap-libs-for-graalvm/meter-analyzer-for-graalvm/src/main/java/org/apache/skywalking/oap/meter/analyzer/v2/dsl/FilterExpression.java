@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import javassist.ClassPool;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
@@ -71,6 +72,16 @@ public class FilterExpression {
             throw new IllegalStateException(
                 "Failed to instantiate pre-compiled MAL filter: " + className, e);
         }
+    }
+
+    // Runtime-rule overload (upstream signature). We load the pre-compiled filter by literal,
+    // so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
+    public FilterExpression(final String literal,
+                            final String filterNameHint,
+                            final String yamlSource,
+                            final ClassPool pool,
+                            final ClassLoader targetClassLoader) {
+        this(literal, filterNameHint, yamlSource);
     }
 
     public Map<String, SampleFamily> filter(final Map<String, SampleFamily> sampleFamilies) {

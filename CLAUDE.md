@@ -16,6 +16,7 @@
 2. **Build-time class export.** All runtime code generation (OAL/MAL/LAL/Hierarchy via ANTLR4 + Javassist) runs at build time. Export `.class` files into native-image classpath.
 3. **Fixed module wiring.** Module/provider selection is hardcoded in this distro — no SPI discovery. See docs/distro-policy.md for the full module table.
 4. **JDK 25.** Already compiles and runs.
+5. **Minimal comments.** Comment only what the code can't say for itself — a non-obvious invariant, the *why* behind a non-obvious choice, or cross-cutting context (e.g. "must match upstream X"). Don't restate the code or annotate the obvious. When a same-FQCN replacement diverges from upstream, one line on *why* is enough.
 
 ## Technical Notes
 - **V2 DSL engines**: All four DSL compilers (OAL, MAL, LAL, Hierarchy) use the same pipeline: ANTLR4 parse → immutable AST → Javassist bytecode. Upstream PR #13723 removed Groovy from all production code. The precompiler runs these v2 engines at build time via `setClassOutputDir()` / `setClassNameHint()`, capturing `.class` files into the output JAR.

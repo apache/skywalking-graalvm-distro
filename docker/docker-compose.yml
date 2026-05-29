@@ -15,7 +15,7 @@
 
 services:
   banyandb:
-    image: "ghcr.io/apache/skywalking-banyandb:${SW_BANYANDB_COMMIT:-74334e027b7fad414c9773f803163b5c97a9655b}"
+    image: "ghcr.io/apache/skywalking-banyandb:${SW_BANYANDB_COMMIT:-84b919efca3fee3d51df9e97a734a9f10ae6f1d2}"
     ports:
       - "17912:17912"
       - "17913:17913"

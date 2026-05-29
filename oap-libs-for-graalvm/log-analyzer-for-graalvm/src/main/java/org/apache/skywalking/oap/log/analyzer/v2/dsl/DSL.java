@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import javassist.ClassPool;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -71,6 +72,20 @@ public class DSL {
                          final Class<?> outputType,
                          final String ruleName) throws ModuleStartException {
         return of(moduleManager, config, dsl, inputType, outputType, ruleName, null);
+    }
+
+    // Runtime-rule overload (upstream signature). We load the pre-compiled LalExpression by rule
+    // name, so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
+    public static DSL of(final ModuleManager moduleManager,
+                         final LogAnalyzerModuleConfig config,
+                         final String dsl,
+                         final Class<?> inputType,
+                         final Class<?> outputType,
+                         final String ruleName,
+                         final String yamlSource,
+                         final ClassPool pool,
+                         final ClassLoader targetClassLoader) throws ModuleStartException {
+        return of(moduleManager, config, dsl, inputType, outputType, ruleName, yamlSource);
     }
 
     public static DSL of(final ModuleManager moduleManager,

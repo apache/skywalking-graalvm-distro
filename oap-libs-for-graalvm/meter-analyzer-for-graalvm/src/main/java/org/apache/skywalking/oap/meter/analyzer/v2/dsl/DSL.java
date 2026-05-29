@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
+import javassist.ClassPool;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -86,6 +87,16 @@ public final class DSL {
             throw new IllegalStateException(
                 "Failed to instantiate pre-compiled MAL expression: " + className, e);
         }
+    }
+
+    // Runtime-rule overload (upstream signature). We load the pre-compiled class by expression
+    // text, so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
+    public static Expression parse(final String metricName,
+                                   final String expression,
+                                   final String yamlSource,
+                                   final ClassPool pool,
+                                   final ClassLoader targetClassLoader) {
+        return parse(metricName, expression, yamlSource);
     }
 
     /**

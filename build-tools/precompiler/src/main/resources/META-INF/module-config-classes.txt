@@ -2,12 +2,15 @@ org.apache.skywalking.oap.analyzer.genai.config.GenAIConfig
 org.apache.skywalking.oap.analyzer.genai.config.GenAIConfig$Model
 org.apache.skywalking.oap.analyzer.genai.config.GenAIConfig$Provider
 org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig
-org.apache.skywalking.oap.query.debug.StatusQueryConfig
 org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig
 org.apache.skywalking.oap.query.logql.LogQLConfig
 org.apache.skywalking.oap.query.promql.PromQLConfig
 org.apache.skywalking.oap.query.traceql.TraceQLConfig
 org.apache.skywalking.oap.query.zipkin.ZipkinQueryConfig
+org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig
+org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig
+org.apache.skywalking.oap.server.admin.status.StatusModuleConfig
+org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleConfig
 org.apache.skywalking.oap.server.ai.pipeline.AIPipelineConfig
 org.apache.skywalking.oap.server.analyzer.agent.kafka.module.KafkaFetcherConfig
 org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleConfig

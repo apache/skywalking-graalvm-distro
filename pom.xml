@@ -34,7 +34,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <!-- Injected by Makefile from skywalking submodule's <revision> property.
              Do not hardcode — always build via `make`. -->
-        <skywalking.version>10.4.0</skywalking.version>
+        <skywalking.version>11.0.0-SNAPSHOT</skywalking.version>
         <graalvm.version>25.0.0</graalvm.version>
         <graalvm.buildtools.version>0.10.4</graalvm.buildtools.version>
         <lombok.version>1.18.40</lombok.version>
@@ -315,9 +315,28 @@
                 <artifactId>zipkin-query-plugin</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
+            <!-- Admin server family (11.0.0+): admin-host + native-safe feature modules.
+                 status (relocated from status-query-plugin), inspect, ui-management.
+                 runtime-rule + dsl-debugging are intentionally NOT wired (runtime Javassist
+                 codegen is impossible under native image); their endpoints are stubbed. -->
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
-                <artifactId>status-query-plugin</artifactId>
+                <artifactId>admin-server</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>status</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>inspect</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>ui-management</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
 

@@ -17,7 +17,6 @@
 
 package org.apache.skywalking.oap.server.graalvm.mal;
 
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -33,7 +32,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.skywalking.oap.meter.analyzer.v2.MetricConvert;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Expression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.ExpressionMetadata;
@@ -430,25 +429,15 @@ abstract class MALScriptComparisonBase {
     }
 
     // ---------------------------------------------------------------
-    // Expression composition (replicates MetricConvert.formatExp)
+    // Expression composition — delegates to the real upstream MetricConvert.formatExp
     // ---------------------------------------------------------------
 
     static String formatExp(final String expPrefix,
                             final String expSuffix,
                             final String exp) {
-        String ret = exp;
-        if (!Strings.isNullOrEmpty(expPrefix)) {
-            ret = String.format("(%s.%s)",
-                StringUtils.substringBefore(exp, "."), expPrefix);
-            final String after = StringUtils.substringAfter(exp, ".");
-            if (!Strings.isNullOrEmpty(after)) {
-                ret = String.format("(%s.%s)", ret, after);
-            }
-        }
-        if (!Strings.isNullOrEmpty(expSuffix)) {
-            ret = String.format("(%s).%s", ret, expSuffix);
-        }
-        return ret;
+        // Use the real formatExp so the composed text matches the precompiler's manifest key;
+        // a hand-rolled replica drifts when upstream changes expPrefix injection.
+        return MetricConvert.formatExp(expPrefix, expSuffix, exp);
     }
 
     // ---------------------------------------------------------------

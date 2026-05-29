@@ -115,8 +115,18 @@ import org.apache.skywalking.oap.query.logql.LogQLModule;
 import org.apache.skywalking.oap.query.logql.LogQLProvider;
 import org.apache.skywalking.oap.query.traceql.TraceQLModule;
 import org.apache.skywalking.oap.query.traceql.TraceQLProvider;
-import org.apache.skywalking.oap.query.debug.StatusQueryModule;
-import org.apache.skywalking.oap.query.debug.StatusQueryProvider;
+// Admin server family (11.0.0+)
+import org.apache.skywalking.oap.server.admin.server.module.AdminServerModule;
+import org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleProvider;
+import org.apache.skywalking.oap.server.admin.status.StatusModule;
+import org.apache.skywalking.oap.server.admin.status.StatusModuleProvider;
+import org.apache.skywalking.oap.server.admin.inspect.InspectModule;
+import org.apache.skywalking.oap.server.admin.inspect.InspectModuleProvider;
+import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModule;
+import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleProvider;
+// GraalVM stub for unsupported admin features (runtime-rule / dsl-debugging)
+import org.apache.skywalking.oap.server.graalvm.admin.UnsupportedAdminFeatureModule;
+import org.apache.skywalking.oap.server.graalvm.admin.UnsupportedAdminFeatureModuleProvider;
 // Exporter
 import org.apache.skywalking.oap.server.exporter.provider.ExporterProvider;
 // Health Checker
@@ -260,8 +270,6 @@ public class GraalVMOAPServerStartUp {
         if (configuration.has("traceQL")) {
             manager.register(new TraceQLModule(), new TraceQLProvider());
         }
-        manager.register(new StatusQueryModule(), new StatusQueryProvider());
-
         // Alarm
         manager.register(new AlarmModule(), new AlarmModuleProvider());
 
@@ -275,5 +283,20 @@ public class GraalVMOAPServerStartUp {
 
         // AI Pipeline
         manager.register(new AIPipelineModule(), new AIPipelineProvider());
+
+        // Admin server family (11.0.0+). admin-server hosts the operator REST surface
+        // (default :17128) + admin-internal gRPC bus (:17129). The new Horizon UI loads
+        // dashboard templates via ui-management, so the host must be available.
+        //   - status        : /status/*, /debugging/* (relocated from status-query-plugin)
+        //   - inspect        : /inspect/* metric catalog + entity enumeration (SWIP-14)
+        //   - ui-management  : /ui-management/* dashboard template CRUD (Horizon UI needs this)
+        // runtime-rule + dsl-debugging are NOT wired — they require runtime Javassist
+        // class generation, which is impossible under a closed-world native image. Their
+        // endpoints are served by UnsupportedAdminFeatureModule with a friendly 501.
+        manager.register(new AdminServerModule(), new AdminServerModuleProvider());
+        manager.register(new StatusModule(), new StatusModuleProvider());
+        manager.register(new InspectModule(), new InspectModuleProvider());
+        manager.register(new UIManagementModule(), new UIManagementModuleProvider());
+        manager.register(new UnsupportedAdminFeatureModule(), new UnsupportedAdminFeatureModuleProvider());
     }
 }

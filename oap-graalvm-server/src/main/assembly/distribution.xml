@@ -83,8 +83,6 @@
                 <!-- BanyanDB storage config (loaded by BanyanDBConfigLoader) -->
                 <include>bydb.yml</include>
                 <include>bydb-topn.yml</include>
-                <!-- UI dashboard templates (loaded by UITemplateInitializer) -->
-                <include>ui-initialized-templates/**</include>
                 <!-- Cilium rules (loaded by CiliumFetcherProvider) -->
                 <include>cilium-rules/**</include>
                 <!-- OpenAPI endpoint grouping definitions -->
