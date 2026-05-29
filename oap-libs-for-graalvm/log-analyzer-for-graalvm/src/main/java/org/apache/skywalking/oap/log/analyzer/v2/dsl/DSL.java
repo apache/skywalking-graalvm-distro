@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import javassist.ClassPool;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.log.analyzer.v2.dsl.spec.filter.FilterSpec;
@@ -56,6 +57,9 @@ public class DSL {
     private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
     private final String ruleName;
+    // Upstream LogFilterListener.loadStaticRules() reads this at boot via getExpression()
+    // (LalStaticBindingHook.publish); @Getter matches upstream's same-FQCN class.
+    @Getter
     private final LalExpression expression;
     private final FilterSpec filterSpec;
 
