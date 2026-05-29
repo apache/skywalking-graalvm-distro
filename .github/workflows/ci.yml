@@ -310,8 +310,6 @@ jobs:
             case: istio-als
           - name: Event
             case: event
-          - name: Menu
-            case: menu
           - name: Alarm
             case: alarm
           - name: Log

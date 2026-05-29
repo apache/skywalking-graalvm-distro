@@ -27,6 +27,8 @@
 ### E2E Tests
 
 - Bump pinned dependency images for the 11.0.0 sync: BanyanDB `84b919e`, Kubernetes `da0e267`, e2e java-test-service `7754e3e`.
+- Bump `skywalking-infra-e2e` to upstream's pin (`0d917694`) — the synced e2e expected-output templates use the `containsOnce` verify function, which the prior pin predated.
+- Remove the `menu` e2e case (CI matrix + wrapper): upstream dropped the bundled UI in 11.0.0 (#13877), deleting `test/e2e-v2/cases/menu/`, so the distro wrapper referenced a non-existent reuse file.
 
 ## 0.3.0
 
