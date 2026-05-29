@@ -15,6 +15,7 @@
 - `YamlConfigLoaderUtils` and `ConfigInitializerGenerator` now emit a no-op dispatch branch for empty `ModuleConfig` types (`InspectModuleConfig`, `UIManagementModuleConfig`), so module boot no longer throws on the relocated empty configs.
 - Port the new upstream runtime-rule DSL overloads into the same-FQCN replacements: meter `DSL.parse(..., ClassPool, ClassLoader)`, `FilterExpression(..., ClassPool, ClassLoader)`, and log `DSL.of(..., ClassPool, ClassLoader)`.
 - The precompiler and the MAL comparison tests now compose expressions via the real upstream `MetricConvert.formatExp` (ANTLR `injectExpPrefix`) instead of a hand-rolled replica, fixing pre-compiled class lookup for chained expressions (`.sum` / `.rate` / `.downsampling`).
+- Register protobuf descriptor **editions** classes (`com.google.protobuf.DescriptorProtos$*`, incl. `FeatureSet`) and **protoc-gen-validate** classes (`io.envoyproxy.pgv.validate.Validate$*`) for native-image reflection. protobuf-java 4.33 (pulled by the sync) reflects on these when parsing the BanyanDB measure descriptors (editions features + field-validation options); without the metadata, BanyanDB metrics queries failed at runtime with `Generated message class ... missing method` (e.g. `FeatureSet.getFieldPresence`).
 
 ### Documentation
 
