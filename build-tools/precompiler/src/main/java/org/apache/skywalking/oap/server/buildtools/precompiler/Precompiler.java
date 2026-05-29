@@ -1175,7 +1175,9 @@ public class Precompiler {
                     for (int i = 0; i < metricsRules.size(); i++) {
                         MetricsRule mr = metricsRules.get(i);
                         String metricName = rule.getMetricPrefix() + "_" + mr.getName();
-                        String fullExp = malFormatExp(
+                        // Must use the real formatExp: this text keys COMPILE_MAP at compile time
+                        // and is what MetricConvert passes to DSL.parse at runtime — a replica drifts.
+                        String fullExp = MetricConvert.formatExp(
                             rule.getExpPrefix(), rule.getExpSuffix(), mr.getExp());
                         String exprKey = DSL.expressionKey(fullExp, metricName);
                         String className = DSL.COMPILE_MAP.get(exprKey);
@@ -1202,30 +1204,6 @@ public class Precompiler {
         log.info("MAL: wrote {} per-file configs with {} expressions to mal-v2/",
             manifestEntries.size(), totalExpressions);
         return totalExpressions;
-    }
-
-    /**
-     * Replicate MetricConvert.formatExp() to compose the full MAL expression
-     * from expPrefix, expSuffix, and the per-rule expression.
-     */
-    private static String malFormatExp(final String expPrefix,
-                                       final String expSuffix,
-                                       final String exp) {
-        String ret = exp;
-        if (expPrefix != null && !expPrefix.isEmpty()) {
-            String before = exp.contains(".") ? exp.substring(0, exp.indexOf('.')) : exp;
-            ret = String.format("(%s.%s)", before, expPrefix);
-            if (exp.contains(".")) {
-                String after = exp.substring(exp.indexOf('.') + 1);
-                if (!after.isEmpty()) {
-                    ret = String.format("(%s.%s)", ret, after);
-                }
-            }
-        }
-        if (expSuffix != null && !expSuffix.isEmpty()) {
-            ret = String.format("(%s).%s", ret, expSuffix);
-        }
-        return ret;
     }
 
     private static String escapePropertiesValue(String value) {

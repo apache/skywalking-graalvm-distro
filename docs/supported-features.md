@@ -64,7 +64,9 @@ All receivers are included:
 | **PromQL** | 9090 | Prometheus-compatible query |
 | **LogQL** | 3100 | Loki-compatible log query |
 | **Zipkin** | 9412 | Zipkin v2 query API (disabled by default) |
-| **Status** | 12800 | Debugging and status queries |
+| **Status** | 17128 | Cluster / alarm / TTL status + `/debugging/*` debug-query trace, on the admin-server host (relocated from the query plugin in 11.0.0) |
+| **Inspect** | 17128 | SWIP-14 metric catalog + entity enumeration (`/inspect/*`), on the admin-server host |
+| **UI Management** | 17128 | Dashboard-template REST (`/ui-management/*`) consumed by the Horizon UI, on the admin-server host |
 
 ### Analyzers
 
@@ -120,6 +122,14 @@ Agent Pod ──(plaintext gRPC)──► Istio Sidecar ══(mTLS)══► Is
 
 This is the recommended approach for Kubernetes deployments and provides stronger security
 guarantees than application-level TLS (automatic certificate rotation, policy enforcement).
+
+### No DSL Live Debugger or Runtime Rule Hot-Update
+
+The admin-server feature modules `DSLDebuggingModule` (SWIP-13 DSL live debugger, `/dsl-debugging/*`)
+and `RuntimeRuleModule` (MAL/LAL hot-update, `/runtime/*`) are **not supported**. Both generate
+Javassist bytecode at runtime, which a closed-world native image cannot do — all DSL rules are
+pre-compiled at build time. These endpoints return **HTTP 501**. Use the upstream JVM distribution
+if you need live DSL debugging or runtime rule updates.
 
 ## Differences from Upstream SkyWalking
 

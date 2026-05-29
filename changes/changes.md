@@ -1,5 +1,36 @@
 # Changes
 
+## 0.4.0
+
+### Upstream Sync
+
+- Sync SkyWalking submodule to upstream `ad733554b0` (11.0.0-SNAPSHOT).
+- Wire the admin-server family on the admin host (HTTP `:17128`, admin-internal gRPC `:17129`): `admin-server`, `status` (relocated from the 10.x `status-query` plugin — `/status/*`, `/debugging/*`), `inspect` (SWIP-14 metric catalog, `/inspect/*`), and `ui-management` (dashboard-template REST for the Horizon UI, `/ui-management/*`). The `status-query` plugin is removed.
+- Enable iOS (SWIP-11) and mini-program (SWIP-12) OTel metrics rules and Envoy AI Gateway MCP rules; add the mini-program log-MAL rules and the `ai_route_type` searchable log tag.
+- Drop the bundled UI templates: upstream 11.0.0 removed `ui-initialized-templates/` and `UITemplateInitializer`; templates are now managed via `ui-management`.
+
+### GraalVM Native Image Compatibility
+
+- DSL Live Debugger (SWIP-13, `/dsl-debugging/*`) and runtime rule hot-update (`/runtime/*`) are unsupported in the native image — both need runtime Javassist codegen — so a stub module answers those prefixes with HTTP 501.
+- `YamlConfigLoaderUtils` and `ConfigInitializerGenerator` now emit a no-op dispatch branch for empty `ModuleConfig` types (`InspectModuleConfig`, `UIManagementModuleConfig`), so module boot no longer throws on the relocated empty configs.
+- Port the new upstream runtime-rule DSL overloads into the same-FQCN replacements: meter `DSL.parse(..., ClassPool, ClassLoader)`, `FilterExpression(..., ClassPool, ClassLoader)`, and log `DSL.of(..., ClassPool, ClassLoader)`.
+- The precompiler and the MAL comparison tests now compose expressions via the real upstream `MetricConvert.formatExp` (ANTLR `injectExpPrefix`) instead of a hand-rolled replica, fixing pre-compiled class lookup for chained expressions (`.sum` / `.rate` / `.downsampling`).
+- Register protobuf descriptor **editions** classes (`com.google.protobuf.DescriptorProtos$*`, incl. `FeatureSet`) and **protoc-gen-validate** classes (`io.envoyproxy.pgv.validate.Validate$*`) for native-image reflection. protobuf-java 4.33 (pulled by the sync) reflects on these when parsing the BanyanDB measure descriptors (editions features + field-validation options); without the metadata, BanyanDB metrics queries failed at runtime with `Generated message class ... missing method` (e.g. `FeatureSet.getFieldPresence`).
+
+### Documentation
+
+- Document the admin-server family, the status relocation, and the unsupported DSL-debugging / runtime-rule features (HTTP 501) in `distro-policy.md` and `supported-features.md`; add the `0.4.0` → `ad733554b0` row to `version-mapping.md`.
+
+### Testing
+
+- Add MAL comparison tests for the mini-program log-MAL rules and LAL pre-compilation tests for the iOS MetricKit and mini-program rules; track the new iOS / mini-program / Envoy AI Gateway MCP YAML in the precompiled-YAML staleness baseline.
+
+### E2E Tests
+
+- Bump pinned dependency images for the 11.0.0 sync: BanyanDB `84b919e`, Kubernetes `da0e267`, e2e java-test-service `7754e3e`.
+- Bump `skywalking-infra-e2e` to upstream's pin (`0d917694`) — the synced e2e expected-output templates use the `containsOnce` verify function, which the prior pin predated.
+- Remove the `menu` e2e case (CI matrix + wrapper): upstream dropped the bundled UI in 11.0.0 (#13877), deleting `test/e2e-v2/cases/menu/`, so the distro wrapper referenced a non-existent reuse file.
+
 ## 0.3.0
 
 ### Upstream Sync

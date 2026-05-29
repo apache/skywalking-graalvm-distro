@@ -69,7 +69,6 @@
             <includes>
                 <include>bydb.yml</include>
                 <include>bydb-topn.yml</include>
-                <include>ui-initialized-templates/**</include>
                 <include>cilium-rules/**</include>
                 <include>telegraf-rules/**</include>
                 <include>zabbix-rules/**</include>

@@ -45,7 +45,6 @@
         <module>ebpf-receiver-for-graalvm</module>
         <module>aws-firehose-receiver-for-graalvm</module>
         <module>cilium-fetcher-for-graalvm</module>
-        <module>status-query-for-graalvm</module>
         <module>health-checker-for-graalvm</module>
         <module>server-starter-for-graalvm</module>
     </modules>

@@ -88,7 +88,6 @@ public final class AcceptedModules {
         new ModuleProviderPair("promql", "default"),
         new ModuleProviderPair("logql", "default"),
         new ModuleProviderPair("traceQL", "default"),
-        new ModuleProviderPair("status-query", "default"),
         // Alarm
         new ModuleProviderPair("alarm", "default"),
         // Exporter
@@ -96,7 +95,13 @@ public final class AcceptedModules {
         // Health Checker
         new ModuleProviderPair("health-checker", "default"),
         // AI Pipeline
-        new ModuleProviderPair("ai-pipeline", "default")
+        new ModuleProviderPair("ai-pipeline", "default"),
+        // Admin server family (11.0.0+). runtime-rule + dsl-debugging are intentionally
+        // excluded — they need runtime Javassist codegen, unsupported under native image.
+        new ModuleProviderPair("admin-server", "default"),
+        new ModuleProviderPair("status", "default"),
+        new ModuleProviderPair("inspect", "default"),
+        new ModuleProviderPair("ui-management", "default")
     );
 
     /**

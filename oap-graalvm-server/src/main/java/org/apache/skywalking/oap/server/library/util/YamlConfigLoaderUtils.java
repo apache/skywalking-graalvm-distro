@@ -28,12 +28,15 @@ import org.yaml.snakeyaml.Yaml;
 import java.util.Set;
 import org.apache.skywalking.oap.analyzer.genai.config.GenAIConfig;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig;
-import org.apache.skywalking.oap.query.debug.StatusQueryConfig;
 import org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig;
 import org.apache.skywalking.oap.query.logql.LogQLConfig;
 import org.apache.skywalking.oap.query.promql.PromQLConfig;
 import org.apache.skywalking.oap.query.traceql.TraceQLConfig;
 import org.apache.skywalking.oap.query.zipkin.ZipkinQueryConfig;
+import org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig;
+import org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig;
+import org.apache.skywalking.oap.server.admin.status.StatusModuleConfig;
+import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleConfig;
 import org.apache.skywalking.oap.server.ai.pipeline.AIPipelineConfig;
 import org.apache.skywalking.oap.server.analyzer.agent.kafka.module.KafkaFetcherConfig;
 import org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleConfig;
@@ -126,14 +129,12 @@ public class YamlConfigLoaderUtils {
             copyToSharingServerConfig((SharingServerConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof AnalyzerModuleConfig) {
             copyToAnalyzerModuleConfig((AnalyzerModuleConfig) dest, src, moduleName, providerName);
-        } else if (dest instanceof ZipkinReceiverConfig) {
-            copyToZipkinReceiverConfig((ZipkinReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof GenAIConfig) {
             copyToGenAIConfig((GenAIConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof ZipkinReceiverConfig) {
+            copyToZipkinReceiverConfig((ZipkinReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ZipkinQueryConfig) {
             copyToZipkinQueryConfig((ZipkinQueryConfig) dest, src, moduleName, providerName);
-        } else if (dest instanceof StatusQueryConfig) {
-            copyToStatusQueryConfig((StatusQueryConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof EnvoyMetricReceiverConfig) {
             copyToEnvoyMetricReceiverConfig((EnvoyMetricReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof LogAnalyzerModuleConfig) {
@@ -180,6 +181,14 @@ public class YamlConfigLoaderUtils {
             copyToExporterSetting((ExporterSetting) dest, src, moduleName, providerName);
         } else if (dest instanceof ConfigmapConfigurationSettings) {
             copyToConfigmapConfigurationSettings((ConfigmapConfigurationSettings) dest, src, moduleName, providerName);
+        } else if (dest instanceof AdminServerModuleConfig) {
+            copyToAdminServerModuleConfig((AdminServerModuleConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof StatusModuleConfig) {
+            copyToStatusModuleConfig((StatusModuleConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof InspectModuleConfig) {
+            // InspectModuleConfig has no configurable fields; nothing to copy.
+        } else if (dest instanceof UIManagementModuleConfig) {
+            // UIManagementModuleConfig has no configurable fields; nothing to copy.
         } else if (dest instanceof GenAIConfig.Model) {
             copyToModel((GenAIConfig.Model) dest, src, moduleName, providerName);
         } else if (dest instanceof GenAIConfig.Provider) {
@@ -385,9 +394,6 @@ public class YamlConfigLoaderUtils {
                 case "maxHttpUrisNumberPerService":
                     cfg.setMaxHttpUrisNumberPerService(((Number) value).intValue());
                     break;
-                case "uiMenuRefreshInterval":
-                    cfg.setUiMenuRefreshInterval(((Number) value).intValue());
-                    break;
                 case "serviceCacheRefreshInterval":
                     cfg.setServiceCacheRefreshInterval(((Number) value).intValue());
                     break;
@@ -571,6 +577,27 @@ public class YamlConfigLoaderUtils {
     }
 
     @SuppressWarnings("unchecked")
+    private static void copyToGenAIConfig(
+            final GenAIConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "providers":
+                    cfg.setProviders((List) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private static void copyToZipkinReceiverConfig(
             final ZipkinReceiverConfig cfg, final Properties src,
             final String moduleName, final String providerName) {
@@ -640,27 +667,6 @@ public class YamlConfigLoaderUtils {
     }
 
     @SuppressWarnings("unchecked")
-    private static void copyToGenAIConfig(
-            final GenAIConfig cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "providers":
-                    cfg.setProviders((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
     private static void copyToZipkinQueryConfig(
             final ZipkinQueryConfig cfg, final Properties src,
             final String moduleName, final String providerName) {
@@ -702,27 +708,6 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "uiSearchEnabled":
                     cfg.setUiSearchEnabled((boolean) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void copyToStatusQueryConfig(
-            final StatusQueryConfig cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "keywords4MaskingSecretsOfConfig":
-                    cfg.setKeywords4MaskingSecretsOfConfig((String) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1297,9 +1282,6 @@ public class YamlConfigLoaderUtils {
                 case "maxQueryComplexity":
                     cfg.setMaxQueryComplexity(((Number) value).intValue());
                     break;
-                case "enableUpdateUITemplate":
-                    cfg.setEnableUpdateUITemplate((boolean) value);
-                    break;
                 case "enableOnDemandPodLog":
                     cfg.setEnableOnDemandPodLog((boolean) value);
                     break;
@@ -1599,6 +1581,96 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "period":
                     cfg.setPeriod((Integer) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToAdminServerModuleConfig(
+            final AdminServerModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "host":
+                    cfg.setHost((String) value);
+                    break;
+                case "port":
+                    cfg.setPort(((Number) value).intValue());
+                    break;
+                case "contextPath":
+                    cfg.setContextPath((String) value);
+                    break;
+                case "idleTimeOut":
+                    cfg.setIdleTimeOut(((Number) value).intValue());
+                    break;
+                case "acceptQueueSize":
+                    cfg.setAcceptQueueSize(((Number) value).intValue());
+                    break;
+                case "httpMaxRequestHeaderSize":
+                    cfg.setHttpMaxRequestHeaderSize(((Number) value).intValue());
+                    break;
+                case "gRPCHost":
+                    cfg.setGRPCHost((String) value);
+                    break;
+                case "gRPCPort":
+                    cfg.setGRPCPort(((Number) value).intValue());
+                    break;
+                case "gRPCMaxConcurrentCallsPerConnection":
+                    cfg.setGRPCMaxConcurrentCallsPerConnection(((Number) value).intValue());
+                    break;
+                case "gRPCMaxMessageSize":
+                    cfg.setGRPCMaxMessageSize(((Number) value).intValue());
+                    break;
+                case "gRPCThreadPoolSize":
+                    cfg.setGRPCThreadPoolSize(((Number) value).intValue());
+                    break;
+                case "gRPCThreadPoolQueueSize":
+                    cfg.setGRPCThreadPoolQueueSize(((Number) value).intValue());
+                    break;
+                case "gRPCSslEnabled":
+                    cfg.setGRPCSslEnabled((boolean) value);
+                    break;
+                case "gRPCSslKeyPath":
+                    cfg.setGRPCSslKeyPath((String) value);
+                    break;
+                case "gRPCSslCertChainPath":
+                    cfg.setGRPCSslCertChainPath((String) value);
+                    break;
+                case "gRPCSslTrustedCAsPath":
+                    cfg.setGRPCSslTrustedCAsPath((String) value);
+                    break;
+                case "internalCommunicationTimeout":
+                    cfg.setInternalCommunicationTimeout(((Number) value).intValue());
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToStatusModuleConfig(
+            final StatusModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "keywords4MaskingSecretsOfConfig":
+                    cfg.setKeywords4MaskingSecretsOfConfig((String) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",

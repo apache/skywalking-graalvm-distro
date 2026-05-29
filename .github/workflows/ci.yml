@@ -310,8 +310,6 @@ jobs:
             case: istio-als
           - name: Event
             case: event
-          - name: Menu
-            case: menu
           - name: Alarm
             case: alarm
           - name: Log
@@ -429,7 +427,7 @@ jobs:
             package -DskipTests -Dmaven.javadoc.skip
 
       - name: Run E2E test
-        uses: apache/skywalking-infra-e2e@8c21e43e241a32a54bdf8eeceb9099eb27e5e9b4
+        uses: apache/skywalking-infra-e2e@0d91769411db83f6329633df810a36c6ea1a9b02
         with:
           e2e-file: $GITHUB_WORKSPACE/test/e2e/cases/${{ matrix.test.case }}/e2e.yaml
 

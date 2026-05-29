@@ -68,7 +68,7 @@ core:
     instanceNameMaxLength: ${SW_INSTANCE_NAME_MAX_LENGTH:70}
     endpointNameMaxLength: ${SW_ENDPOINT_NAME_MAX_LENGTH:150}
     searchableTracesTags: ${SW_SEARCHABLE_TAG_KEYS:http.method,http.status_code,rpc.status_code,db.type,db.instance,mq.queue,mq.topic,mq.broker}
-    searchableLogsTags: ${SW_SEARCHABLE_LOGS_TAG_KEYS:level,http.status_code}
+    searchableLogsTags: ${SW_SEARCHABLE_LOGS_TAG_KEYS:level,http.status_code,ai_route_type}
     searchableAlarmTags: ${SW_SEARCHABLE_ALARM_TAG_KEYS:level}
     autocompleteTagKeysQueryMaxSize: ${SW_AUTOCOMPLETE_TAG_KEYS_QUERY_MAX_SIZE:100}
     autocompleteTagValuesQueryMaxSize: ${SW_AUTOCOMPLETE_TAG_VALUES_QUERY_MAX_SIZE:100}
@@ -100,8 +100,8 @@ agent-analyzer:
 log-analyzer:
   selector: ${SW_LOG_ANALYZER:default}
   default:
-    lalFiles: ${SW_LOG_LAL_FILES:envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,envoy-ai-gateway,default}
-    malFiles: ${SW_LOG_MAL_FILES:"nginx"}
+    lalFiles: ${SW_LOG_LAL_FILES:envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,envoy-ai-gateway,miniprogram,default}
+    malFiles: ${SW_LOG_MAL_FILES:"nginx,miniprogram-wechat,miniprogram-alipay"}
 
 event-analyzer:
   selector: ${SW_EVENT_ANALYZER:default}
@@ -227,7 +227,7 @@ receiver-otel:
   selector: ${SW_OTEL_RECEIVER:default}
   default:
     enabledHandlers: ${SW_OTEL_RECEIVER_ENABLED_HANDLERS:"otlp-traces,otlp-metrics,otlp-logs"}
-    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,banyandb/*,envoy-ai-gateway/*"}
+    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*"}
 
 receiver-zipkin:
   selector: ${SW_RECEIVER_ZIPKIN:-}
@@ -264,7 +264,6 @@ query:
   graphql:
     enableLogTestTool: ${SW_QUERY_GRAPHQL_ENABLE_LOG_TEST_TOOL:false}
     maxQueryComplexity: ${SW_QUERY_MAX_QUERY_COMPLEXITY:3000}
-    enableUpdateUITemplate: ${SW_ENABLE_UPDATE_UI_TEMPLATE:false}
     enableOnDemandPodLog: ${SW_ENABLE_ON_DEMAND_POD_LOG:false}
 
 query-zipkin:
@@ -359,10 +358,53 @@ health-checker:
   default:
     checkIntervalSeconds: ${SW_HEALTH_CHECKER_INTERVAL_SECONDS:30}
 
-status-query:
-  selector: ${SW_STATUS_QUERY:default}
+# Admin server family (11.0.0+). admin-server hosts the operator REST surface
+# (default :17128) and the admin-internal gRPC bus (:17129). The Horizon UI loads
+# dashboard templates via ui-management, so the host stays enabled by default.
+# NOTE: runtime-rule and dsl-debugging are NOT available in the GraalVM native
+# distro (they need runtime DSL codegen); their endpoints return a friendly 501.
+admin-server:
+  selector: ${SW_ADMIN_SERVER:default}
   default:
-    keywords4MaskingSecretsOfConfig: ${SW_DEBUGGING_QUERY_KEYWORDS_FOR_MASKING_SECRETS:user,password,token,accessKey,secretKey,authentication}
+    host: ${SW_ADMIN_SERVER_HOST:0.0.0.0}
+    port: ${SW_ADMIN_SERVER_PORT:17128}
+    contextPath: ${SW_ADMIN_SERVER_CONTEXT_PATH:/}
+    idleTimeOut: ${SW_ADMIN_SERVER_IDLE_TIMEOUT:30000}
+    acceptQueueSize: ${SW_ADMIN_SERVER_QUEUE_SIZE:0}
+    httpMaxRequestHeaderSize: ${SW_ADMIN_SERVER_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    # Admin-internal gRPC bus. MUST be a private interface reachable between OAP
+    # nodes ONLY; never expose it to operators or to the agent network.
+    gRPCHost: ${SW_ADMIN_SERVER_GRPC_HOST:0.0.0.0}
+    gRPCPort: ${SW_ADMIN_SERVER_GRPC_PORT:17129}
+    gRPCMaxConcurrentCallsPerConnection: ${SW_ADMIN_SERVER_GRPC_MAX_CONCURRENT_CALL:0}
+    gRPCMaxMessageSize: ${SW_ADMIN_SERVER_GRPC_MAX_MSG_SIZE:52428800}
+    gRPCThreadPoolSize: ${SW_ADMIN_SERVER_GRPC_THREAD_POOL_SIZE:0}
+    gRPCSslEnabled: ${SW_ADMIN_SERVER_GRPC_SSL_ENABLED:false}
+    gRPCSslKeyPath: ${SW_ADMIN_SERVER_GRPC_SSL_KEY_PATH:""}
+    gRPCSslCertChainPath: ${SW_ADMIN_SERVER_GRPC_SSL_CERT_CHAIN_PATH:""}
+    gRPCSslTrustedCAsPath: ${SW_ADMIN_SERVER_GRPC_SSL_TRUSTED_CAS_PATH:""}
+    internalCommunicationTimeout: ${SW_ADMIN_SERVER_INTERNAL_COMM_TIMEOUT:5000}
+
+# Status feature module — cluster nodes / alarm runtime status / TTL config / debug
+# query trace endpoints. Mounts onto admin-server (default :17128). Relocated from
+# the 10.x status-query-plugin; URI and payload formats are unchanged.
+status:
+  selector: ${SW_STATUS:default}
+  default:
+    keywords4MaskingSecretsOfConfig: ${SW_DEBUGGING_QUERY_KEYWORDS_FOR_MASKING_SECRETS:user,password,trustStorePass,keyStorePass,token,accessKey,secretKey,authentication}
+
+# Inspect API (SWIP-14) — admin-only metric catalog + per-metric entity enumeration.
+# Routes under /inspect/*. Mounts onto admin-server.
+inspect:
+  selector: ${SW_INSPECT:default}
+  default:
+
+# UI Management REST surface — add / change / disable / list dashboard templates.
+# Mounts onto admin-server. The Horizon UI (apache/skywalking-horizon-ui) loads
+# dashboards through these endpoints.
+ui-management:
+  selector: ${SW_UI_MANAGEMENT:default}
+  default:
 
 configuration-discovery:
   selector: ${SW_CONFIGURATION_DISCOVERY:default}

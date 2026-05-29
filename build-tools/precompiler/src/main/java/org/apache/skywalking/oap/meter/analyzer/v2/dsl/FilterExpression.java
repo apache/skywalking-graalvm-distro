@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import javassist.ClassPool;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
@@ -83,6 +84,16 @@ public class FilterExpression {
             throw new IllegalStateException(
                 "Failed to compile MAL filter expression: " + literal, e);
         }
+    }
+
+    // Runtime-rule overload (upstream signature). The precompiler only runs the startup path
+    // (pool/targetClassLoader null), so it delegates to the shared-generator compile.
+    public FilterExpression(final String literal,
+                            final String filterNameHint,
+                            final String yamlSource,
+                            final ClassPool pool,
+                            final ClassLoader targetClassLoader) {
+        this(literal, filterNameHint, yamlSource);
     }
 
     public Map<String, SampleFamily> filter(final Map<String, SampleFamily> sampleFamilies) {

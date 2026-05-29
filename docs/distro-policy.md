@@ -18,12 +18,24 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 | **Configuration** | ConfigurationModule | Kubernetes |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
 | **Analyzers** | AnalyzerModule, LogAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule | default providers |
-| **Query** | QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule, StatusQueryModule | default providers |
+| **Query** | QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule | default providers |
+| **Admin** | AdminServerModule, StatusModule, InspectModule, UIManagementModule | default; dsl-debugging + runtime-rule excluded (return 501) |
 | **Alarm** | AlarmModule | default |
 | **Telemetry** | TelemetryModule | Prometheus |
 | **Other** | ExporterModule, HealthCheckerModule, AIPipelineModule | default providers |
 
 **Full feature set.** Work around issues as they arise.
+
+> **Admin server family (11.0.0+).** `StatusModule` — cluster / alarm-runtime / TTL-config
+> status plus the `/debugging/*` debug-query trace endpoints — was relocated from the 10.x
+> `status-query` query plugin onto the admin-server host (default `:17128`); URIs and payloads
+> are unchanged. `InspectModule` (SWIP-14 metric catalog + entity enumeration, `/inspect/*`)
+> and `UIManagementModule` (dashboard-template REST consumed by the Horizon UI,
+> `/ui-management/*`) are hosted there as well. `DSLDebuggingModule` (SWIP-13 DSL live
+> debugger, `/dsl-debugging/*`) and `RuntimeRuleModule` (MAL/LAL hot-update, `/runtime/*`) are
+> **not supported** in this distro: both need runtime Javassist code generation, which a
+> closed-world native image cannot do. Their endpoints return a friendly HTTP 501 via a stub
+> module provider.
 
 ---
 
@@ -145,7 +157,6 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 | `ebpf-receiver-for-graalvm` | `EBPFReceiverModuleConfig` |
 | `aws-firehose-receiver-for-graalvm` | `AWSFirehoseReceiverModuleConfig` |
 | `cilium-fetcher-for-graalvm` | `CiliumFetcherConfig` |
-| `status-query-for-graalvm` | `StatusQueryConfig` |
 | `health-checker-for-graalvm` | `HealthCheckerConfig` |
 
 ### No Classpath Ordering Required
@@ -203,11 +214,12 @@ YAML parsing. No reflection involved — safe for GraalVM native image as-is.
 | `metadata-service-mapping.yaml` | 1 | `ResourceUtils.read()` | Metadata service mapping |
 | `service-apdex-threshold.yml` | 1 | `ApdexThresholdConfig` via `ResourceUtils.read()` | APDEX thresholds |
 | `trace-sampling-policy-settings.yml` | 1 | `TraceSamplingPolicyWatcher` via `ResourceUtils.read()` | Trace sampling |
-| `ui-initialized-templates/**` | 131 | `UITemplateInitializer` via `Files.walk()` | UI dashboard JSON templates |
 | `cilium-rules/**` | 2 | `CiliumFetcherProvider` via `ResourceUtils.getPathFiles()` | Cilium flow rules |
 | `openapi-definitions/**` | 1 | `EndpointNameGrouping` via `ResourceUtils.getPathFiles()` | OpenAPI grouping definitions |
 
-**Total: 146 files** included in the distro `config/` directory.
+**Total: 15 files** included in the distro `config/` directory. (Upstream 11.0.0 removed the
+bundled `ui-initialized-templates/` + `UITemplateInitializer`; dashboard templates are now managed
+via the `ui-management` REST surface.)
 
 ### Pre-compiled at Build Time (NOT in distro)
 
@@ -219,15 +231,15 @@ packaged in JARs. The YAML source files are not needed at runtime.
 |---|---|---|---|
 | `oal/*.oal` | 9 | ~620 metrics + ~620 builders + ~45 dispatchers (Javassist) | OAL v2 engine |
 | `meter-analyzer-config/*.yaml` | 11 | ~147 `MalExpression` classes (ANTLR4+Javassist) + meter classes | MAL v2 compiler |
-| `otel-rules/**/*.yaml` | 55 | ~1039 `MalExpression` classes + meter classes | MAL v2 compiler |
-| `log-mal-rules/*.yaml` | 2 | ~2 `MalExpression` classes | MAL v2 compiler |
+| `otel-rules/**/*.yaml` | 65 | ~1039 `MalExpression` classes + meter classes | MAL v2 compiler |
+| `log-mal-rules/*.yaml` | 4 | ~4 `MalExpression` classes | MAL v2 compiler |
 | `envoy-metrics-rules/*.yaml` | 2 | ~26 `MalExpression` classes + meter classes | MAL v2 compiler |
 | `telegraf-rules/*.yaml` | 1 | ~20 `MalExpression` classes + meter classes | MAL v2 compiler |
 | `zabbix-rules/*.yaml` | 1 | ~15 `MalExpression` classes + meter classes | MAL v2 compiler |
-| `lal/*.yaml` | 8 | ~10 `LalExpression` classes (ANTLR4+Javassist) | LAL v2 compiler |
+| `lal/*.yaml` | 11 | ~12 `LalExpression` classes (ANTLR4+Javassist) | LAL v2 compiler |
 | `hierarchy-definition.yml` | 1 | ~4 `BiFunction` hierarchy rule classes | Hierarchy v2 compiler |
 
-**Total: 90 files** consumed at build time, producing ~1285 OAL classes, ~1250 MAL expression classes, ~1188 meter classes, ~10 LAL expression classes, and ~4 hierarchy rule classes.
+**Total: 105 files** consumed at build time, producing ~1285 OAL classes, ~1250 MAL expression classes, ~1188 meter classes, ~12 LAL expression classes, and ~4 hierarchy rule classes.
 
 Additionally, the precompiler serializes parsed config POJOs as JSON manifests in
 `META-INF/config-data/` (7 JSON files for meter-analyzer-config, otel-rules,
@@ -277,7 +289,7 @@ All four DSL compilers (OAL/MAL/LAL/Hierarchy) use ANTLR4 + Javassist v2 engines
 - `reflect-config.json` auto-generated by precompiler from manifests (OAL, MAL, LAL, meter, HTTP handlers, GraphQL types)
 - `log4j2-reflect-config.json` for Log4j2 plugin classes; console-only `log4j2.xml` with `SW_LOG_LEVEL` env var
 - gRPC/Netty/Protobuf/Armeria via GraalVM reachability metadata repository
-- Auto-scanned reflection metadata: Armeria HTTP handlers (~19), GraphQL resolvers (~32), GraphQL types (~182), config POJOs (8)
+- Auto-scanned reflection metadata: Armeria HTTP handlers (~27, incl. admin-server/status/inspect/ui-management), GraphQL resolvers (~32), GraphQL types (~182), config POJOs (8)
 - Native binary: ~203MB, boots to full module init with all HTTP endpoints functional
 
 ### Native Distro Packaging

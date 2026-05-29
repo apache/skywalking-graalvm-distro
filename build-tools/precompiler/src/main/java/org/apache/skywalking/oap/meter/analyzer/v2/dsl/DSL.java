@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import javassist.ClassPool;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
 
@@ -77,6 +78,16 @@ public final class DSL {
                 "Failed to compile MAL expression for metric: " + metricName
                     + ", expression: " + expression, e);
         }
+    }
+
+    // Runtime-rule overload (upstream signature). The precompiler only runs the startup path
+    // (pool/targetClassLoader null), so it delegates to the shared-GENERATOR compile.
+    public static Expression parse(final String metricName,
+                                   final String expression,
+                                   final String yamlSource,
+                                   final ClassPool pool,
+                                   final ClassLoader targetClassLoader) {
+        return parse(metricName, expression, yamlSource);
     }
 
     public static String expressionKey(final String expression, final String metricName) {

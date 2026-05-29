@@ -196,10 +196,7 @@ public class ConfigInitializerGenerator {
         // Collect all imports needed for config classes and their field types
         TreeMap<String, String> imports = new TreeMap<>();
         for (var entry : configClasses.entrySet()) {
-            // Skip imports for config classes with no fields (not used in generated code)
-            if (entry.getValue().fields.isEmpty()) {
-                continue;
-            }
+            // Import every config class for the dispatcher instanceof check (incl. empty ones).
             String fqcn = entry.getKey();
             if (fqcn.contains("$")) {
                 String enclosing = fqcn.substring(0, fqcn.indexOf('$'));
@@ -313,9 +310,6 @@ public class ConfigInitializerGenerator {
         boolean first = true;
         for (var entry : configClasses.entrySet()) {
             ConfigClassInfo info = entry.getValue();
-            if (info.fields.isEmpty()) {
-                continue;
-            }
             String typeRef = javaClassRef(info.configClass);
             if (first) {
                 sb.append("        if (dest instanceof ").append(typeRef).append(") {\n");
@@ -323,8 +317,15 @@ public class ConfigInitializerGenerator {
             } else {
                 sb.append("        } else if (dest instanceof ").append(typeRef).append(") {\n");
             }
-            sb.append("            copyTo").append(methodSuffix(info))
-                .append("((").append(typeRef).append(") dest, src, moduleName, providerName);\n");
+            if (info.fields.isEmpty()) {
+                // Empty config still reaches copyProperties() (its provider returns a non-null
+                // ConfigCreator), so it needs a branch or it hits the "unknown type" throw.
+                sb.append("            // ").append(info.simpleName)
+                    .append(" has no configurable fields; nothing to copy.\n");
+            } else {
+                sb.append("            copyTo").append(methodSuffix(info))
+                    .append("((").append(typeRef).append(") dest, src, moduleName, providerName);\n");
+            }
         }
         if (!first) {
             sb.append("        } else {\n");
