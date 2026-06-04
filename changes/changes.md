@@ -4,7 +4,7 @@
 
 ### Upstream Sync
 
-- Sync SkyWalking submodule to upstream `ad733554b0` (11.0.0-SNAPSHOT).
+- Sync SkyWalking submodule to upstream `89624809f0` (11.0.0-SNAPSHOT).
 - Wire the admin-server family on the admin host (HTTP `:17128`, admin-internal gRPC `:17129`): `admin-server`, `status` (relocated from the 10.x `status-query` plugin — `/status/*`, `/debugging/*`), `inspect` (SWIP-14 metric catalog, `/inspect/*`), and `ui-management` (dashboard-template REST for the Horizon UI, `/ui-management/*`). The `status-query` plugin is removed.
 - Enable iOS (SWIP-11) and mini-program (SWIP-12) OTel metrics rules and Envoy AI Gateway MCP rules; add the mini-program log-MAL rules and the `ai_route_type` searchable log tag.
 - Drop the bundled UI templates: upstream 11.0.0 removed `ui-initialized-templates/` and `UITemplateInitializer`; templates are now managed via `ui-management`.
@@ -20,7 +20,7 @@
 
 ### Documentation
 
-- Document the admin-server family, the status relocation, and the unsupported DSL-debugging / runtime-rule features (HTTP 501) in `distro-policy.md` and `supported-features.md`; add the `0.4.0` → `ad733554b0` row to `version-mapping.md`.
+- Document the admin-server family, the status relocation, and the unsupported DSL-debugging / runtime-rule features (HTTP 501) in `distro-policy.md` and `supported-features.md`; add the `0.4.0` → `89624809f0` row to `version-mapping.md`.
 
 ### Testing
 
@@ -32,6 +32,7 @@
 - Bump `skywalking-infra-e2e` to upstream's pin (`0d917694`) — the synced e2e expected-output templates use the `containsOnce` verify function, which the prior pin predated.
 - Remove the `menu` e2e case (CI matrix + wrapper): upstream dropped the bundled UI in 11.0.0 (#13877), deleting `test/e2e-v2/cases/menu/`, so the distro wrapper referenced a non-existent reuse file.
 - Add the `live-debugging` e2e case: boots the native OAP and asserts the admin-server (`:17128`) returns the structured HTTP 501 for the DSL live debugger (`/dsl-debugging/*`) and runtime-rule (`/runtime/*`) endpoints. The first e2e to exercise the admin port — it caught the missing reflection registration noted above (the stub had been returning 404).
+- Adopt the upstream **swctl admin** migration (#13889): bump the pinned `skywalking-cli` (`SW_CTL_COMMIT`) to the admin-capable commit (`b447211a`) and drive the `live-debugging` admin checks through `swctl admin dsl-debug` / `runtime-rule` / `oal` alongside the existing raw-curl contract checks — verifying that the official CLI surfaces this distro's structured HTTP 501 (`feature_not_available_in_graalvm_native`) for both the DSL live debugger and runtime-rule roots, rather than crashing or reporting a confusing 404.
 
 ## 0.3.0
 
