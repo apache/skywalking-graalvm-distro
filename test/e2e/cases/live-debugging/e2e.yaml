@@ -19,7 +19,10 @@
 # image cannot do. This distro pre-compiles all DSL at build time and serves a structured
 # HTTP 501 for those admin-server endpoints. This case verifies that contract.
 # Verify-only (no trigger): infra-e2e's trigger step aborts on a non-2xx response, so the
-# 501 is asserted through verify cases that curl the admin-server (port 17128) directly.
+# 501 is asserted through verify cases. Two complementary views: raw curl against the
+# admin-server (port 17128) pins the exact HTTP-contract body, while `swctl admin ...`
+# checks that the upstream admin-capable CLI (#13889) surfaces the same 501 cleanly to
+# end users instead of crashing or reporting a confusing 404.
 
 setup:
   env: compose
@@ -29,6 +32,8 @@ setup:
   steps:
     - name: set PATH
       command: export PATH=/tmp/skywalking-infra-e2e/bin:$PATH
+    - name: install swctl
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
 
 verify:
   retry:

@@ -41,3 +41,49 @@ cases:
     expected: expected/http-status-501.yml
   - query: "echo httpStatus: $(curl -s -o /dev/null -w '%{http_code}' http://${oap_host}:${oap_17128}/runtime/rule/list)"
     expected: expected/http-status-501.yml
+
+  # --- Same 501 contract, now seen through the official `swctl admin` CLI ----------------
+  # Upstream #13889 moved the e2e admin-API calls from raw curl to the `swctl admin ...`
+  # command tree (SW_CTL_COMMIT bumped to the admin-capable build). Those same commands run
+  # against this distro must degrade cleanly: the stub returns HTTP 501, so swctl exits
+  # non-zero and logs its typed error envelope ("admin API <url>: HTTP 501: <body>") — the
+  # distro's structured body rides along inside it. `2>&1 || true` captures the envelope;
+  # grep pulls the stable fields back out (httpStatus + error code + feature root), proving
+  # the CLI reports a clean "unsupported" rather than crashing or a confusing 404. The
+  # feature root is the first dsl-debugging/runtime-rule token in the envelope (the path for
+  # dsl-debug, the feature field for runtime-rule — both resolve to the correct root).
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug status 2>&1 || true)
+      printf 'httpStatus: %s\nerror: %s\nfeature: %s\n' \
+        "$(echo "$out" | grep -oE 'HTTP [0-9]+' | grep -oE '[0-9]+' | head -1)" \
+        "$(echo "$out" | grep -oE 'feature_not_available_in_graalvm_native' | head -1)" \
+        "$(echo "$out" | grep -oE 'dsl-debugging|runtime-rule' | head -1)"
+    expected: expected/swctl-dsl-debugging-501.yml
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug sessions 2>&1 || true)
+      printf 'httpStatus: %s\nerror: %s\nfeature: %s\n' \
+        "$(echo "$out" | grep -oE 'HTTP [0-9]+' | grep -oE '[0-9]+' | head -1)" \
+        "$(echo "$out" | grep -oE 'feature_not_available_in_graalvm_native' | head -1)" \
+        "$(echo "$out" | grep -oE 'dsl-debugging|runtime-rule' | head -1)"
+    expected: expected/swctl-dsl-debugging-501.yml
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session start --catalog otel-rules --name vm --rule-name vm_memory_used 2>&1 || true)
+      printf 'httpStatus: %s\nerror: %s\nfeature: %s\n' \
+        "$(echo "$out" | grep -oE 'HTTP [0-9]+' | grep -oE '[0-9]+' | head -1)" \
+        "$(echo "$out" | grep -oE 'feature_not_available_in_graalvm_native' | head -1)" \
+        "$(echo "$out" | grep -oE 'dsl-debugging|runtime-rule' | head -1)"
+    expected: expected/swctl-dsl-debugging-501.yml
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin runtime-rule list 2>&1 || true)
+      printf 'httpStatus: %s\nerror: %s\nfeature: %s\n' \
+        "$(echo "$out" | grep -oE 'HTTP [0-9]+' | grep -oE '[0-9]+' | head -1)" \
+        "$(echo "$out" | grep -oE 'feature_not_available_in_graalvm_native' | head -1)" \
+        "$(echo "$out" | grep -oE 'dsl-debugging|runtime-rule' | head -1)"
+    expected: expected/swctl-runtime-rule-501.yml
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin oal files 2>&1 || true)
+      printf 'httpStatus: %s\nerror: %s\nfeature: %s\n' \
+        "$(echo "$out" | grep -oE 'HTTP [0-9]+' | grep -oE '[0-9]+' | head -1)" \
+        "$(echo "$out" | grep -oE 'feature_not_available_in_graalvm_native' | head -1)" \
+        "$(echo "$out" | grep -oE 'dsl-debugging|runtime-rule' | head -1)"
+    expected: expected/swctl-runtime-rule-501.yml
