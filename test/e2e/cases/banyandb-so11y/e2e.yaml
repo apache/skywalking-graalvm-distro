@@ -13,8 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-status: 501
-error: feature_not_available_in_graalvm_native
-feature: dsl-debugging
-path: /dsl-debugging/session
-message: "This feature requires runtime DSL (MAL/LAL/OAL) compilation, which is not available in the SkyWalking GraalVM native distribution. All DSL rules are pre-compiled at build time; runtime rule hot-update and the DSL live debugger are disabled. Use the standard JVM OAP distribution if you need these features."
+# Simple Java Agent E2E — native OAP with BanyanDB
+# Reuses upstream verification cases and expected files.
+
+setup:
+  env: compose
+  file: docker-compose.yml
+  timeout: 20m
+  init-system-environment: ../../script/env
+  steps:
+    - name: set PATH
+      command: export PATH=/tmp/skywalking-infra-e2e/bin:$PATH
+    - name: install yq
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh yq
+    - name: install swctl
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
+
+verify:
+  retry:
+    count: 60
+    interval: 3s
+  cases:
+    - includes:
+        - ../../../../skywalking/test/e2e-v2/cases/banyandb/banyandb-cases.yaml

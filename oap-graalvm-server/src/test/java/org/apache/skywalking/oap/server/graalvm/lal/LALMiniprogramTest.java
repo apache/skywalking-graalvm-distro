@@ -38,7 +38,7 @@ class LALMiniprogramTest extends LALScriptComparisonBase {
     void allRulesPrecompiled() {
         assertTrue(RULES.size() >= 1, "miniprogram.yaml should have at least 1 rule");
         for (final LALConfig rule : RULES) {
-            final LalExpression expr = loadPrecompiled(rule.getName());
+            final LalExpression expr = loadPrecompiled(rule);
             assertNotNull(expr, "Pre-compiled class for rule '" + rule.getName() + "' should load");
         }
     }

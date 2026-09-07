@@ -78,6 +78,9 @@ Available providers: `standalone`, `kubernetes`
 | restIdleTimeOut | `SW_CORE_REST_IDLE_TIMEOUT` | `30000` |
 | restAcceptQueueSize | `SW_CORE_REST_QUEUE_SIZE` | `0` |
 | httpMaxRequestHeaderSize | `SW_CORE_HTTP_MAX_REQUEST_HEADER_SIZE` | `8192` |
+| restSSLEnabled | `SW_CORE_REST_SSL_ENABLED` | `false` |
+| restSSLKeyPath | `SW_CORE_REST_SSL_KEY_PATH` | *(empty)* |
+| restSSLCertChainPath | `SW_CORE_REST_SSL_CERT_CHAIN_PATH` | *(empty)* |
 | gRPCHost | `SW_CORE_GRPC_HOST` | `0.0.0.0` |
 | gRPCPort | `SW_CORE_GRPC_PORT` | `11800` |
 | maxConcurrentCallsPerConnection | `SW_CORE_GRPC_MAX_CONCURRENT_CALL` | `0` |
@@ -139,7 +142,7 @@ for details on those files.
 | forceSampleErrorSegment | `SW_FORCE_SAMPLE_ERROR_SEGMENT` | `true` |
 | segmentStatusAnalysisStrategy | `SW_SEGMENT_STATUS_ANALYSIS_STRATEGY` | `FROM_SPAN_STATUS` |
 | noUpstreamRealAddressAgents | `SW_NO_UPSTREAM_REAL_ADDRESS` | `6000,9000` |
-| meterAnalyzerActiveFiles | `SW_METER_ANALYZER_ACTIVE_FILES` | `datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime` |
+| meterAnalyzerActiveFiles | `SW_METER_ANALYZER_ACTIVE_FILES` | `datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime,php-runtime,nodejs-runtime` |
 | slowCacheReadThreshold | `SW_SLOW_CACHE_SLOW_READ_THRESHOLD` | `default:20,redis:10` |
 | slowCacheWriteThreshold | `SW_SLOW_CACHE_SLOW_WRITE_THRESHOLD` | `default:20,redis:10` |
 
@@ -176,6 +179,9 @@ No additional settings.
 | restIdleTimeOut | `SW_RECEIVER_SHARING_REST_IDLE_TIMEOUT` | `30000` |
 | restAcceptQueueSize | `SW_RECEIVER_SHARING_REST_QUEUE_SIZE` | `0` |
 | httpMaxRequestHeaderSize | `SW_RECEIVER_SHARING_HTTP_MAX_REQUEST_HEADER_SIZE` | `8192` |
+| restSSLEnabled | `SW_RECEIVER_SHARING_REST_SSL_ENABLED` | `false` |
+| restSSLKeyPath | `SW_RECEIVER_SHARING_REST_SSL_KEY_PATH` | *(empty)* |
+| restSSLCertChainPath | `SW_RECEIVER_SHARING_REST_SSL_CERT_CHAIN_PATH` | *(empty)* |
 | gRPCHost | `SW_RECEIVER_GRPC_HOST` | `0.0.0.0` |
 | gRPCPort | `SW_RECEIVER_GRPC_PORT` | `0` |
 | maxConcurrentCallsPerConnection | `SW_RECEIVER_GRPC_MAX_CONCURRENT_CALL` | `0` |
@@ -352,7 +358,7 @@ No additional settings.
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
 | enabledHandlers | `SW_OTEL_RECEIVER_ENABLED_HANDLERS` | `otlp-metrics,otlp-logs` |
-| enabledOtelMetricsRules | `SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES` | `apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,banyandb/*` |
+| enabledOtelMetricsRules | `SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES` | `apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*` |
 
 ---
 
@@ -373,6 +379,9 @@ Set `SW_RECEIVER_ZIPKIN=default` to enable.
 | restContextPath | `SW_RECEIVER_ZIPKIN_REST_CONTEXT_PATH` | `/` |
 | restIdleTimeOut | `SW_RECEIVER_ZIPKIN_REST_IDLE_TIMEOUT` | `30000` |
 | restAcceptQueueSize | `SW_RECEIVER_ZIPKIN_REST_QUEUE_SIZE` | `0` |
+| restSSLEnabled | `SW_RECEIVER_ZIPKIN_REST_SSL_ENABLED` | `false` |
+| restSSLKeyPath | `SW_RECEIVER_ZIPKIN_REST_SSL_KEY_PATH` | *(empty)* |
+| restSSLCertChainPath | `SW_RECEIVER_ZIPKIN_REST_SSL_CERT_CHAIN_PATH` | *(empty)* |
 | enableKafkaCollector | `SW_ZIPKIN_KAFKA_COLLECTOR_ENABLED` | `false` |
 | kafkaBootstrapServers | `SW_ZIPKIN_KAFKA_SERVERS` | `localhost:9092` |
 | kafkaGroupId | `SW_ZIPKIN_KAFKA_GROUP_ID` | `zipkin` |
@@ -428,6 +437,9 @@ Set `SW_QUERY_ZIPKIN=default` to enable.
 | restContextPath | `SW_QUERY_ZIPKIN_REST_CONTEXT_PATH` | `/zipkin` |
 | restIdleTimeOut | `SW_QUERY_ZIPKIN_REST_IDLE_TIMEOUT` | `30000` |
 | restAcceptQueueSize | `SW_QUERY_ZIPKIN_REST_QUEUE_SIZE` | `0` |
+| restSSLEnabled | `SW_QUERY_ZIPKIN_REST_SSL_ENABLED` | `false` |
+| restSSLKeyPath | `SW_QUERY_ZIPKIN_REST_SSL_KEY_PATH` | *(empty)* |
+| restSSLCertChainPath | `SW_QUERY_ZIPKIN_REST_SSL_CERT_CHAIN_PATH` | *(empty)* |
 | lookback | `SW_QUERY_ZIPKIN_LOOKBACK` | `86400000` |
 | namesMaxAge | `SW_QUERY_ZIPKIN_NAMES_MAX_AGE` | `300` |
 | uiQueryLimit | `SW_QUERY_ZIPKIN_UI_QUERY_LIMIT` | `10` |
@@ -446,6 +458,9 @@ Set `SW_QUERY_ZIPKIN=default` to enable.
 | restContextPath | `SW_PROMQL_REST_CONTEXT_PATH` | `/` |
 | restIdleTimeOut | `SW_PROMQL_REST_IDLE_TIMEOUT` | `30000` |
 | restAcceptQueueSize | `SW_PROMQL_REST_QUEUE_SIZE` | `0` |
+| restSSLEnabled | `SW_PROMQL_REST_SSL_ENABLED` | `false` |
+| restSSLKeyPath | `SW_PROMQL_REST_SSL_KEY_PATH` | *(empty)* |
+| restSSLCertChainPath | `SW_PROMQL_REST_SSL_CERT_CHAIN_PATH` | *(empty)* |
 | buildInfoVersion | `SW_PROMQL_BUILD_INFO_VERSION` | `2.45.0` |
 | buildInfoRevision | `SW_PROMQL_BUILD_INFO_REVISION` | `""` |
 | buildInfoBranch | `SW_PROMQL_BUILD_INFO_BRANCH` | `""` |
@@ -466,6 +481,9 @@ Set `SW_QUERY_ZIPKIN=default` to enable.
 | restContextPath | `SW_LOGQL_REST_CONTEXT_PATH` | `/` |
 | restIdleTimeOut | `SW_LOGQL_REST_IDLE_TIMEOUT` | `30000` |
 | restAcceptQueueSize | `SW_LOGQL_REST_QUEUE_SIZE` | `0` |
+| restSSLEnabled | `SW_LOGQL_REST_SSL_ENABLED` | `false` |
+| restSSLKeyPath | `SW_LOGQL_REST_SSL_KEY_PATH` | *(empty)* |
+| restSSLCertChainPath | `SW_LOGQL_REST_SSL_CERT_CHAIN_PATH` | *(empty)* |
 
 ---
 
@@ -540,13 +558,79 @@ Set `SW_EXPORTER=default` to enable.
 
 ---
 
-### status-query
+### admin-server
 
-**Selector**: `SW_STATUS_QUERY` (default: `default`)
+**Selector**: `SW_ADMIN_SERVER` (default: `default`)
+
+Hosts the admin HTTP API (status, inspect, ui-management, dsl-debugging) on its own port, plus
+the read-only MAL/LAL rule catalog (`/runtime/rule/list|bundled`, `GET /runtime/rule`). Every
+runtime-rule mutation answers HTTP 501.
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
-| keywords4MaskingSecretsOfConfig | `SW_DEBUGGING_QUERY_KEYWORDS_FOR_MASKING_SECRETS` | `user,password,token,accessKey,secretKey,authentication` |
+| host | `SW_ADMIN_SERVER_HOST` | `0.0.0.0` |
+| port | `SW_ADMIN_SERVER_PORT` | `17128` |
+| contextPath | `SW_ADMIN_SERVER_CONTEXT_PATH` | `/` |
+| idleTimeOut | `SW_ADMIN_SERVER_IDLE_TIMEOUT` | `30000` |
+| acceptQueueSize | `SW_ADMIN_SERVER_QUEUE_SIZE` | `0` |
+| httpMaxRequestHeaderSize | `SW_ADMIN_SERVER_HTTP_MAX_REQUEST_HEADER_SIZE` | `8192` |
+| restSSLEnabled | `SW_ADMIN_SERVER_REST_SSL_ENABLED` | `false` |
+| restSSLKeyPath | `SW_ADMIN_SERVER_REST_SSL_KEY_PATH` | *(empty)* |
+| restSSLCertChainPath | `SW_ADMIN_SERVER_REST_SSL_CERT_CHAIN_PATH` | *(empty)* |
+| gRPCHost | `SW_ADMIN_SERVER_GRPC_HOST` | `0.0.0.0` |
+| gRPCPort | `SW_ADMIN_SERVER_GRPC_PORT` | `17129` |
+| gRPCMaxConcurrentCallsPerConnection | `SW_ADMIN_SERVER_GRPC_MAX_CONCURRENT_CALL` | `0` |
+| gRPCMaxMessageSize | `SW_ADMIN_SERVER_GRPC_MAX_MSG_SIZE` | `52428800` |
+| gRPCThreadPoolSize | `SW_ADMIN_SERVER_GRPC_THREAD_POOL_SIZE` | `0` |
+| gRPCSslEnabled | `SW_ADMIN_SERVER_GRPC_SSL_ENABLED` | `false` |
+| gRPCSslKeyPath | `SW_ADMIN_SERVER_GRPC_SSL_KEY_PATH` | *(empty)* |
+| gRPCSslCertChainPath | `SW_ADMIN_SERVER_GRPC_SSL_CERT_CHAIN_PATH` | *(empty)* |
+| gRPCSslTrustedCAsPath | `SW_ADMIN_SERVER_GRPC_SSL_TRUSTED_CAS_PATH` | *(empty)* |
+| internalCommunicationTimeout | `SW_ADMIN_SERVER_INTERNAL_COMM_TIMEOUT` | `5000` |
+
+---
+
+### status
+
+**Selector**: `SW_STATUS` (default: `default`)
+
+Cluster nodes, alarm runtime status, TTL config and debugging query-trace endpoints, mounted on
+admin-server. Relocated from the 10.x `status-query` module; URIs and payloads are unchanged.
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| keywords4MaskingSecretsOfConfig | `SW_DEBUGGING_QUERY_KEYWORDS_FOR_MASKING_SECRETS` | `user,password,trustStorePass,keyStorePass,token,accessKey,secretKey,authentication` |
+
+---
+
+### dsl-debugging
+
+**Selector**: `SW_DSL_DEBUGGING` (default: `default`)
+
+SWIP-13 DSL live debugger (`/dsl-debugging/*`) and the read-only OAL listing (`/runtime/oal/*`),
+mounted on admin-server. The debug probes are compiled into every rule class at build time, so
+the flag below only gates the debug API.
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| injectionEnabled | `SW_DSL_DEBUGGING_INJECTION_ENABLED` | `true` |
+
+---
+
+### inspect
+
+**Selector**: `SW_INSPECT` (default: `default`)
+
+Admin-only metric catalog and per-metric entity enumeration under `/inspect/*` (SWIP-14). No settings.
+
+---
+
+### ui-management
+
+**Selector**: `SW_UI_MANAGEMENT` (default: `default`)
+
+Dashboard template add / change / disable / list REST surface under `/ui-management/*`, used by the
+Horizon UI. No settings.
 
 ---
 

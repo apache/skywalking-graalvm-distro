@@ -24,16 +24,22 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.apache.skywalking.oap.meter.analyzer.v2.MetricConvert;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.counter.CounterWindow;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Expression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.ExpressionMetadata;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalExpression;
@@ -177,12 +183,18 @@ abstract class MALScriptComparisonBase {
         if (metadata.getAggregationLabels() != null) {
             requiredLabels.addAll(metadata.getAggregationLabels());
         }
+        // Metadata only knows scope/aggregation keys; closures (tags['x'], tags.x) and relation
+        // key lists reference more. A superset of labels is harmless, a missing one makes the
+        // expression drop every sample and the test vacuous.
+        requiredLabels.addAll(referencedLabels(expression));
+        Map<String, List<String>> tagValues = tagEqualValues(expression);
+        boolean histogram = expression.contains(".histogram(");
 
         ImmutableMap<String, SampleFamily> input1 = buildInputForSamples(
-            sampleNames, requiredLabels, 100.0,
+            sampleNames, requiredLabels, tagValues, histogram, 100.0,
             Instant.parse("2024-01-01T00:00:00Z").toEpochMilli());
         ImmutableMap<String, SampleFamily> input2 = buildInputForSamples(
-            sampleNames, requiredLabels, 200.0,
+            sampleNames, requiredLabels, tagValues, histogram, 200.0,
             Instant.parse("2024-01-01T00:00:10Z").toEpochMilli());
 
         Expression precompiledExpr = loadPrecompiled(yamlResource, metricName, expression);
@@ -221,9 +233,13 @@ abstract class MALScriptComparisonBase {
         Result precompiledResult;
 
         if (needsWarmup) {
+            // Since upstream #13911 CounterWindow is keyed by sample name, not metric name, so both
+            // paths would share one window; run them back to back with a reset in between.
+            CounterWindow.INSTANCE.reset();
             freshExpr.run(input1);
-            precompiledExpr.run(input1);
             freshResult = freshExpr.run(input2);
+            CounterWindow.INSTANCE.reset();
+            precompiledExpr.run(input1);
             precompiledResult = precompiledExpr.run(input2);
         } else {
             freshResult = freshExpr.run(input1);
@@ -296,6 +312,13 @@ abstract class MALScriptComparisonBase {
                                           final ImmutableMap<String, String> scope,
                                           final double scale,
                                           final long timestamp) {
+        return SampleFamilyBuilder.newBuilder(histogramSampleArray(name, scope, scale, timestamp)).build();
+    }
+
+    static Sample[] histogramSampleArray(final String name,
+                                         final ImmutableMap<String, String> scope,
+                                         final double scale,
+                                         final long timestamp) {
         String[] les = {
             "0.005", "0.01", "0.025", "0.05", "0.1", "0.25",
             "0.5", "1", "2.5", "5", "10"
@@ -311,35 +334,95 @@ abstract class MALScriptComparisonBase {
                 .timestamp(timestamp)
                 .build();
         }
-        return SampleFamilyBuilder.newBuilder(samples).build();
+        return samples;
+    }
+
+    private static final Pattern QUOTED_IN_BRACKETS = Pattern.compile("\\[([^\\]]*)\\]");
+    private static final Pattern QUOTED = Pattern.compile("'([A-Za-z_][A-Za-z0-9_]*)'");
+    private static final Pattern TAGS_PROPERTY = Pattern.compile("tags\\.([A-Za-z_][A-Za-z0-9_]*)");
+    private static final Pattern TAG_EQUAL = Pattern.compile("tagEqual\\(\\s*'([^']+)'\\s*,\\s*'([^']*)'\\s*\\)");
+
+    /** Every label an expression names in a {@code [...]} list, {@code tags['x']} or {@code tags.x}. */
+    static Set<String> referencedLabels(final String expression) {
+        Set<String> labels = new HashSet<>();
+        Matcher lists = QUOTED_IN_BRACKETS.matcher(expression);
+        while (lists.find()) {
+            Matcher quoted = QUOTED.matcher(lists.group(1));
+            while (quoted.find()) {
+                labels.add(quoted.group(1));
+            }
+        }
+        Matcher props = TAGS_PROPERTY.matcher(expression);
+        while (props.find()) {
+            labels.add(props.group(1));
+        }
+        return labels;
+    }
+
+    /** {@code tagEqual('k','v')} pairs, grouped by key, so each value gets its own sample. */
+    static Map<String, List<String>> tagEqualValues(final String expression) {
+        Map<String, List<String>> values = new TreeMap<>();
+        Matcher m = TAG_EQUAL.matcher(expression);
+        while (m.find()) {
+            List<String> list = values.computeIfAbsent(m.group(1), k -> new ArrayList<>());
+            if (!list.contains(m.group(2))) {
+                list.add(m.group(2));
+            }
+        }
+        return values;
     }
 
     private static ImmutableMap<String, SampleFamily> buildInputForSamples(
             final List<String> sampleNames,
             final Set<String> requiredLabels,
+            final Map<String, List<String>> tagValues,
+            final boolean histogram,
             final double value,
             final long timestamp) {
-        ImmutableMap.Builder<String, SampleFamily> builder = ImmutableMap.builder();
         ImmutableMap.Builder<String, String> labelBuilder = ImmutableMap.builder();
         labelBuilder.put("service", "test-svc");
         labelBuilder.put("instance", "test-inst");
         for (String label : requiredLabels) {
-            if (!"service".equals(label) && !"instance".equals(label)) {
-                labelBuilder.put(label, "test-" + label);
+            if ("service".equals(label) || "instance".equals(label)
+                || tagValues.containsKey(label) || (histogram && "le".equals(label))) {
+                continue;
             }
+            labelBuilder.put(label, "test-" + label);
         }
-        ImmutableMap<String, String> labels = labelBuilder.build();
+        // One label set per combination of tagEqual values (cartesian, small in practice).
+        List<Map<String, String>> labelSets = new ArrayList<>();
+        labelSets.add(new LinkedHashMap<>(labelBuilder.build()));
+        for (Map.Entry<String, List<String>> tag : tagValues.entrySet()) {
+            List<Map<String, String>> expanded = new ArrayList<>();
+            for (Map<String, String> base : labelSets) {
+                for (String v : tag.getValue()) {
+                    Map<String, String> copy = new LinkedHashMap<>(base);
+                    copy.put(tag.getKey(), v);
+                    expanded.add(copy);
+                }
+            }
+            labelSets = expanded;
+        }
 
+        ImmutableMap.Builder<String, SampleFamily> builder = ImmutableMap.builder();
         for (String sampleName : sampleNames) {
-            SampleFamily sf = SampleFamilyBuilder.newBuilder(
-                Sample.builder()
-                    .name(sampleName)
-                    .labels(labels)
-                    .value(value)
-                    .timestamp(timestamp)
-                    .build()
-            ).build();
-            builder.put(sampleName, sf);
+            List<Sample> samples = new ArrayList<>();
+            for (Map<String, String> labelSet : labelSets) {
+                ImmutableMap<String, String> labels = ImmutableMap.copyOf(labelSet);
+                if (histogram) {
+                    samples.addAll(Arrays.asList(
+                        histogramSampleArray(sampleName, labels, value / 100.0, timestamp)));
+                } else {
+                    samples.add(Sample.builder()
+                        .name(sampleName)
+                        .labels(labels)
+                        .value(value)
+                        .timestamp(timestamp)
+                        .build());
+                }
+            }
+            builder.put(sampleName, SampleFamilyBuilder.newBuilder(
+                samples.toArray(new Sample[0])).build());
         }
         return builder.build();
     }

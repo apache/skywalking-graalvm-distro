@@ -176,8 +176,9 @@
         </dependency>
 
         <!-- Admin server family (11.0.0+). Used as-is (configs already carry @Setter,
-             no same-FQCN replacement needed). runtime-rule + dsl-debugging are NOT
-             included: their runtime-Javassist codegen can't run under native image. -->
+             no same-FQCN replacement needed). dsl-debugging works because the precompiler
+             compiles its probes into every rule class; runtime-rule is NOT included: its
+             runtime-Javassist codegen can't run under native image. -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>admin-server</artifactId>
@@ -193,6 +194,10 @@
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>ui-management</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>dsl-debugging</artifactId>
         </dependency>
 
         <!-- Core (non-repackaged) -->

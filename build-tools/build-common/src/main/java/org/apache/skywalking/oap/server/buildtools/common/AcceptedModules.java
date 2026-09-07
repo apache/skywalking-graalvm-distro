@@ -96,12 +96,15 @@ public final class AcceptedModules {
         new ModuleProviderPair("health-checker", "default"),
         // AI Pipeline
         new ModuleProviderPair("ai-pipeline", "default"),
-        // Admin server family (11.0.0+). runtime-rule + dsl-debugging are intentionally
-        // excluded — they need runtime Javassist codegen, unsupported under native image.
+        // Admin server family (11.0.0+). runtime-rule is intentionally
+        // excluded — it needs runtime Javassist codegen, unsupported under native image.
         new ModuleProviderPair("admin-server", "default"),
         new ModuleProviderPair("status", "default"),
         new ModuleProviderPair("inspect", "default"),
-        new ModuleProviderPair("ui-management", "default")
+        new ModuleProviderPair("ui-management", "default"),
+        // dsl-debugging: probes are compiled into every rule class by the precompiler, so the
+        // module only flips gates at runtime. runtime-rule stays out (needs runtime codegen).
+        new ModuleProviderPair("dsl-debugging", "default")
     );
 
     /**

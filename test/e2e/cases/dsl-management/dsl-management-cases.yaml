@@ -1,0 +1,99 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# DSL management on the GraalVM native distro is READ-ONLY. Asserts, with raw curl and the
+# official `swctl admin` CLI, that:
+#   * the rule catalogs work exactly like upstream: /runtime/rule/list (always an empty
+#     envelope: no runtime rules exist), /runtime/rule/bundled (every shipped MAL/LAL file),
+#     GET /runtime/rule (the YAML plus the X-Sw-* headers) and /runtime/oal/* — what Horizon's
+#     DSL catalog / editor / OAL pages and the live-debug pickers read;
+#   * every runtime-rule MUTATION (addOrUpdate / inactivate / delete / dump, /runtime/mal/*,
+#     /runtime/lal/*) returns a structured HTTP 501 — hot-update needs runtime Javassist
+#     codegen a native image cannot do. The live debugger itself is covered by the
+#     dsl-debugging and dsl-debugging-oal cases.
+cases:
+  # --- runtime-rule mutations -> 501, feature=runtime-rule ---
+  - query: curl -s -X POST http://${oap_host}:${oap_17128}/runtime/rule/addOrUpdate
+    expected: expected/runtime-rule-addorupdate.yml
+  - query: "echo httpStatus: $(curl -s -o /dev/null -w '%{http_code}' -X POST http://${oap_host}:${oap_17128}/runtime/rule/inactivate)"
+    expected: expected/http-status-501.yml
+  - query: "echo httpStatus: $(curl -s -o /dev/null -w '%{http_code}' -X POST http://${oap_host}:${oap_17128}/runtime/rule/delete)"
+    expected: expected/http-status-501.yml
+  - query: "echo httpStatus: $(curl -s -o /dev/null -w '%{http_code}' http://${oap_host}:${oap_17128}/runtime/rule/dump)"
+    expected: expected/http-status-501.yml
+  - query: "echo httpStatus: $(curl -s -o /dev/null -w '%{http_code}' -X POST http://${oap_host}:${oap_17128}/runtime/lal/addOrUpdate)"
+    expected: expected/http-status-501.yml
+
+  # --- read-only rule catalogs -> 200, upstream payload shapes ---
+  - query: curl -s http://${oap_host}:${oap_17128}/runtime/rule/list
+    expected: expected/runtime-rule-list.yml
+  - query: curl -s "http://${oap_host}:${oap_17128}/runtime/rule/bundled?catalog=lal&withContent=false"
+    expected: expected/runtime-rule-bundled-lal.yml
+  - query: curl -s "http://${oap_host}:${oap_17128}/runtime/rule/bundled?catalog=otel-rules&withContent=false"
+    expected: expected/runtime-rule-bundled-otel.yml
+  # The JSON form carries the whole YAML in `content`; fold it to a boolean so the expectation stays valid YAML.
+  - query: |
+      curl -s -H 'Accept: application/json' "http://${oap_host}:${oap_17128}/runtime/rule?catalog=lal&name=default" \
+        | yq -p json -o yaml '.content = (.content | length > 0)' -
+    expected: expected/runtime-rule-get-bundled.yml
+  # The YAML form is what the Horizon editor loads; the metadata rides in the X-Sw-* headers.
+  - query: |
+      resp=$(curl -s -i "http://${oap_host}:${oap_17128}/runtime/rule?catalog=lal&name=default&source=bundled" | tr -d '\r')
+      printf 'httpStatus: %s\nstatus: %s\nsource: %s\nhasRules: %s\n' \
+        "$(echo "$resp" | head -1 | cut -d' ' -f2)" \
+        "$(echo "$resp" | grep -i '^x-sw-status:' | cut -d' ' -f2)" \
+        "$(echo "$resp" | grep -i '^x-sw-source:' | cut -d' ' -f2)" \
+        "$(echo "$resp" | grep -c '^rules:')"
+    expected: expected/runtime-rule-get-yaml.yml
+  - query: curl -s http://${oap_host}:${oap_17128}/runtime/oal/files
+    expected: expected/runtime-oal-files.yml
+  - query: curl -s http://${oap_host}:${oap_17128}/runtime/oal/rules
+    expected: expected/runtime-oal-rules.yml
+  # Upstream's {name} route takes the file name path-escaped (oal%2Fcore.oal), as swctl and Horizon send it.
+  - query: |
+      printf 'httpStatus: %s\nhasFrom: %s\n' \
+        "$(curl -s -o /dev/null -w '%{http_code}' http://${oap_host}:${oap_17128}/runtime/oal/files/oal%2Fcore.oal)" \
+        "$(curl -s http://${oap_host}:${oap_17128}/runtime/oal/files/oal%2Fcore.oal | grep -c 'from(')"
+    expected: expected/runtime-oal-file.yml
+
+  # --- Same contract seen through the official `swctl admin` CLI ----------------------------
+  # Upstream #13889 moved the e2e admin-API calls from raw curl to `swctl admin ...`. Read
+  # commands must succeed with the upstream payloads; runtime-rule mutations must degrade
+  # cleanly: the stub returns HTTP 501, swctl exits non-zero and logs its typed error envelope
+  # ("admin API <url>: HTTP 501: <body>"), and grep pulls the stable fields back out
+  # (httpStatus + error code + feature root).
+  - query: swctl --display yaml --admin-url=http://${oap_host}:${oap_17128} admin runtime-rule list
+    expected: expected/swctl-runtime-rule-list.yml
+  - query: swctl --display yaml --admin-url=http://${oap_host}:${oap_17128} admin runtime-rule bundled --catalog lal --with-content=false
+    expected: expected/runtime-rule-bundled-lal.yml
+  - query: swctl --display yaml --admin-url=http://${oap_host}:${oap_17128} admin oal files
+    expected: expected/runtime-oal-files.yml
+  - query: swctl --display yaml --admin-url=http://${oap_host}:${oap_17128} admin oal rules
+    expected: expected/runtime-oal-rules.yml
+  - query: |
+      printf 'metricPrefix: e2e\nmetricsRules:\n  - name: x\n    exp: x\n' > /tmp/sw-e2e-rule.yaml
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin runtime-rule add --catalog otel-rules --name e2e-rule -f /tmp/sw-e2e-rule.yaml 2>&1 || true)
+      printf 'httpStatus: %s\nerror: %s\nfeature: %s\n' \
+        "$(echo "$out" | grep -oE 'HTTP [0-9]+' | grep -oE '[0-9]+' | head -1)" \
+        "$(echo "$out" | grep -oE 'feature_not_available_in_graalvm_native' | head -1)" \
+        "$(echo "$out" | grep -oE 'dsl-debugging|runtime-rule' | head -1)"
+    expected: expected/swctl-runtime-rule-501.yml
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin runtime-rule delete --catalog lal --name default 2>&1 || true)
+      printf 'httpStatus: %s\nerror: %s\nfeature: %s\n' \
+        "$(echo "$out" | grep -oE 'HTTP [0-9]+' | grep -oE '[0-9]+' | head -1)" \
+        "$(echo "$out" | grep -oE 'feature_not_available_in_graalvm_native' | head -1)" \
+        "$(echo "$out" | grep -oE 'dsl-debugging|runtime-rule' | head -1)"
+    expected: expected/swctl-runtime-rule-501.yml

@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import javassist.ClassPool;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
 
 /**
@@ -66,19 +67,19 @@ public class FilterExpression {
 
     public FilterExpression(final String literal,
                             final String filterNameHint,
-                            final String yamlSource) {
+                            final DslSourceRef sourceRef) {
         this.literal = literal;
         try {
             if (filterNameHint != null) {
                 GENERATOR.setClassNameHint(filterNameHint);
             }
-            GENERATOR.setYamlSource(yamlSource);
+            GENERATOR.setSourceRef(sourceRef);
             try {
                 this.malFilter = GENERATOR.compileFilter(literal);
                 FILTER_MAP.putIfAbsent(literal, malFilter.getClass().getName());
             } finally {
                 GENERATOR.setClassNameHint(null);
-                GENERATOR.setYamlSource(null);
+                GENERATOR.setSourceRef(null);
             }
         } catch (Exception e) {
             throw new IllegalStateException(
@@ -90,10 +91,10 @@ public class FilterExpression {
     // (pool/targetClassLoader null), so it delegates to the shared-generator compile.
     public FilterExpression(final String literal,
                             final String filterNameHint,
-                            final String yamlSource,
+                            final DslSourceRef sourceRef,
                             final ClassPool pool,
                             final ClassLoader targetClassLoader) {
-        this(literal, filterNameHint, yamlSource);
+        this(literal, filterNameHint, sourceRef);
     }
 
     public Map<String, SampleFamily> filter(final Map<String, SampleFamily> sampleFamilies) {

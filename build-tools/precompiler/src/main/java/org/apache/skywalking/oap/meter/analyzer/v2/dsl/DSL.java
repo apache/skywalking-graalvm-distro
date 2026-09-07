@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import javassist.ClassPool;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
 
 /**
@@ -63,9 +64,11 @@ public final class DSL {
 
     public static Expression parse(final String metricName,
                                    final String expression,
-                                   final String yamlSource) {
+                                   final DslSourceRef sourceRef) {
         try {
-            GENERATOR.setYamlSource(yamlSource);
+            GENERATOR.setSourceRef(sourceRef);
+            // Upstream DSL.parse threads the expression text into the GateHolder for the debugger.
+            GENERATOR.setContent(expression);
             final MalExpression malExpr = GENERATOR.compile(metricName, expression);
 
             // Record mapping for manifest generation using expression hash
@@ -84,10 +87,10 @@ public final class DSL {
     // (pool/targetClassLoader null), so it delegates to the shared-GENERATOR compile.
     public static Expression parse(final String metricName,
                                    final String expression,
-                                   final String yamlSource,
+                                   final DslSourceRef sourceRef,
                                    final ClassPool pool,
                                    final ClassLoader targetClassLoader) {
-        return parse(metricName, expression, yamlSource);
+        return parse(metricName, expression, sourceRef);
     }
 
     public static String expressionKey(final String expression, final String metricName) {

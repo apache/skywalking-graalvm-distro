@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# `swctl admin dsl-debug ...` against this distro: the official CLI surfaces the
-# stub's HTTP 501 (feature_not_available_in_graalvm_native) for the dsl-debugging root.
-httpStatus: 501
-error: feature_not_available_in_graalvm_native
-feature: dsl-debugging
+files:
+{{- contains .files }}
+- oal/core.oal
+{{- end }}
+count: {{ gt .count 0 }}

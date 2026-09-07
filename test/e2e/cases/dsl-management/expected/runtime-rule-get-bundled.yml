@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-status: 501
-error: feature_not_available_in_graalvm_native
-feature: dsl-debugging
-path: /dsl-debugging/sessions
-message: "This feature requires runtime DSL (MAL/LAL/OAL) compilation, which is not available in the SkyWalking GraalVM native distribution. All DSL rules are pre-compiled at build time; runtime rule hot-update and the DSL live debugger are disabled. Use the standard JVM OAP distribution if you need these features."
+catalog: lal
+name: default
+status: BUNDLED
+source: bundled
+contentHash: {{ notEmpty .contentHash }}
+updateTime: 0
+content: true

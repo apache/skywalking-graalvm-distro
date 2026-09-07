@@ -1,0 +1,42 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The SWIP-13 DSL live debugger on the GraalVM native distro. The debug probes are compiled into
+# the pre-compiled MAL / LAL / OAL classes at build time (the precompiler flips upstream's codegen
+# switch), so upstream's dsl-debugging module installs sessions on the bundled rules without any
+# runtime codegen. Asserts /dsl-debugging/status and a start / get / stop session cycle on a
+# bundled MAL rule and a bundled LAL rule through `swctl admin dsl-debug`. The OAL path, with real
+# captured samples, is upstream's own flow in the dsl-debugging-oal case.
+cases:
+  - query: curl -s http://${oap_host}:${oap_17128}/dsl-debugging/status
+    expected: expected/status.yml
+  # MAL: otel-rules/vm.yaml, metric meter_vm_memory_used (the analyzer's full metric name).
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session start --catalog otel-rules --name vm --rule-name meter_vm_memory_used --client-id e2e-dsl-debugging-mal 2>&1)
+      sid=$(echo "$out" | grep -oE '"sessionId": *"[^"]+"' | head -1 | sed 's/.*: *"//; s/"$//')
+      printf 'started: %s\n' "$([ -n "$sid" ] && echo yes || echo no)"
+      swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session get "$sid" >/dev/null 2>&1 && echo "collected: yes" || echo "collected: no"
+      swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session stop "$sid" >/dev/null 2>&1 && echo "stopped: yes" || echo "stopped: no"
+    expected: expected/session-cycle.yml
+  # LAL: lal/default.yaml, rule "default" (the holder is keyed by the file name and rule name).
+  - query: |
+      out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session start --catalog lal --name default --rule-name default --client-id e2e-dsl-debugging-lal 2>&1)
+      sid=$(echo "$out" | grep -oE '"sessionId": *"[^"]+"' | head -1 | sed 's/.*: *"//; s/"$//')
+      printf 'started: %s\n' "$([ -n "$sid" ] && echo yes || echo no)"
+      swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session get "$sid" >/dev/null 2>&1 && echo "collected: yes" || echo "collected: no"
+      swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session stop "$sid" >/dev/null 2>&1 && echo "stopped: yes" || echo "stopped: no"
+    expected: expected/session-cycle.yml
+  - query: curl -s http://${oap_host}:${oap_17128}/dsl-debugging/sessions
+    expected: expected/sessions-after-stop.yml

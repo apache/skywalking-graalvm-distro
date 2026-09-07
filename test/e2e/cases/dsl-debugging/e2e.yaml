@@ -41,4 +41,4 @@ verify:
     interval: 3s
   cases:
     - includes:
-        - live-debugging-cases.yaml
+        - dsl-debugging-cases.yaml

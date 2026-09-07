@@ -34,7 +34,8 @@ gRPC/HTTP protocols. OpenTelemetry agents sending OTLP data also work.
 ### Can I enable TLS/SSL for gRPC?
 
 No. The native image does not support TLS-encrypted gRPC (`SW_CORE_GRPC_SSL_ENABLED`,
-`SW_RECEIVER_GRPC_SSL_ENABLED`, mTLS). The underlying Netty TLS implementation requires
+`SW_RECEIVER_GRPC_SSL_ENABLED`, mTLS), and the REST TLS options added in 11.0.0
+(`SW_*_REST_SSL_ENABLED`) are unverified for the same reason. The underlying Netty TLS implementation requires
 `netty_tcnative` native libraries that are not bundled in the native image.
 
 **Recommended alternative**: Deploy with a service mesh such as **Istio** or **Linkerd**.

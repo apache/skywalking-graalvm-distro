@@ -27,17 +27,17 @@ import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.Put;
 
 /**
- * Serves a friendly 501 for the admin features the GraalVM native distro cannot support.
+ * Serves a friendly 501 for the one admin feature the GraalVM native distro cannot support:
+ * runtime-rule hot-update (the mutating {@code /runtime/rule/*}, {@code /runtime/mal/*},
+ * {@code /runtime/lal/*} routes), which compiles MAL / LAL rules into fresh bytecode with
+ * Javassist at runtime. A native image is built under a closed-world assumption — no runtime
+ * class generation — so this distro pre-compiles all DSL at build time. The read-only rule
+ * catalog ({@code /runtime/rule/list|bundled}, {@code GET /runtime/rule}) is served by
+ * {@link BundledRuleCatalogHandler}; the DSL live debugger and the OAL listing come from
+ * upstream's dsl-debugging module, whose probes the precompiler compiles into every rule class.
  *
- * <p>The DSL live debugger ({@code /dsl-debugging/*}, {@code /runtime/oal/*}) and runtime-rule
- * hot-update ({@code /runtime/rule/*}, {@code /runtime/mal/*}, {@code /runtime/lal/*}) both
- * compile MAL / LAL / OAL rules into fresh bytecode with Javassist at runtime. A native image
- * is built under a closed-world assumption — no runtime class generation — so this distro
- * pre-compiles all DSL at build time and these on-demand-codegen features are unavailable.
- *
- * <p>Routes are registered with Armeria {@code prefix:} patterns so every verb and sub-path
- * under the two roots resolves here, returning a structured payload the Horizon UI can render
- * instead of hitting a connection error.
+ * <p>Routes return a structured payload the Horizon UI can render instead of hitting a
+ * connection error.
  *
  * <p>This distro-only class is not on the build-time precompiler's classpath (it depends on the
  * precompiler output), so the precompiler's Armeria-handler scan cannot register it. Its
@@ -50,22 +50,48 @@ public class UnsupportedAdminFeatureHandler {
     private static final String MESSAGE =
         "This feature requires runtime DSL (MAL/LAL/OAL) compilation, which is not available "
             + "in the SkyWalking GraalVM native distribution. All DSL rules are pre-compiled at "
-            + "build time; runtime rule hot-update and the DSL live debugger are disabled. Use "
-            + "the standard JVM OAP distribution if you need these features.";
+            + "build time; runtime rule hot-update is disabled. Use the standard JVM OAP "
+            + "distribution if you need it.";
 
-    @Get("prefix:/dsl-debugging")
-    @Post("prefix:/dsl-debugging")
-    @Put("prefix:/dsl-debugging")
-    @Delete("prefix:/dsl-debugging")
-    public HttpResponse dslDebugging(final ServiceRequestContext ctx) {
-        return notImplemented("dsl-debugging", ctx.path());
+    @Post("/runtime/rule/addOrUpdate")
+    public HttpResponse runtimeRuleAddOrUpdate(final ServiceRequestContext ctx) {
+        return notImplemented("runtime-rule", ctx.path());
     }
 
-    @Get("prefix:/runtime")
-    @Post("prefix:/runtime")
-    @Put("prefix:/runtime")
-    @Delete("prefix:/runtime")
-    public HttpResponse runtimeRule(final ServiceRequestContext ctx) {
+    @Post("/runtime/rule/inactivate")
+    public HttpResponse runtimeRuleInactivate(final ServiceRequestContext ctx) {
+        return notImplemented("runtime-rule", ctx.path());
+    }
+
+    @Post("/runtime/rule/delete")
+    public HttpResponse runtimeRuleDelete(final ServiceRequestContext ctx) {
+        return notImplemented("runtime-rule", ctx.path());
+    }
+
+    // The dump is an export of runtime (operator-pushed) rules, of which there are none here.
+    @Get("/runtime/rule/dump")
+    public HttpResponse runtimeRuleDump(final ServiceRequestContext ctx) {
+        return notImplemented("runtime-rule", ctx.path());
+    }
+
+    @Get("/runtime/rule/dump/{catalog}")
+    public HttpResponse runtimeRuleDumpCatalog(final ServiceRequestContext ctx) {
+        return notImplemented("runtime-rule", ctx.path());
+    }
+
+    @Get("prefix:/runtime/mal")
+    @Post("prefix:/runtime/mal")
+    @Put("prefix:/runtime/mal")
+    @Delete("prefix:/runtime/mal")
+    public HttpResponse runtimeMal(final ServiceRequestContext ctx) {
+        return notImplemented("runtime-rule", ctx.path());
+    }
+
+    @Get("prefix:/runtime/lal")
+    @Post("prefix:/runtime/lal")
+    @Put("prefix:/runtime/lal")
+    @Delete("prefix:/runtime/lal")
+    public HttpResponse runtimeLal(final ServiceRequestContext ctx) {
         return notImplemented("runtime-rule", ctx.path());
     }
 

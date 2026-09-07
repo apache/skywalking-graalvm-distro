@@ -17,13 +17,12 @@
 
 package org.apache.skywalking.oap.log.analyzer.v2.dsl;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import javassist.ClassPool;
 import lombok.AccessLevel;
@@ -31,6 +30,8 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.log.analyzer.v2.dsl.spec.filter.FilterSpec;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
+import org.apache.skywalking.oap.server.core.dsl.debug.GateHolder;
 import org.apache.skywalking.oap.server.core.source.LogMetadata;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfig;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
@@ -40,20 +41,19 @@ import org.apache.skywalking.oap.server.library.module.ModuleStartException;
  * Same-FQCN replacement for upstream v2 LAL DSL.
  *
  * <p>Loads pre-compiled {@link LalExpression} classes from the
- * {@code lal-v2-classes.txt} manifest instead of compiling via
- * LALClassGenerator at runtime.
- *
- * <p>The class name is derived from the rule name: each LAL rule is compiled
- * with {@code classNameHint = ruleName}, producing a class like
- * {@code LalExpr_<sanitizedRuleName>}.
+ * {@code META-INF/lal-v2-rules.txt} manifest instead of compiling via
+ * LALClassGenerator at runtime. Rules are keyed by the same source coordinates
+ * ({@code lal/<file>.yaml:<line>}) upstream passes as {@link DslSourceRef}; the rule name is
+ * the fallback for callers without one. The manifest also carries the effective input type
+ * the compiler resolved, which upstream LogFilterListener uses to route mixed-type inputs
+ * (e.g. Envoy HTTP vs TCP access logs) to the right rule.
  */
 @Slf4j
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public class DSL {
-    private static final String MANIFEST_PATH = "META-INF/lal-v2-classes.txt";
-    private static final String PACKAGE_PREFIX =
-        "org.apache.skywalking.oap.log.analyzer.v2.compiler.rt.";
-    private static volatile Map<String, String> CLASS_MAP;
+    private static final String RULES_MANIFEST = "META-INF/lal-v2-rules.txt";
+    private static volatile Map<String, PrecompiledRule> BY_SOURCE;
+    private static volatile Map<String, PrecompiledRule> BY_NAME;
     private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
     private final String ruleName;
@@ -62,6 +62,8 @@ public class DSL {
     @Getter
     private final LalExpression expression;
     private final FilterSpec filterSpec;
+    @Getter
+    private final Class<?> effectiveInputType;
 
     public static DSL of(final ModuleManager moduleManager,
                          final LogAnalyzerModuleConfig config,
@@ -78,18 +80,18 @@ public class DSL {
         return of(moduleManager, config, dsl, inputType, outputType, ruleName, null);
     }
 
-    // Runtime-rule overload (upstream signature). We load the pre-compiled LalExpression by rule
-    // name, so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
+    // Runtime-rule overload (upstream signature). We load the pre-compiled LalExpression by
+    // source coordinates, so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
     public static DSL of(final ModuleManager moduleManager,
                          final LogAnalyzerModuleConfig config,
                          final String dsl,
                          final Class<?> inputType,
                          final Class<?> outputType,
                          final String ruleName,
-                         final String yamlSource,
+                         final DslSourceRef sourceRef,
                          final ClassPool pool,
                          final ClassLoader targetClassLoader) throws ModuleStartException {
-        return of(moduleManager, config, dsl, inputType, outputType, ruleName, yamlSource);
+        return of(moduleManager, config, dsl, inputType, outputType, ruleName, sourceRef);
     }
 
     public static DSL of(final ModuleManager moduleManager,
@@ -98,53 +100,51 @@ public class DSL {
                          final Class<?> inputType,
                          final Class<?> outputType,
                          final String ruleName,
-                         final String yamlSource) throws ModuleStartException {
-        final Map<String, String> classMap = loadManifest();
-
-        // Try to find by sanitized ruleName (matching precompiler's classNameHint).
-        // Class names follow pattern: {yamlSource}_{ruleName}
-        // e.g., "default_default", "network_profiling_slow_trace_network_profiling_slow_trace"
-        final String sanitizedName = sanitizeName(ruleName);
-
-        // First try exact match on simple name
-        String className = classMap.get(sanitizedName);
-        // Then try {sanitizedName}_{sanitizedName} pattern (yamlSource == ruleName)
-        if (className == null) {
-            className = classMap.get(sanitizedName + "_" + sanitizedName);
+                         final DslSourceRef sourceRef) throws ModuleStartException {
+        loadManifest();
+        PrecompiledRule rule = null;
+        if (sourceRef != null && sourceRef.getYamlFile() != null) {
+            rule = BY_SOURCE.get(sourceRef.getYamlFile() + ":" + sourceRef.getYamlLine());
         }
-        // Fallback: try suffix match (_ruleName at end of simple name)
-        if (className == null) {
-            final String suffix = "_" + sanitizedName;
-            for (Map.Entry<String, String> entry : classMap.entrySet()) {
-                if (entry.getKey().endsWith(suffix)) {
-                    className = entry.getValue();
-                    break;
-                }
-            }
+        if (rule == null) {
+            rule = BY_NAME.get(ruleName);
         }
-
-        if (className == null) {
+        if (rule == null) {
             throw new ModuleStartException(
                 "Pre-compiled LAL expression not found for rule: " + ruleName
-                    + " (sanitized: " + sanitizedName + ")"
-                    + ". Available: " + classMap.size() + " expressions"
-                    + " keys: " + classMap.keySet());
+                    + " (source: " + sourceRef + "). Available: " + BY_SOURCE.keySet());
         }
 
         try {
-            final Class<?> exprClass = Class.forName(className);
+            final Class<?> exprClass = Class.forName(rule.className);
             final LalExpression expression = (LalExpression) exprClass.getDeclaredConstructor().newInstance();
+            final Class<?> effectiveInputType = rule.inputType.isEmpty() ? null : Class.forName(rule.inputType);
+            // Same metadata upstream DSL.of stamps: the debugger renders it next to the rule text.
+            final GateHolder holder = expression.debugHolder();
+            if (holder != null) {
+                final LinkedHashMap<String, String> meta = new LinkedHashMap<>();
+                if (ruleName != null && !ruleName.isEmpty()) {
+                    meta.put("ruleName", ruleName);
+                }
+                if (outputType != null) {
+                    meta.put("outputClass", outputType.getName());
+                }
+                if (inputType != null) {
+                    meta.put("inputClass", inputType.getName());
+                }
+                holder.setMetadata(meta);
+            }
             final FilterSpec filterSpec = new FilterSpec(moduleManager, config);
             final int count = LOADED_COUNT.incrementAndGet();
             log.debug("Loaded pre-compiled LAL expression [{}/{}]: {} -> {}",
-                count, classMap.size(), ruleName, className);
-            return new DSL(ruleName, expression, filterSpec);
+                count, BY_SOURCE.size(), ruleName, rule.className);
+            return new DSL(ruleName, expression, filterSpec, effectiveInputType);
         } catch (ClassNotFoundException e) {
             throw new ModuleStartException(
-                "Pre-compiled LAL expression class not found: " + className, e);
+                "Pre-compiled LAL expression class not found: " + rule.className, e);
         } catch (ReflectiveOperationException e) {
             throw new ModuleStartException(
-                "Failed to instantiate pre-compiled LAL expression: " + className, e);
+                "Failed to instantiate pre-compiled LAL expression: " + rule.className, e);
         }
     }
 
@@ -159,59 +159,50 @@ public class DSL {
         expression.execute(filterSpec, ctx);
     }
 
-    /**
-     * Sanitize a name for use as a Java class name identifier.
-     * Must match {@code LALCodegenHelper.sanitizeName()} from the upstream compiler.
-     */
-    private static String sanitizeName(final String name) {
-        if (name == null || name.isEmpty()) {
-            return "Generated";
+    private static final class PrecompiledRule {
+        private final String className;
+        private final String inputType;
+
+        private PrecompiledRule(final String className, final String inputType) {
+            this.className = className;
+            this.inputType = inputType;
         }
-        final StringBuilder sb = new StringBuilder(name.length() + 1);
-        if (!Character.isJavaIdentifierStart(name.charAt(0))) {
-            sb.append('_');
-        }
-        for (int i = 0; i < name.length(); i++) {
-            final char c = name.charAt(i);
-            sb.append(Character.isJavaIdentifierPart(c) ? c : '_');
-        }
-        return sb.toString();
     }
 
-    private static Map<String, String> loadManifest() {
-        if (CLASS_MAP != null) {
-            return CLASS_MAP;
+    private static void loadManifest() {
+        if (BY_SOURCE != null) {
+            return;
         }
         synchronized (DSL.class) {
-            if (CLASS_MAP != null) {
-                return CLASS_MAP;
+            if (BY_SOURCE != null) {
+                return;
             }
-            final Map<String, String> map = new HashMap<>();
-            try (InputStream is = DSL.class.getClassLoader().getResourceAsStream(MANIFEST_PATH)) {
+            final Map<String, PrecompiledRule> bySource = new HashMap<>();
+            final Map<String, PrecompiledRule> byName = new HashMap<>();
+            try (InputStream is = DSL.class.getClassLoader().getResourceAsStream(RULES_MANIFEST)) {
                 if (is == null) {
-                    log.warn("LAL v2 expression manifest not found: {}", MANIFEST_PATH);
-                    CLASS_MAP = map;
-                    return map;
-                }
-                try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        line = line.trim();
-                        if (line.isEmpty()) {
-                            continue;
+                    log.warn("LAL v2 rules manifest not found: {}", RULES_MANIFEST);
+                } else {
+                    final Properties props = new Properties();
+                    props.load(is);
+                    for (int i = 0; ; i++) {
+                        final String className = props.getProperty("rule." + i + ".class");
+                        if (className == null) {
+                            break;
                         }
-                        // Extract simple name from FQCN for lookup
-                        final String simpleName = line.substring(line.lastIndexOf('.') + 1);
-                        map.put(simpleName, line);
+                        final PrecompiledRule rule = new PrecompiledRule(
+                            className, props.getProperty("rule." + i + ".inputType", "").trim());
+                        bySource.put(props.getProperty("rule." + i + ".source") + ":"
+                            + props.getProperty("rule." + i + ".line"), rule);
+                        byName.putIfAbsent(props.getProperty("rule." + i + ".name"), rule);
                     }
                 }
             } catch (IOException e) {
-                throw new IllegalStateException("Failed to load LAL v2 expression manifest", e);
+                throw new IllegalStateException("Failed to load LAL v2 rules manifest", e);
             }
-            log.info("Loaded {} pre-compiled LAL v2 expressions from manifest", map.size());
-            CLASS_MAP = map;
-            return map;
+            log.info("Loaded {} pre-compiled LAL v2 expressions from manifest", bySource.size());
+            BY_NAME = byName;
+            BY_SOURCE = bySource;
         }
     }
 }

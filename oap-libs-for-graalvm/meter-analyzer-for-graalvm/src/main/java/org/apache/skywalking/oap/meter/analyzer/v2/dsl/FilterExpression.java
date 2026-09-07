@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javassist.ClassPool;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 
 /**
  * Same-FQCN replacement for upstream v2 MAL FilterExpression.
@@ -49,7 +50,7 @@ public class FilterExpression {
 
     public FilterExpression(final String literal,
                             final String filterNameHint,
-                            final String yamlSource) {
+                            final DslSourceRef sourceRef) {
         this.literal = literal;
 
         final String className = DSL.getFilterClassName(literal);
@@ -78,10 +79,10 @@ public class FilterExpression {
     // so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
     public FilterExpression(final String literal,
                             final String filterNameHint,
-                            final String yamlSource,
+                            final DslSourceRef sourceRef,
                             final ClassPool pool,
                             final ClassLoader targetClassLoader) {
-        this(literal, filterNameHint, yamlSource);
+        this(literal, filterNameHint, sourceRef);
     }
 
     public Map<String, SampleFamily> filter(final Map<String, SampleFamily> sampleFamilies) {

@@ -73,6 +73,44 @@ cd skywalking && git log --oneline <old-commit>..<new-commit>
 - [ ] Add generated metrics + builder classes to `reachability-metadata.json` in `oap-graalvm-native`
 - [ ] Verify with: `jar tf build-tools/precompiler/target/precompiler-*-generated.jar | grep "oal/rt"`
 
+### Rule adoption policy (OAL / MAL / LAL)
+
+**Every rule file upstream adds or changes is adopted, without exception.** The distro must
+never trail upstream on bundled rules. Concretely, for each new or changed file:
+
+- [ ] It is pre-compiled: `otel-rules/**`, `meter-analyzer-config/*`, `log-mal-rules/*`,
+      `envoy-metrics-rules/*`, `telegraf-rules/*`, `zabbix-rules/*`, `lal/*`, `oal/*.oal` are all
+      auto-discovered by the precompiler; verify the counts in its log (`MAL: compiled N rules from <dir>`,
+      `LAL pre-compilation`, `Precompiler: N metrics`).
+- [ ] It is enabled by default exactly as upstream: mirror upstream `application.yml`
+      (`enabledOtelMetricsRules`, `meterAnalyzerActiveFiles`, `lalFiles`, `malFiles`, ...).
+- [ ] `rule-file-inventory.properties` (+ section counts) and `precompiled-yaml-sha256.properties` cover it.
+- [ ] A MAL comparison test exists for every new MAL file (auto-discovery mode:
+      `generateComparisonTests("<dir>/<file>.yaml")`); LAL tests for new LAL files.
+- [ ] `docs/distro-policy.md` counts are refreshed.
+- [ ] It is browsable: the precompiler exports raw rule files to `META-INF/rule-source/` for the
+      read-only `/runtime/rule` + `/runtime/oal` catalogs — nothing to do per file, but keep
+      `BundledRuleCatalogHandlerTest` expectations current if a file is renamed.
+
+### E2E adoption
+
+When upstream adds an e2e case for a new rule set, adopt it if it is compose-only:
+
+- [ ] Prefer mock/replay style cases (e.g. `airflow/mock`, `banyandb`) over ones that need a real
+      product cluster or build an agent from source; those go to the CI matrix only if cheap.
+- [ ] Copy the case to `test/e2e/cases/<name>/` with the distro `oap` service (image
+      `skywalking-oap-native:latest`, `SW_HEALTH_CHECKER/SW_STORAGE_BANYANDB_TARGETS/SW_CONFIGURATION`,
+      the `nc 11800` healthcheck) and reference the upstream case files by relative path
+      (`../../../../skywalking/test/e2e-v2/cases/<case>/...`) for build contexts, mounted configs and
+      `verify.cases.includes` so expectations track upstream automatically.
+- [ ] Add a `.github/workflows/ci.yml` e2e matrix entry.
+- [ ] Not adoptable: cases that mount rule YAML at runtime (needs runtime compile), `runtime-rule/*`,
+      `dsl-debugging/{mal,lal-*}` (seed rules via runtime-rule), ZooKeeper/etcd cluster cases.
+      `dsl-debugging/oal` IS adopted (`test/e2e/cases/dsl-debugging-oal`): it debugs a bundled OAL rule.
+- [ ] DSL debugging stays live: the precompiler calls `DSLDebugCodegenSwitch.enableInjection()` before
+      generating and sets `setContent(...)` on the MAL/LAL generators; if upstream changes the probe
+      codegen or `GateHolder`, re-check the `dsl-management`, `dsl-debugging` and `dsl-debugging-oal` e2e cases.
+
 ### MAL/LAL changes (if new rule files)
 
 - [ ] New MAL rules under `otel-rules/` with glob `**/*` are auto-compiled by precompiler
@@ -130,6 +168,18 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
 ```
 
 ## 7. Common Pitfalls
+
+- **New module = three lists**: `GraalVMOAPServerStartUp` registration, `provider-inventory.properties`, AND
+  `build-tools/build-common/.../AcceptedModules.java`. The config-generator discovers providers only through
+  `AcceptedModules`, so a module missing there gets no `copyTo<Config>` branch in `YamlConfigLoaderUtils` and the
+  OAP dies at boot with `Unknown config type` — after the JVM unit tests passed.
+- **Always `./mvnw clean install` before a native build after a submodule bump**: a resumed build
+  (`-rf :precompiler`, no clean) reuses the old `oap-libs-for-graalvm/*/target/*.jar`, and
+  maven-shade merges that stale shaded jar with the fresh upstream jar; the stale copy wins, JVM
+  unit tests still pass, and the native OAP dies at boot with `NoClassDefFoundError` on a moved class.
+- **Same-name MAL counter windows**: since 11.0.0 `CounterWindow` is keyed by sample name, not
+  metric name, so the comparison harness runs the fresh and pre-compiled paths back to back with a
+  `CounterWindow.INSTANCE.reset()` in between.
 
 - **Reflection errors at native image runtime**: New classes instantiated via `Class.forName().newInstance()` need entries in `reflect-config.json` or `reachability-metadata.json`
 - **Config loading failures**: New `ModuleConfig` subclasses need config-generator regeneration AND may need `@Setter` same-FQCN replacement

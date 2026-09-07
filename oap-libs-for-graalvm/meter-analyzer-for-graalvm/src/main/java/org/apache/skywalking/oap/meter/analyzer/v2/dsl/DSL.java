@@ -28,6 +28,7 @@ import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import javassist.ClassPool;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 
 /**
  * Same-FQCN replacement for upstream v2 MAL DSL.
@@ -42,7 +43,7 @@ import lombok.extern.slf4j.Slf4j;
  * lists all config files.
  *
  * <p>At runtime, all per-file configs are loaded once and indexed by
- * expression text for O(1) lookup in {@link #parse(String, String, String)}.
+ * expression text for O(1) lookup in {@link #parse(String, String, DslSourceRef)}.
  *
  * <p>Closure fields (TagFunction, ForEachFunction, etc.) are now self-wired
  * via companion classes generated at build time. The main class static
@@ -62,7 +63,7 @@ public final class DSL {
 
     public static Expression parse(final String metricName,
                                    final String expression,
-                                   final String yamlSource) {
+                                   final DslSourceRef sourceRef) {
         loadManifests();
         final String className = EXPRESSION_MAP.get(expression);
 
@@ -93,10 +94,10 @@ public final class DSL {
     // text, so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
     public static Expression parse(final String metricName,
                                    final String expression,
-                                   final String yamlSource,
+                                   final DslSourceRef sourceRef,
                                    final ClassPool pool,
                                    final ClassLoader targetClassLoader) {
-        return parse(metricName, expression, yamlSource);
+        return parse(metricName, expression, sourceRef);
     }
 
     /**

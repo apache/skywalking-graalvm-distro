@@ -380,8 +380,16 @@ jobs:
           #   case: envoy-ai-gateway
           - name: TraceQL SkyWalking
             case: traceql-skywalking
-          - name: Live Debugging
-            case: live-debugging
+          - name: DSL Management
+            case: dsl-management
+          - name: DSL Debugging
+            case: dsl-debugging
+          - name: Airflow
+            case: airflow
+          - name: BanyanDB Self Observability
+            case: banyandb-so11y
+          - name: DSL Debugging OAL
+            case: dsl-debugging-oal
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5

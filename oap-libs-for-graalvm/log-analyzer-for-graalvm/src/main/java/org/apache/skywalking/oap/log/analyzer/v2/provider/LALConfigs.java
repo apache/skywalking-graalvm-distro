@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.core.analysis.LayerDefinition;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 
 import static com.google.common.io.Files.getNameWithoutExtension;
@@ -42,15 +43,28 @@ import static org.apache.skywalking.oap.server.library.util.CollectionUtils.isEm
  * (META-INF/config-data/lal.json) instead of filesystem YAML files via ResourceUtils.getPathFiles().
  * Why: The distro intentionally excludes raw YAML config directories (lal/)
  * — their DSL expressions are pre-compiled at build time. Config data is serialized as JSON
- * by the precompiler for runtime wiring.
+ * by the precompiler for runtime wiring. {@code lineNo} is serialized by the precompiler; sourceName/
+ * sourcePath are re-stamped here exactly as upstream does, since LogFilterListener builds the
+ * DslSourceRef (and the dsl-debugging RuleKey) from them.
  */
 @Data
 @Slf4j
 public class LALConfigs {
     private List<LALConfig> rules;
+    private List<LayerDefinition> layerDefinitions;
+
+    // Must match upstream: LALClassGenerator strips this catalog prefix when naming classes.
+    public static final String LAL_CATALOG = "lal/";
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    public static void stampSource(final LALConfig config, final String fileName) {
+        final String canonical = fileName.endsWith(".yaml") || fileName.endsWith(".yml")
+            ? fileName : fileName + ".yaml";
+        config.setSourceName(canonical);
+        config.setSourcePath(LAL_CATALOG + canonical);
+    }
 
     public static List<LALConfigs> load(final String path, final List<String> files) throws Exception {
         if (isEmpty(files)) {
@@ -75,7 +89,7 @@ public class LALConfigs {
                 .map(e -> {
                     LALConfigs configs = e.getValue();
                     if (configs != null && configs.getRules() != null) {
-                        configs.getRules().forEach(c -> c.setSourceName(e.getKey()));
+                        configs.getRules().forEach(c -> stampSource(c, e.getKey()));
                     }
                     return configs;
                 })
