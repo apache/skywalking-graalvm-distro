@@ -49,8 +49,18 @@ CURRENT_BRANCH=$(git branch --show-current)
 [[ "${CURRENT_BRANCH}" == "main" ]] \
     || error "Must be on 'main' branch (currently on '${CURRENT_BRANCH}')"
 
-[[ -z "$(git status --porcelain)" ]] \
-    || error "Working tree is not clean. Commit or stash changes first."
+# Use config so untracked-file visibility also propagates to submodule checks.
+WORKTREE_STATUS=$(git -c status.showUntrackedFiles=all status --porcelain --ignore-submodules=none)
+if [[ -n "${WORKTREE_STATUS}" ]]; then
+    printf 'Uncommitted changes (paths relative to repository root):\n%s\n' "${WORKTREE_STATUS}" >&2
+    git submodule foreach --quiet --recursive '
+        status=$(git -c status.showUntrackedFiles=all status --porcelain --ignore-submodules=none) || exit
+        if [ -n "$status" ]; then
+            printf "\nSubmodule %s (paths relative to this submodule):\n%s\n" "$displaypath" "$status"
+        fi
+    ' >&2
+    error "Working tree is not clean. Commit, stash, or remove the paths listed above first."
+fi
 
 git fetch origin main --quiet
 LOCAL_SHA=$(git rev-parse HEAD)
