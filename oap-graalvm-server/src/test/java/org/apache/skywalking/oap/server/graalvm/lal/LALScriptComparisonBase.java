@@ -17,14 +17,12 @@
 
 package org.apache.skywalking.oap.server.graalvm.lal;
 
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
@@ -59,25 +57,26 @@ abstract class LALScriptComparisonBase {
     }
 
     /**
-     * Load pre-compiled LalExpression by rule name from manifest.
+     * Load the pre-compiled LalExpression for a rule by the same source coordinates the runtime
+     * DSL replacement uses ({@code sourcePath:lineNo} from lal-v2-rules.txt), falling back to
+     * the rule name. Rule names repeat across files (network-profiling-slow-trace), so the
+     * coordinates are what disambiguate.
      */
-    protected static LalExpression loadPrecompiled(final String ruleName) {
+    protected static LalExpression loadPrecompiled(final LALConfig rule) {
         final Map<String, String> manifest = loadManifest();
-        String className = null;
-
-        // Search for class matching sanitized rule name
-        final String sanitizedName = sanitizeName(ruleName);
-        for (final Map.Entry<String, String> entry : manifest.entrySet()) {
-            final String simpleName = entry.getKey();
-            if (simpleName.contains(sanitizedName)) {
-                className = entry.getValue();
-                break;
-            }
+        String className = manifest.get(rule.getSourcePath() + ":" + rule.getLineNo());
+        if (className == null) {
+            className = manifest.get("name:" + rule.getName());
         }
+        return instantiate(className, rule.getName());
+    }
 
-        assertNotNull(className,
-            "Pre-compiled LAL expression not found for rule: " + ruleName
-                + " (sanitized: " + sanitizedName + ")");
+    protected static LalExpression loadPrecompiled(final String ruleName) {
+        return instantiate(loadManifest().get("name:" + ruleName), ruleName);
+    }
+
+    private static LalExpression instantiate(final String className, final String ruleName) {
+        assertNotNull(className, "Pre-compiled LAL expression not found for rule: " + ruleName);
         try {
             final Class<?> exprClass = Class.forName(className);
             return (LalExpression) exprClass.getDeclaredConstructor().newInstance();
@@ -89,6 +88,7 @@ abstract class LALScriptComparisonBase {
 
     // ── Manifest loading ──
 
+    /** Keys: {@code <sourcePath>:<line>} and {@code name:<ruleName>} (first occurrence) -> FQCN. */
     protected static Map<String, String> loadManifest() {
         if (MANIFEST != null) {
             return MANIFEST;
@@ -99,24 +99,21 @@ abstract class LALScriptComparisonBase {
             }
             final Map<String, String> map = new HashMap<>();
             try (InputStream is = LALScriptComparisonBase.class.getClassLoader()
-                    .getResourceAsStream("META-INF/lal-v2-classes.txt")) {
+                    .getResourceAsStream("META-INF/lal-v2-rules.txt")) {
                 if (is == null) {
                     throw new AssertionError(
-                        "Manifest META-INF/lal-v2-classes.txt not found");
+                        "Manifest META-INF/lal-v2-rules.txt not found");
                 }
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        line = line.trim();
-                        if (line.isEmpty() || line.startsWith("#")) {
-                            continue;
-                        }
-                        // Each line is a FQCN like org.apache.skywalking...LalExpr_default
-                        final String simpleName = line.substring(
-                            line.lastIndexOf('.') + 1);
-                        map.put(simpleName, line);
+                final Properties props = new Properties();
+                props.load(is);
+                for (int i = 0; ; i++) {
+                    final String className = props.getProperty("rule." + i + ".class");
+                    if (className == null) {
+                        break;
                     }
+                    map.put(props.getProperty("rule." + i + ".source") + ":"
+                        + props.getProperty("rule." + i + ".line"), className);
+                    map.putIfAbsent("name:" + props.getProperty("rule." + i + ".name"), className);
                 }
             } catch (final Exception e) {
                 throw new AssertionError("Failed to load LAL manifest", e);
@@ -124,23 +121,5 @@ abstract class LALScriptComparisonBase {
             MANIFEST = map;
             return map;
         }
-    }
-
-    /**
-     * Sanitize a name for use in class naming (matches upstream LALCodegenHelper).
-     */
-    static String sanitizeName(final String name) {
-        if (name == null || name.isEmpty()) {
-            return "Generated";
-        }
-        final StringBuilder sb = new StringBuilder(name.length() + 1);
-        if (!Character.isJavaIdentifierStart(name.charAt(0))) {
-            sb.append('_');
-        }
-        for (int i = 0; i < name.length(); i++) {
-            final char c = name.charAt(i);
-            sb.append(Character.isJavaIdentifierPart(c) ? c : '_');
-        }
-        return sb.toString();
     }
 }

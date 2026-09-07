@@ -124,7 +124,9 @@ import org.apache.skywalking.oap.server.admin.inspect.InspectModule;
 import org.apache.skywalking.oap.server.admin.inspect.InspectModuleProvider;
 import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModule;
 import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleProvider;
-// GraalVM stub for unsupported admin features (runtime-rule / dsl-debugging)
+import org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModule;
+import org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModuleProvider;
+// GraalVM stub for the unsupported admin feature (runtime-rule) + read-only rule catalog
 import org.apache.skywalking.oap.server.graalvm.admin.UnsupportedAdminFeatureModule;
 import org.apache.skywalking.oap.server.graalvm.admin.UnsupportedAdminFeatureModuleProvider;
 // Exporter
@@ -290,10 +292,13 @@ public class GraalVMOAPServerStartUp {
         //   - status        : /status/*, /debugging/* (relocated from status-query-plugin)
         //   - inspect        : /inspect/* metric catalog + entity enumeration (SWIP-14)
         //   - ui-management  : /ui-management/* dashboard template CRUD (Horizon UI needs this)
-        // runtime-rule + dsl-debugging are NOT wired — they require runtime Javassist
-        // class generation, which is impossible under a closed-world native image. Their
-        // endpoints are served by UnsupportedAdminFeatureModule with a friendly 501.
+        // dsl-debugging IS wired: its probes are compiled into every rule class by the
+        // precompiler, and at runtime it only flips gates and reads recorders. runtime-rule is
+        // NOT wired — hot-update requires runtime Javassist class generation, impossible under
+        // a closed-world native image; its mutating endpoints get a friendly 501 from
+        // UnsupportedAdminFeatureModule, which also serves the read-only rule catalog.
         manager.register(new AdminServerModule(), new AdminServerModuleProvider());
+        manager.register(new DSLDebuggingModule(), new DSLDebuggingModuleProvider());
         manager.register(new StatusModule(), new StatusModuleProvider());
         manager.register(new InspectModule(), new InspectModuleProvider());
         manager.register(new UIManagementModule(), new UIManagementModuleProvider());

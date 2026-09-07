@@ -1,0 +1,59 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Simple Java Agent E2E — native OAP with BanyanDB
+# Reuses upstream verification cases and expected files.
+
+setup:
+  env: compose
+  file: docker-compose.yml
+  timeout: 25m
+  init-system-environment: ../../script/env
+  steps:
+    - name: set PATH
+      command: export PATH=/tmp/skywalking-infra-e2e/bin:$PATH
+    - name: install yq
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh yq
+    - name: install swctl
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
+    - name: install jq
+      command: |
+        if ! command -v jq >/dev/null 2>&1; then
+          curl -fsSL -o /tmp/skywalking-infra-e2e/bin/jq \
+            https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
+          chmod +x /tmp/skywalking-infra-e2e/bin/jq
+        fi
+
+trigger:
+  action: http
+  interval: 3s
+  times: -1
+  url: http://${consumer_host}:${consumer_9092}/users
+  method: POST
+  body: '{"id":"123","name":"skywalking"}'
+  headers:
+    "Content-Type": "application/json"
+
+# Upstream's OAL live-debug flow (test/e2e-v2/cases/dsl-debugging/oal) drives a session over the
+# bundled core.oal service_relation_server_cpm rule through `swctl admin dsl-debug` and asserts
+# the captured samples; it needs no runtime-rule seed, so it runs unchanged against the native
+# image, whose pre-compiled OAL dispatchers carry the same probes.
+verify:
+  retry:
+    count: 1
+    interval: 1s
+  cases:
+    - query: OAP_HOST=${oap_host} OAP_REST_PORT=${oap_17128} bash skywalking/test/e2e-v2/cases/dsl-debugging/oal/dsl-debug-flow.sh && echo ok
+      expected: ../../../../skywalking/test/e2e-v2/cases/dsl-debugging/oal/expected/ok.txt

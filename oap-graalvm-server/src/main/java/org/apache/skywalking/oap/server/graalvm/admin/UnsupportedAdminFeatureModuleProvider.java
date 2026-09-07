@@ -28,7 +28,9 @@ import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 import org.apache.skywalking.oap.server.library.module.ServiceNotProvidedException;
 
 /**
- * Registers {@link UnsupportedAdminFeatureHandler} on the admin-server HTTP host. The
+ * Registers {@link UnsupportedAdminFeatureHandler} (501 for the mutating runtime-rule routes)
+ * and {@link BundledRuleCatalogHandler} (read-only MAL/LAL catalog) on the admin-server HTTP
+ * host. The
  * module carries no configuration ({@link #newConfigCreator()} returns null), so it needs
  * no {@code application.yml} section and no config-generator entry — it is wired directly
  * by {@code GraalVMOAPServerStartUp}.
@@ -63,6 +65,7 @@ public class UnsupportedAdminFeatureModuleProvider extends ModuleProvider {
             new UnsupportedAdminFeatureHandler(),
             Arrays.asList(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE)
         );
+        adminRegister.addHandler(new BundledRuleCatalogHandler(), Arrays.asList(HttpMethod.GET));
     }
 
     @Override

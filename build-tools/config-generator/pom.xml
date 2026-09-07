@@ -53,7 +53,7 @@
         <!-- Admin server family (11.0.0+) is not pulled transitively by server-starter
              (SPI-discovered at runtime from the assembled libs dir). The config-generator
              needs these provider jars on its classpath to scan their ModuleConfig classes.
-             runtime-rule + dsl-debugging are omitted: not wired in this distro. -->
+             runtime-rule is omitted: not wired in this distro. -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>admin-server</artifactId>
@@ -69,6 +69,10 @@
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>ui-management</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>dsl-debugging</artifactId>
         </dependency>
     </dependencies>
 

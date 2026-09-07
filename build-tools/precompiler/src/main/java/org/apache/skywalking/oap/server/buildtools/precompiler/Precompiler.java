@@ -21,28 +21,35 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.ClassPath;
+import com.google.protobuf.Descriptors;
+import com.google.protobuf.Message;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.Reader;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -59,8 +66,10 @@ import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
 import org.apache.skywalking.oap.log.analyzer.v2.spi.LALSourceTypeProvider;
-import org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig;
 import org.apache.skywalking.oap.server.core.config.v2.compiler.HierarchyRuleClassGenerator;
+import org.apache.skywalking.oap.server.core.dsl.debug.DSLDebugCodegenSwitch;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
+import org.apache.skywalking.oap.server.core.dsl.DslYamlLineIndex;
 import org.yaml.snakeyaml.Yaml;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.library.util.ResourceUtils;
@@ -172,6 +181,11 @@ public class Precompiler {
         rtFolderInitField.setAccessible(true);
         rtFolderInitField.set(null, true);
 
+        // Same switch upstream's DSLDebuggingModuleProvider.prepare() flips at boot: every OAL / MAL /
+        // LAL generator then emits the GateHolder field and probe call sites, so the pre-compiled
+        // classes are debuggable by the dsl-debugging module at runtime (upstream has it on by default).
+        DSLDebugCodegenSwitch.enableInjection();
+
         // Run all discovered OAL defines
         for (OALDefine define : oalDefines) {
             log.info("Processing: {}", define.getConfigFile());
@@ -250,6 +264,7 @@ public class Precompiler {
 
         // ---- Hierarchy pre-compilation (v2 ANTLR4 + Javassist) ----
         compileHierarchy(outputDir);
+        exportRuleSources(outputDir, oalDefines);
 
         // ---- GraalVM native-image metadata generation ----
         generateNativeImageConfig(outputDir);
@@ -449,7 +464,6 @@ public class Precompiler {
         File hierarchyRtDir = new File(outputDir, HIERARCHY_RT_PACKAGE.replace('.', '/'));
         hierarchyRtDir.mkdirs();
         hierarchyGenerator.setClassOutputDir(hierarchyRtDir);
-        hierarchyGenerator.setYamlSource("hierarchy-definition.yml");
 
         // Load hierarchy-definition.yml from classpath
         try (InputStream is = Precompiler.class.getClassLoader()
@@ -458,7 +472,13 @@ public class Precompiler {
                 log.warn("hierarchy-definition.yml not found on classpath, skipping hierarchy compilation");
                 return;
             }
-            Map<String, Object> yamlMap = new Yaml().load(is);
+            final String yamlText = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            Map<String, Object> yamlMap = new Yaml().load(yamlText);
+            // Per-rule lines, as upstream CompiledHierarchyRuleProvider stamps them, so class
+            // names ({file}_L{line}_{rule}) match the JVM distro.
+            final Map<String, Integer> ruleLines =
+                DslYamlLineIndex.keyLines(yamlText, "auto-matching-rules");
+            final List<String> hierarchyRuleEntries = new ArrayList<>();
             Map<String, String> autoMatchingRules =
                 (Map<String, String>) yamlMap.get("auto-matching-rules");
             if (autoMatchingRules == null || autoMatchingRules.isEmpty()) {
@@ -471,8 +491,12 @@ public class Precompiler {
                 String ruleName = entry.getKey();
                 String expression = entry.getValue();
                 try {
+                    final Integer line = ruleLines.get(ruleName);
+                    hierarchyGenerator.setSourceRef(DslSourceRef.ofRule(
+                        "hierarchy-definition.yml", line == null ? 0 : line));
                     hierarchyGenerator.setClassNameHint(ruleName);
-                    hierarchyGenerator.compile(ruleName, expression);
+                    hierarchyRuleEntries.add(ruleName + "="
+                        + hierarchyGenerator.compile(ruleName, expression).getClass().getName());
                     count++;
                     log.debug("Hierarchy: compiled rule {} -> {}", ruleName, expression);
                 } catch (Exception e) {
@@ -484,6 +508,8 @@ public class Precompiler {
             Path metaInf = Path.of(outputDir, "META-INF");
             List<String> hierarchyV2Classes = scanV2Classes(outputDir, HIERARCHY_RT_PACKAGE);
             writeManifest(metaInf.resolve("hierarchy-v2-classes.txt"), hierarchyV2Classes);
+            // ruleName=FQCN, the runtime HierarchyDefinitionService replacement looks rules up by name
+            writeManifest(metaInf.resolve("hierarchy-v2-rules.txt"), hierarchyRuleEntries);
 
             log.info("Hierarchy pre-compilation: {} rules, {} v2 classes",
                 count, hierarchyV2Classes.size());
@@ -564,6 +590,8 @@ public class Precompiler {
         // Load all LAL configs and compile each rule
         List<LALConfigs> allConfigs = LALConfigs.load("lal", lalFileNames);
         int totalRules = 0;
+        // Properties-style manifest: source YAML + line + rule name -> class + effective input type.
+        List<String> lalRuleEntries = new ArrayList<>();
 
         for (LALConfigs configs : allConfigs) {
             if (configs.getRules() == null) {
@@ -571,9 +599,12 @@ public class Precompiler {
             }
             for (LALConfig rule : configs.getRules()) {
                 try {
-                    String yamlSource = rule.getName();
-                    lalGenerator.setYamlSource(yamlSource);
+                    // Same coordinates upstream LogFilterListener.Factory.compile passes, so class
+                    // names ({yaml}_L{line}_{rule}) match the JVM distro.
+                    lalGenerator.setSourceRef(DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo()));
                     lalGenerator.setClassNameHint(rule.getName());
+                    // The holder's content, shown inline by the debugger (upstream DSL.of does the same).
+                    lalGenerator.setContent(rule.getDsl());
 
                     // Resolve inputType from rule config or SPI
                     Class<?> inputType = null;
@@ -616,7 +647,14 @@ public class Precompiler {
                     lalGenerator.setOutputType(outputType);
 
                     LalExpression compiled = lalGenerator.compile(rule.getDsl());
-                    totalRules++;
+                    final Class<?> effectiveInputType = lalGenerator.getEffectiveInputType();
+                    final int idx = totalRules++;
+                    lalRuleEntries.add("rule." + idx + ".source=" + rule.getSourcePath());
+                    lalRuleEntries.add("rule." + idx + ".line=" + rule.getLineNo());
+                    lalRuleEntries.add("rule." + idx + ".name=" + rule.getName());
+                    lalRuleEntries.add("rule." + idx + ".class=" + compiled.getClass().getName());
+                    lalRuleEntries.add("rule." + idx + ".inputType="
+                        + (effectiveInputType == null ? "" : effectiveInputType.getName()));
                     log.debug("LAL: compiled rule {} -> {}", rule.getName(),
                         compiled.getClass().getName());
                 } catch (Exception e) {
@@ -629,12 +667,13 @@ public class Precompiler {
         Path metaInf = Path.of(outputDir, "META-INF");
         List<String> lalV2Classes = scanV2Classes(outputDir, LAL_RT_PACKAGE);
         writeManifest(metaInf.resolve("lal-v2-classes.txt"), lalV2Classes);
+        writeManifest(metaInf.resolve("lal-v2-rules.txt"), lalRuleEntries);
 
         log.info("LAL pre-compilation: {} rules, {} v2 expression classes",
             totalRules, lalV2Classes.size());
 
         // ---- Serialize LAL config data as JSON for runtime loader ----
-        serializeLALConfigData(outputDir, lalFileMap);
+        serializeLALConfigData(outputDir, allConfigs);
     }
 
 
@@ -1214,7 +1253,7 @@ public class Precompiler {
     }
 
     /**
-     * Serialize MAL config data (Rules and MeterConfigs) as JSON for runtime loaders.
+     * Serialize MAL config data (Rules) as JSON for runtime loaders.
      * At runtime, replacement loader classes deserialize from these JSON files instead
      * of reading YAML from the filesystem.
      */
@@ -1224,22 +1263,10 @@ public class Precompiler {
         Path configDataDir = Path.of(outputDir, "META-INF", "config-data");
         Files.createDirectories(configDataDir);
 
-        // Serialize MeterConfig objects for meter-analyzer-config (runtime uses MeterConfigs.loadConfig)
-        List<Rule> meterAnalyzerRules = rulesByPath.get("meter-analyzer-config");
-        if (meterAnalyzerRules != null) {
-            Map<String, MeterConfig> meterConfigs = loadMeterConfigs("meter-analyzer-config");
-            mapper.writeValue(configDataDir.resolve("meter-analyzer-config.json").toFile(), meterConfigs);
-            log.info("Serialized {} MeterConfig entries from meter-analyzer-config to config-data JSON",
-                meterConfigs.size());
-        }
-
-        // Serialize Rule lists for each path (runtime uses Rules.loadRules)
+        // Serialize Rule lists for each path (runtime uses Rules.loadRules; since 11.0.0 upstream
+        // loads meter-analyzer-config through the same Rules path, so it is no special case)
         for (Map.Entry<String, List<Rule>> entry : rulesByPath.entrySet()) {
             String path = entry.getKey();
-            if ("meter-analyzer-config".equals(path)) {
-                // meter-analyzer-config is already serialized as MeterConfig above
-                continue;
-            }
             List<Rule> rules = entry.getValue();
             mapper.writeValue(configDataDir.resolve(path + ".json").toFile(), rules);
             log.info("Serialized {} Rule entries from {} to config-data JSON", rules.size(), path);
@@ -1247,52 +1274,105 @@ public class Precompiler {
     }
 
     /**
-     * Load MeterConfig objects from meter-analyzer-config YAML files.
-     * Returns a Map keyed by filename (without extension) for filtering at runtime.
-     */
-    private static Map<String, MeterConfig> loadMeterConfigs(String path) throws Exception {
-        File[] files = ResourceUtils.getPathFiles(path);
-        Map<String, MeterConfig> result = new LinkedHashMap<>();
-        Yaml yaml = new Yaml();
-        for (File file : files) {
-            String name = file.getName();
-            if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
-                continue;
-            }
-            String key = name.substring(0, name.lastIndexOf('.'));
-            try (Reader r = new FileReader(file)) {
-                MeterConfig config = yaml.loadAs(r, MeterConfig.class);
-                if (config != null) {
-                    result.put(key, config);
-                }
-            }
-        }
-        return result;
-    }
-
-    /**
      * Serialize LAL config data as JSON for runtime loader.
      * At runtime, the replacement LALConfigs.load() deserializes from this JSON file.
      */
     private static void serializeLALConfigData(String outputDir,
-                                               Map<String, File> lalFileMap) throws Exception {
+                                               List<LALConfigs> allConfigs) throws Exception {
         ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
         Path configDataDir = Path.of(outputDir, "META-INF", "config-data");
         Files.createDirectories(configDataDir);
 
+        // Keyed by YAML base name. These are the configs upstream LALConfigs.load stamped
+        // (sourceName/sourcePath/lineNo), so the runtime replacement hands LogFilterListener
+        // the same DslSourceRef the JVM distro would.
         Map<String, LALConfigs> lalConfigMap = new LinkedHashMap<>();
-        Yaml yaml = new Yaml();
-        for (Map.Entry<String, File> entry : lalFileMap.entrySet()) {
-            try (Reader r = new FileReader(entry.getValue())) {
-                LALConfigs config = yaml.loadAs(r, LALConfigs.class);
-                if (config != null) {
-                    lalConfigMap.put(entry.getKey(), config);
-                }
+        for (LALConfigs config : allConfigs) {
+            if (config.getRules() == null || config.getRules().isEmpty()) {
+                continue;
             }
+            final String sourceName = config.getRules().get(0).getSourceName();
+            lalConfigMap.put(sourceName.substring(0, sourceName.lastIndexOf('.')), config);
         }
 
         mapper.writeValue(configDataDir.resolve("lal.json").toFile(), lalConfigMap);
         log.info("Serialized {} LALConfigs entries from lal to config-data JSON", lalConfigMap.size());
+    }
+
+    // The catalogs upstream's runtime-rule module manages (its Catalog enum minus OAL, which has
+    // its own /runtime/oal listing). Same wire names Horizon and swctl send.
+    private static final String[] RULE_CATALOGS = {
+        "otel-rules", "log-mal-rules", "telegraf-rules", "meter-analyzer-config", "lal"
+    };
+
+    /**
+     * Exports every bundled MAL/LAL rule file verbatim under {@code META-INF/rule-source/} plus
+     * an index, so the distro can serve the read-only {@code /runtime/rule} catalog Horizon
+     * browses (upstream serves it from {@code StaticRuleRegistry}, which only the YAML loaders
+     * this distro replaces populate), and copies the OAL scripts to their classpath paths for
+     * the dsl-debugging module's OAL listing.
+     *
+     * <p>{@code index.txt}: {@code catalog|name|relativePath|sha256} per MAL/LAL file, where
+     * {@code name} is the path without extension (the runtime-rule rule name).
+     */
+    private static void exportRuleSources(String outputDir, OALDefine[] oalDefines) throws Exception {
+        Path root = Path.of(outputDir, "META-INF", "rule-source");
+        Files.createDirectories(root);
+
+        List<String> index = new ArrayList<>();
+        for (String catalog : RULE_CATALOGS) {
+            Path dir;
+            try {
+                dir = ResourceUtils.getPath(catalog);
+            } catch (Exception e) {
+                log.warn("Rule sources: catalog directory {} not on classpath, skipping", catalog);
+                continue;
+            }
+            List<Path> files;
+            try (Stream<Path> stream = Files.walk(dir)) {
+                files = stream.filter(Files::isRegularFile)
+                    .filter(p -> p.toString().endsWith(".yaml") || p.toString().endsWith(".yml"))
+                    .sorted()
+                    .collect(Collectors.toList());
+            }
+            for (Path file : files) {
+                String rel = dir.relativize(file).toString().replace(File.separatorChar, '/');
+                String name = rel.substring(0, rel.lastIndexOf('.'));
+                byte[] bytes = Files.readAllBytes(file);
+                Path out = root.resolve(catalog).resolve(rel);
+                Files.createDirectories(out.getParent());
+                Files.write(out, bytes);
+                index.add(catalog + "|" + name + "|" + rel + "|" + sha256Hex(bytes));
+            }
+        }
+        writeManifest(root.resolve("index.txt"), index);
+
+        // OAL scripts as classpath resources at their upstream paths (oal/core.oal ...): the
+        // dsl-debugging module's RuntimeOalRestHandler reads them for GET /runtime/oal/files/{name}.
+        int oalFiles = 0;
+        ClassLoader cl = Precompiler.class.getClassLoader();
+        for (OALDefine define : oalDefines) {
+            String configFile = define.getConfigFile();
+            try (InputStream is = cl.getResourceAsStream(configFile)) {
+                if (is == null) {
+                    continue;
+                }
+                Path out = Path.of(outputDir, configFile);
+                Files.createDirectories(out.getParent());
+                Files.write(out, is.readAllBytes());
+                oalFiles++;
+            }
+        }
+        log.info("Rule sources: exported {} MAL/LAL files, {} OAL scripts", index.size(), oalFiles);
+    }
+
+    private static String sha256Hex(byte[] bytes) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder sb = new StringBuilder(64);
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     private static void writeManifest(Path path, List<String> lines) throws IOException {
@@ -1383,7 +1463,6 @@ public class Precompiler {
         String[] configPojos = {
             "org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs",
             "org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig",
-            "org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig",
             "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule",
             "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule",
             "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuInitializer$MenuData",
@@ -1465,6 +1544,26 @@ public class Precompiler {
         // LAL v2 expression classes — one FQCN per line, constructor-only
         addConstructorEntries(entries, metaInf.resolve("lal-v2-classes.txt"));
 
+        // LAL effective input types (proto classes). The runtime DSL replacement resolves them by
+        // name to route mixed-type inputs, and the LAL debug dump / EnvoyAccessLogBuilder print them
+        // through protobuf's JsonFormat, whose accessor table finds the generated getters and setters
+        // by reflection on the message, its Builder and every nested message and enum type. Register
+        // the whole descriptor closure with full access.
+        Path lalRules = metaInf.resolve("lal-v2-rules.txt");
+        if (Files.exists(lalRules)) {
+            Properties lalProps = new Properties();
+            try (InputStream is = Files.newInputStream(lalRules)) {
+                lalProps.load(is);
+            }
+            Set<String> inputTypes = new TreeSet<>();
+            for (String key : lalProps.stringPropertyNames()) {
+                if (key.endsWith(".inputType") && !lalProps.getProperty(key).isBlank()) {
+                    inputTypes.add(lalProps.getProperty(key).trim());
+                }
+            }
+            addProtoMessageEntries(entries, inputTypes);
+        }
+
         // Hierarchy v2 rule classes — one FQCN per line, constructor-only
         addConstructorEntries(entries, metaInf.resolve("hierarchy-v2-classes.txt"));
 
@@ -1498,6 +1597,8 @@ public class Precompiler {
         includes.add(Map.of("pattern", "META-INF/lal-.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/hierarchy-.*\\.txt"));
         includes.add(Map.of("pattern", "META-INF/config-data/.*\\.json"));
+        includes.add(Map.of("pattern", "META-INF/rule-source/.*"));
+        includes.add(Map.of("pattern", "oal/.*\\.oal"));
 
         resources.put("includes", includes);
         resourceConfig.put("resources", resources);
@@ -1505,6 +1606,103 @@ public class Precompiler {
         ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
         mapper.writeValue(nativeImageDir.resolve("resource-config.json").toFile(), resourceConfig);
         log.info("Generated resource-config.json with {} resource patterns", includes.size());
+    }
+
+    /**
+     * Register every message and enum type reachable from {@code rootTypes} through the proto
+     * descriptors, plus their {@code Builder} classes, with full access. A non-message root gets a
+     * name-only entry.
+     */
+    private static void addProtoMessageEntries(List<Map<String, Object>> entries, Set<String> rootTypes) {
+        Set<Class<?>> closure = new LinkedHashSet<>();
+        for (String rootType : rootTypes) {
+            Class<?> root;
+            try {
+                root = Class.forName(rootType);
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException("LAL input type is not on the precompiler classpath: " + rootType, e);
+            }
+            if (Message.class.isAssignableFrom(root)) {
+                collectProtoClosure(root, closure);
+            } else {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("name", rootType);
+                entries.add(entry);
+            }
+        }
+        for (Class<?> clazz : closure) {
+            entries.add(fullAccessEntry(clazz.getName()));
+        }
+        log.info("Registered {} protobuf classes reachable from {} LAL input types", closure.size(), rootTypes.size());
+    }
+
+    private static void collectProtoClosure(Class<?> messageClass, Set<Class<?>> closure) {
+        if (!closure.add(messageClass)) {
+            return;
+        }
+        for (Class<?> nested : messageClass.getDeclaredClasses()) {
+            if (Message.Builder.class.isAssignableFrom(nested)) {
+                closure.add(nested);
+            }
+        }
+        Descriptors.Descriptor descriptor;
+        try {
+            descriptor = (Descriptors.Descriptor) messageClass.getMethod("getDescriptor").invoke(null);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Not a generated protobuf message: " + messageClass.getName(), e);
+        }
+        for (Descriptors.FieldDescriptor field : descriptor.getFields()) {
+            Descriptors.FieldDescriptor.JavaType javaType = field.getJavaType();
+            if (javaType != Descriptors.FieldDescriptor.JavaType.MESSAGE
+                && javaType != Descriptors.FieldDescriptor.JavaType.ENUM) {
+                continue;
+            }
+            Class<?> fieldType = field.isMapField()
+                ? mapValueType(messageClass, field)
+                : accessorReturnType(messageClass, field);
+            if (fieldType == null) {
+                continue; // map with scalar values: nothing generated to register
+            }
+            if (Message.class.isAssignableFrom(fieldType)) {
+                collectProtoClosure(fieldType, closure);
+            } else if (fieldType.isEnum()) {
+                closure.add(fieldType);
+            }
+        }
+    }
+
+    /** {@code getFoo()} for singular fields, {@code getFoo(int)} for repeated ones. */
+    private static Class<?> accessorReturnType(Class<?> messageClass, Descriptors.FieldDescriptor field) {
+        return findGetter(messageClass, "get" + field.getName(), field.isRepeated() ? 1 : 0).getReturnType();
+    }
+
+    /** The value type argument of {@code Map<K, V> getFooMap()}; {@code null} for scalar values. */
+    private static Class<?> mapValueType(Class<?> messageClass, Descriptors.FieldDescriptor field) {
+        Type type = findGetter(messageClass, "get" + field.getName() + "Map", 0).getGenericReturnType();
+        if (type instanceof ParameterizedType) {
+            Type value = ((ParameterizedType) type).getActualTypeArguments()[1];
+            if (value instanceof Class) {
+                return (Class<?>) value;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * protobuf-java derives getter names from the proto field name (underscores to camel case, a
+     * trailing '_' when the name clashes with a reserved one); match case- and underscore-insensitively
+     * instead of replicating its rules.
+     */
+    private static Method findGetter(Class<?> messageClass, String name, int parameterCount) {
+        String wanted = name.replace("_", "").toLowerCase(Locale.ROOT);
+        for (Method method : messageClass.getMethods()) {
+            if (method.getDeclaringClass() != Object.class
+                && method.getParameterCount() == parameterCount
+                && method.getName().replace("_", "").toLowerCase(Locale.ROOT).equals(wanted)) {
+                return method;
+            }
+        }
+        throw new IllegalStateException("No getter " + name + " on " + messageClass.getName());
     }
 
     private static Map<String, Object> fullAccessEntry(String className) {

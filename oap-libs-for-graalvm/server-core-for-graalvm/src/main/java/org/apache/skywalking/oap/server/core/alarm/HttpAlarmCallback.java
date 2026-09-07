@@ -76,7 +76,8 @@ public abstract class HttpAlarmCallback implements AlarmCallback {
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Alarm webhook response from {}: status={}", uri, status);
         }
-        if (status != 200 && status != 204) {
+        // Any 2xx means accepted; async intake APIs (e.g. PagerDuty Events v2) answer 202.
+        if (status < 200 || status >= 300) {
             final var logger = LoggerFactory.getLogger(getClass());
             logger.error(
                     "send to {} failure. Response code: {}, Response content: {}",

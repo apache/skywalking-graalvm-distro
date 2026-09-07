@@ -33,6 +33,7 @@ import org.apache.skywalking.oap.query.logql.LogQLConfig;
 import org.apache.skywalking.oap.query.promql.PromQLConfig;
 import org.apache.skywalking.oap.query.traceql.TraceQLConfig;
 import org.apache.skywalking.oap.query.zipkin.ZipkinQueryConfig;
+import org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModuleConfig;
 import org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig;
 import org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig;
 import org.apache.skywalking.oap.server.admin.status.StatusModuleConfig;
@@ -137,8 +138,6 @@ public class YamlConfigLoaderUtils {
             copyToZipkinQueryConfig((ZipkinQueryConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof EnvoyMetricReceiverConfig) {
             copyToEnvoyMetricReceiverConfig((EnvoyMetricReceiverConfig) dest, src, moduleName, providerName);
-        } else if (dest instanceof LogAnalyzerModuleConfig) {
-            copyToLogAnalyzerModuleConfig((LogAnalyzerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof OtelMetricReceiverConfig) {
             copyToOtelMetricReceiverConfig((OtelMetricReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof BrowserServiceModuleConfig) {
@@ -189,6 +188,10 @@ public class YamlConfigLoaderUtils {
             // InspectModuleConfig has no configurable fields; nothing to copy.
         } else if (dest instanceof UIManagementModuleConfig) {
             // UIManagementModuleConfig has no configurable fields; nothing to copy.
+        } else if (dest instanceof DSLDebuggingModuleConfig) {
+            copyToDSLDebuggingModuleConfig((DSLDebuggingModuleConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof LogAnalyzerModuleConfig) {
+            copyToLogAnalyzerModuleConfig((LogAnalyzerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof GenAIConfig.Model) {
             copyToModel((GenAIConfig.Model) dest, src, moduleName, providerName);
         } else if (dest instanceof GenAIConfig.Provider) {
@@ -221,6 +224,10 @@ public class YamlConfigLoaderUtils {
             copyToProperty((BanyanDBStorageConfig.Property) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.TopN) {
             copyToTopN((BanyanDBStorageConfig.TopN) dest, src, moduleName, providerName);
+        } else if (dest instanceof BanyanDBStorageConfig.SamplerPluginConfig) {
+            copyToSamplerPluginConfig((BanyanDBStorageConfig.SamplerPluginConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof BanyanDBStorageConfig.TracePipeline) {
+            copyToTracePipeline((BanyanDBStorageConfig.TracePipeline) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.GroupResource) {
             copyToGroupResource((BanyanDBStorageConfig.GroupResource) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.Stage) {
@@ -266,6 +273,15 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize(((Number) value).intValue());
+                    break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
                     break;
                 case "gRPCHost":
                     cfg.setGRPCHost((String) value);
@@ -466,6 +482,15 @@ public class YamlConfigLoaderUtils {
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
+                    break;
                 case "gRPCHost":
                     cfg.setGRPCHost((String) value);
                     break;
@@ -625,6 +650,15 @@ public class YamlConfigLoaderUtils {
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
+                    break;
                 case "searchableTracesTags":
                     cfg.setSearchableTracesTags((String) value);
                     break;
@@ -690,6 +724,15 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize(((Number) value).intValue());
+                    break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
                     break;
                 case "lookback":
                     cfg.setLookback(((Number) value).longValue());
@@ -783,39 +826,6 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "listenerMetricsAdapter":
                     log.warn("Cannot set final field 'listenerMetricsAdapter' in {} provider of {} module", providerName, moduleName);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void copyToLogAnalyzerModuleConfig(
-            final LogAnalyzerModuleConfig cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "lalPath":
-                    cfg.setLalPath((String) value);
-                    break;
-                case "malPath":
-                    cfg.setMalPath((String) value);
-                    break;
-                case "lalFiles":
-                    cfg.setLalFiles((String) value);
-                    break;
-                case "malFiles":
-                    cfg.setMalFiles((String) value);
-                    break;
-                case "meterConfigs":
-                    cfg.setMeterConfigs((List) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1369,6 +1379,15 @@ public class YamlConfigLoaderUtils {
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
+                    break;
                 case "buildInfoVersion":
                     cfg.setBuildInfoVersion((String) value);
                     break;
@@ -1420,6 +1439,15 @@ public class YamlConfigLoaderUtils {
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize(((Number) value).intValue());
                     break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -1461,6 +1489,15 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "restAcceptQueueSize":
                     cfg.setRestAcceptQueueSize(((Number) value).intValue());
+                    break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
                     break;
                 case "lookback":
                     cfg.setLookback(((Number) value).longValue());
@@ -1618,6 +1655,15 @@ public class YamlConfigLoaderUtils {
                 case "httpMaxRequestHeaderSize":
                     cfg.setHttpMaxRequestHeaderSize(((Number) value).intValue());
                     break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
+                    break;
                 case "gRPCHost":
                     cfg.setGRPCHost((String) value);
                     break;
@@ -1671,6 +1717,60 @@ public class YamlConfigLoaderUtils {
             switch (key) {
                 case "keywords4MaskingSecretsOfConfig":
                     cfg.setKeywords4MaskingSecretsOfConfig((String) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToDSLDebuggingModuleConfig(
+            final DSLDebuggingModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "injectionEnabled":
+                    cfg.setInjectionEnabled((boolean) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToLogAnalyzerModuleConfig(
+            final LogAnalyzerModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "lalPath":
+                    cfg.setLalPath((String) value);
+                    break;
+                case "malPath":
+                    cfg.setMalPath((String) value);
+                    break;
+                case "lalFiles":
+                    cfg.setLalFiles((String) value);
+                    break;
+                case "malFiles":
+                    cfg.setMalFiles((String) value);
+                    break;
+                case "meterConfigs":
+                    cfg.setMeterConfigs((List) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1846,6 +1946,9 @@ public class YamlConfigLoaderUtils {
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
                     break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -1887,6 +1990,9 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1930,6 +2036,9 @@ public class YamlConfigLoaderUtils {
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
                     break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -1971,6 +2080,9 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -2014,6 +2126,9 @@ public class YamlConfigLoaderUtils {
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
                     break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -2055,6 +2170,9 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -2098,6 +2216,9 @@ public class YamlConfigLoaderUtils {
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
                     break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -2139,6 +2260,9 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -2182,6 +2306,9 @@ public class YamlConfigLoaderUtils {
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
                     break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -2223,6 +2350,9 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -2266,6 +2396,9 @@ public class YamlConfigLoaderUtils {
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
                     break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -2307,6 +2440,9 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -2356,6 +2492,72 @@ public class YamlConfigLoaderUtils {
     }
 
     @SuppressWarnings("unchecked")
+    private static void copyToSamplerPluginConfig(
+            final BanyanDBStorageConfig.SamplerPluginConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "name":
+                    cfg.setName((String) value);
+                    break;
+                case "path":
+                    cfg.setPath((String) value);
+                    break;
+                case "symbol":
+                    cfg.setSymbol((String) value);
+                    break;
+                case "abiVersion":
+                    cfg.setAbiVersion(((Number) value).intValue());
+                    break;
+                case "config":
+                    cfg.setConfig((Map) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToTracePipeline(
+            final BanyanDBStorageConfig.TracePipeline cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "enabled":
+                    cfg.setEnabled((boolean) value);
+                    break;
+                case "enabledEvents":
+                    cfg.setEnabledEvents((List) value);
+                    break;
+                case "mergeGraceSeconds":
+                    cfg.setMergeGraceSeconds(((Number) value).intValue());
+                    break;
+                case "finalizeGraceSeconds":
+                    cfg.setFinalizeGraceSeconds(((Number) value).intValue());
+                    break;
+                case "plugins":
+                    cfg.setPlugins((List) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private static void copyToGroupResource(
             final BanyanDBStorageConfig.GroupResource cfg, final Properties src,
             final String moduleName, final String providerName) {
@@ -2388,6 +2590,9 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "additionalLifecycleStages":
                     cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",

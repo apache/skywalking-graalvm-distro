@@ -47,7 +47,7 @@ All receivers are included:
 | Async Profiler | gRPC | Java async-profiler |
 | pprof | gRPC | Go pprof profiling |
 | OpenTelemetry | gRPC (OTLP) | Metrics + Logs via OTLP |
-| Envoy / Istio ALS | gRPC | Access log service, metrics |
+| Envoy / Istio ALS | gRPC | Access log service (HTTP and TCP entries), metrics |
 | Zipkin | HTTP | Zipkin v2 spans (disabled by default) |
 | Zabbix | TCP | Zabbix agent protocol (disabled by default) |
 | Telegraf | gRPC | Telegraf metrics |
@@ -85,6 +85,7 @@ All receivers are included:
 | Exporter | Included (disabled by default) |
 | Health Checker | Included |
 | AI Pipeline | Included (baseline prediction) |
+| DSL live debugger (SWIP-13) | Included — sampling sessions over the bundled MAL/LAL/OAL rules, probes compiled in at build time |
 
 ## Optional Modules
 
@@ -112,6 +113,10 @@ The native image does **not** support TLS-encrypted gRPC communication. This aff
 **Root cause**: The Netty TLS implementation requires `netty_tcnative` platform-specific native
 libraries (`.so` files) that are not bundled in the GraalVM native image.
 
+The `restSSL*` options that 11.0.0 added to every HTTP/REST server (`SW_*_REST_SSL_ENABLED`) are
+present in `application.yml` for configuration parity, but they sit on the same Netty TLS stack and
+have not been verified in the native image; treat them as unsupported.
+
 **Workaround**: Use a service mesh (e.g., **Istio**, **Linkerd**) to handle mTLS at the
 infrastructure layer. The mesh transparently encrypts all pod-to-pod traffic, including
 agent-to-OAP gRPC connections, without requiring application-level TLS configuration.
@@ -123,13 +128,24 @@ Agent Pod ──(plaintext gRPC)──► Istio Sidecar ══(mTLS)══► Is
 This is the recommended approach for Kubernetes deployments and provides stronger security
 guarantees than application-level TLS (automatic certificate rotation, policy enforcement).
 
-### No DSL Live Debugger or Runtime Rule Hot-Update
+### DSL Rules Are Read-Only (Live Debugger Yes, Hot-Update No)
 
-The admin-server feature modules `DSLDebuggingModule` (SWIP-13 DSL live debugger, `/dsl-debugging/*`)
-and `RuntimeRuleModule` (MAL/LAL hot-update, `/runtime/*`) are **not supported**. Both generate
-Javassist bytecode at runtime, which a closed-world native image cannot do — all DSL rules are
-pre-compiled at build time. These endpoints return **HTTP 501**. Use the upstream JVM distribution
-if you need live DSL debugging or runtime rule updates.
+All MAL / LAL / OAL rules are pre-compiled at build time. The precompiler compiles the SWIP-13
+debug probes into every rule class (the same codegen switch the upstream OAP flips at boot), so
+the live debugger works on the bundled rules; only runtime-rule hot-update, which generates
+bytecode at runtime, is unavailable:
+
+| Admin API | Status |
+|-----------|--------|
+| `/dsl-debugging/*` (SWIP-13 live debugger: sessions over MAL, LAL and OAL rules) | Supported on the bundled rules |
+| `GET /runtime/oal/files`, `/runtime/oal/files/{name}`, `/runtime/oal/rules[/{source}]` | Supported (upstream handler) |
+| `GET /runtime/rule/list`, `/runtime/rule/bundled`, `GET /runtime/rule` (YAML + `X-Sw-*` headers) | Supported: every shipped rule, always `BUNDLED` |
+| `POST /runtime/rule/addOrUpdate`, `/inactivate`, `/delete`, `GET /runtime/rule/dump`, `/runtime/mal/*`, `/runtime/lal/*` | **HTTP 501** (runtime-rule hot-update) |
+
+The Horizon UI's DSL catalog, editor, OAL and live-debug pages therefore work against this distro;
+saving or deleting a rule is refused with a structured 501. `SW_DSL_DEBUGGING_INJECTION_ENABLED`
+only gates the debug API here — the probes are always compiled in. Use the upstream JVM OAP
+distribution if you need hot-update.
 
 ## Differences from Upstream SkyWalking
 
@@ -142,6 +158,7 @@ if you need live DSL debugging or runtime rule updates.
 | Cluster | ZK, K8s, Consul, Etcd, Nacos | Standalone, K8s |
 | Config | All dynamic config providers | K8s ConfigMap or none |
 | Module loading | SPI discovery at runtime | Fixed at build time |
+| DSL rules | Hot-update + live debugger | Live debugger on bundled rules; read-only catalogs; no hot-update |
 | TLS/SSL | Supported (gRPC SSL, mTLS) | Not supported (use service mesh) |
 
 ## Compatibility

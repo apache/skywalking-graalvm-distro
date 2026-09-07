@@ -42,6 +42,10 @@ core:
     restIdleTimeOut: ${SW_CORE_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_CORE_REST_QUEUE_SIZE:0}
     httpMaxRequestHeaderSize: ${SW_CORE_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    # TLS for the REST server; cert and key are reloaded on rotation without a restart. Server-side TLS only.
+    restSSLEnabled: ${SW_CORE_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_CORE_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_CORE_REST_SSL_CERT_CHAIN_PATH:""}
     gRPCHost: ${SW_CORE_GRPC_HOST:0.0.0.0}
     gRPCPort: ${SW_CORE_GRPC_PORT:11800}
     maxConcurrentCallsPerConnection: ${SW_CORE_GRPC_MAX_CONCURRENT_CALL:0}
@@ -93,7 +97,7 @@ agent-analyzer:
     forceSampleErrorSegment: ${SW_FORCE_SAMPLE_ERROR_SEGMENT:true}
     segmentStatusAnalysisStrategy: ${SW_SEGMENT_STATUS_ANALYSIS_STRATEGY:FROM_SPAN_STATUS}
     noUpstreamRealAddressAgents: ${SW_NO_UPSTREAM_REAL_ADDRESS:6000,9000}
-    meterAnalyzerActiveFiles: ${SW_METER_ANALYZER_ACTIVE_FILES:datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime}
+    meterAnalyzerActiveFiles: ${SW_METER_ANALYZER_ACTIVE_FILES:datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime,php-runtime,nodejs-runtime}
     slowCacheReadThreshold: ${SW_SLOW_CACHE_SLOW_READ_THRESHOLD:default:20,redis:10}
     slowCacheWriteThreshold: ${SW_SLOW_CACHE_SLOW_WRITE_THRESHOLD:default:20,redis:10}
 
@@ -120,6 +124,9 @@ receiver-sharing-server:
     restIdleTimeOut: ${SW_RECEIVER_SHARING_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_RECEIVER_SHARING_REST_QUEUE_SIZE:0}
     httpMaxRequestHeaderSize: ${SW_RECEIVER_SHARING_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    restSSLEnabled: ${SW_RECEIVER_SHARING_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_RECEIVER_SHARING_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_RECEIVER_SHARING_REST_SSL_CERT_CHAIN_PATH:""}
     gRPCHost: ${SW_RECEIVER_GRPC_HOST:0.0.0.0}
     gRPCPort: ${SW_RECEIVER_GRPC_PORT:0}
     maxConcurrentCallsPerConnection: ${SW_RECEIVER_GRPC_MAX_CONCURRENT_CALL:0}
@@ -227,7 +234,7 @@ receiver-otel:
   selector: ${SW_OTEL_RECEIVER:default}
   default:
     enabledHandlers: ${SW_OTEL_RECEIVER_ENABLED_HANDLERS:"otlp-traces,otlp-metrics,otlp-logs"}
-    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*"}
+    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*"}
 
 receiver-zipkin:
   selector: ${SW_RECEIVER_ZIPKIN:-}
@@ -241,6 +248,9 @@ receiver-zipkin:
     restContextPath: ${SW_RECEIVER_ZIPKIN_REST_CONTEXT_PATH:/}
     restIdleTimeOut: ${SW_RECEIVER_ZIPKIN_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_RECEIVER_ZIPKIN_REST_QUEUE_SIZE:0}
+    restSSLEnabled: ${SW_RECEIVER_ZIPKIN_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_RECEIVER_ZIPKIN_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_RECEIVER_ZIPKIN_REST_SSL_CERT_CHAIN_PATH:""}
     enableKafkaCollector: ${SW_ZIPKIN_KAFKA_COLLECTOR_ENABLED:false}
     kafkaBootstrapServers: ${SW_ZIPKIN_KAFKA_SERVERS:localhost:9092}
     kafkaGroupId: ${SW_ZIPKIN_KAFKA_GROUP_ID:zipkin}
@@ -274,6 +284,9 @@ query-zipkin:
     restContextPath: ${SW_QUERY_ZIPKIN_REST_CONTEXT_PATH:/zipkin}
     restIdleTimeOut: ${SW_QUERY_ZIPKIN_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_QUERY_ZIPKIN_REST_QUEUE_SIZE:0}
+    restSSLEnabled: ${SW_QUERY_ZIPKIN_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_QUERY_ZIPKIN_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_QUERY_ZIPKIN_REST_SSL_CERT_CHAIN_PATH:""}
     lookback: ${SW_QUERY_ZIPKIN_LOOKBACK:86400000}
     namesMaxAge: ${SW_QUERY_ZIPKIN_NAMES_MAX_AGE:300}
     uiQueryLimit: ${SW_QUERY_ZIPKIN_UI_QUERY_LIMIT:10}
@@ -287,6 +300,9 @@ promql:
     restContextPath: ${SW_PROMQL_REST_CONTEXT_PATH:/}
     restIdleTimeOut: ${SW_PROMQL_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_PROMQL_REST_QUEUE_SIZE:0}
+    restSSLEnabled: ${SW_PROMQL_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_PROMQL_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_PROMQL_REST_SSL_CERT_CHAIN_PATH:""}
     buildInfoVersion: ${SW_PROMQL_BUILD_INFO_VERSION:"2.45.0"}
     buildInfoRevision: ${SW_PROMQL_BUILD_INFO_REVISION:""}
     buildInfoBranch: ${SW_PROMQL_BUILD_INFO_BRANCH:""}
@@ -302,6 +318,9 @@ logql:
     restContextPath: ${SW_LOGQL_REST_CONTEXT_PATH:/}
     restIdleTimeOut: ${SW_LOGQL_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_LOGQL_REST_QUEUE_SIZE:0}
+    restSSLEnabled: ${SW_LOGQL_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_LOGQL_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_LOGQL_REST_SSL_CERT_CHAIN_PATH:""}
 
 traceQL:
   selector: ${SW_TRACEQL:-}
@@ -314,6 +333,9 @@ traceQL:
     restContextPathSkywalking: ${SW_TRACEQL_REST_CONTEXT_PATH_SKYWALKING:/skywalking}
     restIdleTimeOut: ${SW_TRACEQL_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_TRACEQL_REST_QUEUE_SIZE:0}
+    restSSLEnabled: ${SW_TRACEQL_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_TRACEQL_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_TRACEQL_REST_SSL_CERT_CHAIN_PATH:""}
     lookback: ${SW_TRACEQL_LOOKBACK:86400000}
     zipkinTracesListResultTags: ${SW_TRACEQL_ZIPKIN_TRACES_LIST_RESULT_TAGS:http.method,error}
     skywalkingTracesListResultTags: ${SW_TRACEQL_SKYWALKING_TRACES_LIST_RESULT_TAGS:http.method,http.status_code,rpc.status_code,db.type,db.instance,mq.queue,mq.topic,mq.broker}
@@ -372,6 +394,9 @@ admin-server:
     idleTimeOut: ${SW_ADMIN_SERVER_IDLE_TIMEOUT:30000}
     acceptQueueSize: ${SW_ADMIN_SERVER_QUEUE_SIZE:0}
     httpMaxRequestHeaderSize: ${SW_ADMIN_SERVER_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    restSSLEnabled: ${SW_ADMIN_SERVER_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_ADMIN_SERVER_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_ADMIN_SERVER_REST_SSL_CERT_CHAIN_PATH:""}
     # Admin-internal gRPC bus. MUST be a private interface reachable between OAP
     # nodes ONLY; never expose it to operators or to the agent network.
     gRPCHost: ${SW_ADMIN_SERVER_GRPC_HOST:0.0.0.0}
@@ -405,6 +430,14 @@ inspect:
 ui-management:
   selector: ${SW_UI_MANAGEMENT:default}
   default:
+
+# DSL live debugger (SWIP-13) — sampling sessions over the bundled MAL / LAL / OAL rules
+# (/dsl-debugging/*) plus the read-only OAL listing (/runtime/oal/*). The debug probes are
+# compiled into every rule class at build time, so injectionEnabled only gates the API here.
+dsl-debugging:
+  selector: ${SW_DSL_DEBUGGING:default}
+  default:
+    injectionEnabled: ${SW_DSL_DEBUGGING_INJECTION_ENABLED:true}
 
 configuration-discovery:
   selector: ${SW_CONFIGURATION_DISCOVERY:default}

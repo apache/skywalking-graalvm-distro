@@ -46,6 +46,9 @@ public class CoreModuleConfig extends ModuleConfig {
     private int restMaxThreads = 200;
     private long restIdleTimeOut = 30000;
     private int restAcceptQueueSize = 0;
+    private boolean restSSLEnabled = false;
+    private String restSSLKeyPath;
+    private String restSSLCertChainPath;
 
     private String gRPCHost;
     private int gRPCPort;

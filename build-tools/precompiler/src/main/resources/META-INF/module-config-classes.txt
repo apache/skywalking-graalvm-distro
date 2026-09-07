@@ -7,6 +7,7 @@ org.apache.skywalking.oap.query.logql.LogQLConfig
 org.apache.skywalking.oap.query.promql.PromQLConfig
 org.apache.skywalking.oap.query.traceql.TraceQLConfig
 org.apache.skywalking.oap.query.zipkin.ZipkinQueryConfig
+org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModuleConfig
 org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig
 org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig
 org.apache.skywalking.oap.server.admin.status.StatusModuleConfig
@@ -45,8 +46,10 @@ org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$R
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsNormal
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsTrace
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsZipkinTrace
+org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$SamplerPluginConfig
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Stage
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$TopN
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Trace
+org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$TracePipeline
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$ZipkinTrace
 org.apache.skywalking.oap.server.telemetry.prometheus.PrometheusConfig

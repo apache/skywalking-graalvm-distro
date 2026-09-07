@@ -14,19 +14,51 @@ Zookeeper/etcd clustering, are excluded.
 
 ## Implemented
 
+Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs against the native image.
+
 | Case | Dir | Modules Tested |
 |------|-----|----------------|
-| Simple Java Agent | `simple-java-agent/` | Core tracing, metrics, topology |
-| Istio ALS | `istio-als/` | Envoy ALS receiver, K8s cluster |
+| Simple Java Agent | `simple-java-agent/` | Core tracing, metrics, topology (Java agent) |
+| Istio ALS | `istio-als/` | Envoy ALS receiver, LAL input-type routing, K8s cluster |
 | Event | `event/` | `receiver-event` |
-| Menu | `menu/` | GraphQL menu/dashboard metadata |
 | Alarm | `alarm/` | `alarm` module, webhook |
 | Log | `log/` | `receiver-log`, LAL engine |
-| Meter | `meter/` | `receiver-meter`, MAL, virtual cache/DB |
+| Meter | `meter/` | `receiver-meter`, MAL (`meter-analyzer-config`), virtual cache/DB |
 | Trace Profiling | `trace-profiling/` | Trace profiling lifecycle |
 | VM Telegraf | `vm-telegraf/` | `receiver-telegraf` |
 | VM Zabbix | `vm-zabbix/` | `receiver-zabbix` (disabled by default) |
 | Zipkin | `zipkin/` | `receiver-zipkin`, `query-zipkin` (disabled by default) |
+| PromQL | `promql/` | `promql` query API |
+| LogQL | `logql/` | `logql` query API |
+| TraceQL | `traceql/` | `traceQL` (Zipkin datasource) |
+| Baseline | `baseline/` | Baseline prediction, alarm |
+| Auth | `auth/` | gRPC token authentication |
+| OTLP Traces | `otlp-traces/` | OTLP traces / metrics / logs |
+| Virtual MQ | `virtual-mq/` | Virtual MQ layer (Kafka-instrumented) |
+| Kafka Exporter | `exporter/` | Kafka exporter |
+| SSL | `ssl/` | gRPC TLS (JDK SSL provider) |
+| mTLS | `mtls/` | gRPC mutual TLS |
+| RabbitMQ | `rabbitmq/` | RabbitMQ OTel rules |
+| RocketMQ | `rocketmq/` | RocketMQ OTel rules |
+| ActiveMQ | `activemq/` | ActiveMQ OTel rules |
+| Pulsar | `pulsar/` | Pulsar / BookKeeper OTel rules |
+| Kafka Monitoring | `kafka-monitoring/` | Kafka OTel rules |
+| Redis | `redis/` | Redis OTel rules |
+| MongoDB | `mongodb/` | MongoDB OTel rules |
+| Flink | `flink/` | Flink OTel rules |
+| AWS DynamoDB | `aws-dynamodb/` | AWS DynamoDB (Firehose) |
+| AWS S3 | `aws-s3/` | AWS S3 (Firehose) |
+| AWS EKS | `aws-eks/` | AWS EKS OTel rules |
+| AWS API Gateway | `aws-api-gateway/` | AWS API Gateway (Firehose) |
+| Self Observability | `so11y/` | OAP self-observability (Prometheus telemetry via OTel collector) |
+| MQE | `mqe/` | Metrics Query Engine |
+| Virtual GenAI | `virtual-genai/` | GenAI provider/model metrics (`gen-ai-analyzer`) |
+| TraceQL SkyWalking | `traceql-skywalking/` | `traceQL` (SkyWalking datasource) |
+| DSL Management | `dsl-management/` | Read-only DSL catalogs (`/runtime/rule/*`, `/runtime/oal/*`) + HTTP 501 for runtime-rule mutations, via curl and `swctl admin` |
+| DSL Debugging | `dsl-debugging/` | SWIP-13 live debugger: status + session cycles on bundled MAL and LAL rules |
+| Airflow | `airflow/` | Airflow layer OTel rules (upstream mock replay sender) |
+| BanyanDB Self Observability | `banyandb-so11y/` | BanyanDB self-observability (SWIP-15: liaison + data node, endpoint + instance-relation rules) |
+| DSL Debugging OAL | `dsl-debugging-oal/` | Upstream OAL live-debug flow (real samples on `service_relation_server_cpm`) |
 
 ---
 
@@ -141,8 +173,9 @@ These upstream cases use Elasticsearch, MySQL, or PostgreSQL and are not applica
 ## Excluded — wrong cluster mode
 
 - `cluster/zk/banyandb/` (Zookeeper clustering, not supported in this distro)
+- `runtime-rule/*`, `dsl-debugging/{mal,lal-block,lal-statement}` (seed rules through runtime-rule hot-update, unsupported here); `inspect/*` (mounts a rule YAML at runtime)
 - `gateway/` (Zookeeper-based 2-node OAP cluster)
-- `so11y/` (etcd-based clustering)
+- `so11y/` upstream variant (etcd-based clustering; the distro ships a standalone `so11y/` case instead)
 - `satellite/native-protocols/` (etcd-based clustering)
 
 ## Excluded — other reasons

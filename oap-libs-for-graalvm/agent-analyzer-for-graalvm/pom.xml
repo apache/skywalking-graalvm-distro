@@ -62,7 +62,6 @@
                             <artifact>org.apache.skywalking:agent-analyzer</artifact>
                             <excludes>
                                 <exclude>org/apache/skywalking/oap/server/analyzer/provider/AnalyzerModuleConfig.class</exclude>
-                                <exclude>org/apache/skywalking/oap/server/analyzer/provider/meter/config/MeterConfigs.class</exclude>
                             </excludes>
                         </filter>
                     </filters>

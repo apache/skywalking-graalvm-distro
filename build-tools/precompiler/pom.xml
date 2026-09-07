@@ -117,6 +117,10 @@
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
+            <artifactId>dsl-debugging</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
             <artifactId>promql-plugin</artifactId>
         </dependency>
         <dependency>

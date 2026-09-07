@@ -62,6 +62,10 @@ public class OALEngineLoaderService implements Service {
         this.moduleManager = moduleManager;
     }
 
+    public Set<OALDefine> getLoadedDefines() {
+        return oalDefineSet;
+    }
+
     public void load(OALDefine define) throws ModuleStartException {
         if (oalDefineSet.contains(define)) {
             return;

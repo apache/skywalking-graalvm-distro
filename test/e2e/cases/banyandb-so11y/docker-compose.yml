@@ -1,0 +1,89 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Simple Java Agent E2E — native OAP with BanyanDB
+# Reuses upstream verification cases and expected files.
+
+# Upstream test/e2e-v2/cases/banyandb against the native image: a liaison + hot data node with
+# file-based discovery, scraped by an OTel collector, feeding the banyandb/* MAL rules (SWIP-15).
+services:
+  data-hot:
+    extends:
+      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
+      service: banyandb-data
+    hostname: banyandb-data-hot-0
+    command: data --node-discovery-mode=file --node-discovery-file-path=/etc/banyandb/nodes.yaml --node-labels type=hot
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/banyandb/nodes.yaml:/etc/banyandb/nodes.yaml
+    networks:
+      e2e:
+        aliases:
+          - banyandb-data-hot-0
+
+  liaison:
+    extends:
+      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
+      service: liaison
+    hostname: banyandb-liaison-0
+    command: liaison --node-discovery-mode=file --node-discovery-file-path=/etc/banyandb/nodes.yaml --data-node-selector type=hot
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/banyandb/nodes.yaml:/etc/banyandb/nodes.yaml
+    depends_on:
+      data-hot:
+        condition: service_healthy
+    networks:
+      e2e:
+        aliases:
+          - banyandb-liaison-0
+
+  otel-collector:
+    image: otel/opentelemetry-collector:${OTEL_COLLECTOR_VERSION}
+    networks:
+      - e2e
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/banyandb/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    expose:
+      - 55678
+    depends_on:
+      liaison:
+        condition: service_healthy
+      data-hot:
+        condition: service_healthy
+
+  oap:
+    image: skywalking-oap-native:latest
+    expose:
+      - 11800
+      - 12800
+    networks:
+      - e2e
+    ports:
+      - 12800
+    environment:
+      SW_HEALTH_CHECKER: default
+      SW_STORAGE_BANYANDB_TARGETS: "liaison:17912"
+      SW_CONFIGURATION: none
+    depends_on:
+      liaison:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -nz 127.0.0.1 11800 || exit 1"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+
+networks:
+  e2e:

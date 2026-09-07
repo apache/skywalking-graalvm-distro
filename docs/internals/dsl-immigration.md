@@ -123,6 +123,26 @@ Generated class package: `org.apache.skywalking.oap.server.core.config.v2.compil
 
 ---
 
+## DSL Live Debugger (SWIP-13)
+
+Upstream's debugger is a codegen-time decision: when `DSLDebugCodegenSwitch.isInjectionEnabled()`
+is true, the OAL, MAL and LAL generators emit a `GateHolder` field per rule (per metric for OAL
+dispatchers), a `debugHolder()` accessor and `if (holder.isGateOn())` probe call sites. The
+upstream OAP flips the switch in `DSLDebuggingModuleProvider.prepare()`; this distro flips it in
+the precompiler (`DSLDebugCodegenSwitch.enableInjection()` before every generator pass) and sets
+`setContent(...)` on the MAL/LAL generators, so the pre-compiled classes carry the same probes
+and rule text. Nothing is compiled at runtime: the wired-in upstream `dsl-debugging` module only
+adds and removes recorders on the holders. Registration works unchanged — MAL holders are
+published by upstream's receivers through `MalStaticBindingHook`, LAL holders by
+`LogFilterListener` through `LalStaticBindingHook` (the log `DSL` replacement stamps the same
+`ruleName`/`inputClass`/`outputClass` metadata upstream does), and OAL holders are found on the
+loaded dispatchers via `DebugHolderProvider`. Idle cost is one volatile read per probe site.
+
+Two details the distro supplies for the module: `OALEngineLoaderService.getLoadedDefines()` on
+the replacement loader, and the raw `oal/*.oal` scripts at their classpath paths in the
+precompiler jar, which `GET /runtime/oal/files/{name}` reads (the file name must be
+path-escaped, `oal%2Fcore.oal`, as swctl and Horizon send it).
+
 ## Runtime Loading via Same-FQCN Replacements
 
 At runtime (native image or JVM distro), same-FQCN replacement classes load pre-compiled classes instead of running Javassist.
@@ -162,14 +182,14 @@ return new Expression(metricName, expression, malExpr);
 **Upstream**: `analyzer/log-analyzer/.../v2/dsl/DSL.java`
 **Replacement**: `oap-libs-for-graalvm/log-analyzer-for-graalvm/`
 
-`of(moduleManager, config, dsl, extraLogType, ruleName, yamlSource)` computes the deterministic class name and loads via `Class.forName()`.
+`of(moduleManager, config, dsl, inputType, outputType, ruleName, sourceRef)` looks the rule up by its `DslSourceRef` coordinates (`lal/<file>.yaml:<line>`) in `META-INF/lal-v2-rules.txt` and loads via `Class.forName()`. The manifest also carries the effective input type the compiler resolved, which upstream `LogFilterListener` uses to route Envoy HTTP vs TCP access logs to the right rule.
 
-### Hierarchy: `CompiledHierarchyRuleProvider`
+### Hierarchy: `HierarchyDefinitionService`
 
-**Upstream**: `analyzer/hierarchy/.../v2/compiler/CompiledHierarchyRuleProvider.java`
+**Upstream**: `server-core/.../core/config/HierarchyDefinitionService.java`
 **Replacement**: `oap-libs-for-graalvm/server-core-for-graalvm/`
 
-`buildRules(ruleExpressions)` loads pre-compiled `BiFunction` classes by rule name.
+Skips the upstream `HierarchyRuleProvider` SPI and loads pre-compiled `BiFunction` classes by rule name from `META-INF/hierarchy-v2-rules.txt`.
 
 ---
 
@@ -187,7 +207,7 @@ Guava `ClassPath.from()` is used in several places. All replaced with manifest-b
 
 ## MeterSystem Javassist (Unchanged)
 
-`MeterSystem.create()` generates one dynamic meter subclass per metric rule (~1188 classes) via Javassist. This is separate from MAL DSL compilation and is handled the same as before: run at build time, export `.class` files, load from manifests at runtime.
+`MeterSystem.create()` generates one dynamic meter subclass per metric rule (~1430 classes) via Javassist. This is separate from MAL DSL compilation and is handled the same as before: run at build time, export `.class` files, load from manifests at runtime.
 
 ---
 
@@ -204,10 +224,14 @@ All manifests are in `META-INF/` within the precompiler output JAR:
 | `mal-v2/{path}/{name}.yaml` | Properties | Per-file config: rule names, expressions, filter, class FQCNs |
 | `mal-v2-classes.txt` | FQCN per line | Reflection config for MAL expression classes |
 | `lal-v2-classes.txt` | FQCN per line | Reflection config for LAL expression classes |
+| `lal-v2-rules.txt` | Properties (`rule.N.source/line/name/class/inputType`) | Runtime LAL lookup by source coordinates + effective input type |
 | `hierarchy-v2-classes.txt` | FQCN per line | Reflection config for hierarchy rule classes |
+| `hierarchy-v2-rules.txt` | `ruleName=FQCN` | Runtime hierarchy rule lookup |
 | `mal-meter-classes.txt` | `name\|scopeId\|func\|type\|FQCN` | MeterSystem pre-generated classes |
 | `annotation-scan/*.txt` | FQCN per line or `key=FQCN` | Annotation/interface scan replacements |
 | `config-data/*.json` | JSON | Serialized rule configs for runtime loaders |
+| `rule-source/**` | raw MAL/LAL YAML + `index.txt` | Read-only `/runtime/rule` catalog served by `BundledRuleCatalogHandler` |
+| `oal/*.oal` (jar root) | raw OAL scripts | `GET /runtime/oal/files/{name}` (upstream dsl-debugging handler) |
 
 ---
 
@@ -218,8 +242,9 @@ The precompiler auto-generates `reflect-config.json` from manifests:
 - MAL/LAL/Hierarchy expression classes: constructor-only access
 - Annotation-scanned classes: full method/field access
 - Armeria HTTP handlers, GraphQL resolvers/types: full access
+- LAL input types (Envoy `HTTPAccessLogEntry` / `TCPAccessLogEntry`) and every message, Builder and enum type reachable through their proto descriptors: full access. Upstream JSON-prints these entries with protobuf's `JsonFormat` (the `EnvoyAccessLog` content and the DSL debug captures), whose accessor table finds the generated getters by reflection. `LalInputTypeReflectionTest` walks the descriptors and fails on any gap.
 
-MAL v2 expressions use `LambdaMetafactory` for closure wiring. Since the pre-compiled classes are on the native-image build classpath, the static analysis resolves these lambdas automatically.
+MAL v2 closures (tag/forEach/decorate functions) are compiled into companion classes next to the expression class, so no runtime lambda wiring is needed; the static analysis sees them as ordinary classes.
 
 ---
 
@@ -231,12 +256,10 @@ MAL v2 expressions use `LambdaMetafactory` for closure wiring. Since the pre-com
 | `AnnotationScan` | `server-core-for-graalvm` | Read annotation manifests instead of Guava scan |
 | `SourceReceiverImpl` | `server-core-for-graalvm` | Read dispatcher manifests instead of Guava scan |
 | `MeterSystem` | `server-core-for-graalvm` | Read MeterFunction manifest + load pre-generated meter classes |
-| `HierarchyDefinitionService` | `server-core-for-graalvm` | Java-backed hierarchy rules |
-| `CompiledHierarchyRuleProvider` | `server-core-for-graalvm` | Load pre-compiled hierarchy rule classes |
+| `HierarchyDefinitionService` | `server-core-for-graalvm` | Load pre-compiled hierarchy rule classes by name |
 | `DSL` (MAL v2) | `meter-analyzer-for-graalvm` | Load pre-compiled MalExpression classes |
 | `DSL` (LAL v2) | `log-analyzer-for-graalvm` | Load pre-compiled LalExpression classes |
 | `Rules` | `meter-analyzer-for-graalvm` | Load rule configs from JSON manifests |
-| `MeterConfigs` | `agent-analyzer-for-graalvm` | Load meter configs from JSON manifests |
 | `LALConfigs` | `log-analyzer-for-graalvm` | Load LAL configs from JSON manifests |
 
 ---

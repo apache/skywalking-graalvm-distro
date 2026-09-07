@@ -51,7 +51,7 @@ class LALSlowSqlTest extends LALScriptComparisonBase {
         assertTrue(rules.size() >= minRules,
             yamlFile + " should have at least " + minRules + " rule(s)");
         for (final LALConfig rule : rules) {
-            final LalExpression expr = loadPrecompiled(rule.getName());
+            final LalExpression expr = loadPrecompiled(rule);
             assertNotNull(expr,
                 "Pre-compiled class for rule '" + rule.getName() + "' should load");
         }
