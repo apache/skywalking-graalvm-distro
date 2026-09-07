@@ -26,6 +26,17 @@
     # service instance list
     - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql instance list --service-name=oap-server
       expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/service-instance.yml
+    # SWIP-13 live debugger on a rule file with a file-level filter (otel-rules/oap.yaml): the session
+    # must be active while the OTel collector keeps pushing so the filter probe runs on the hot path
+    # (it reads FilterExpression#getLiteral, which only the debug branch calls). Start it before the
+    # metric checks, which then prove ingestion survives an active session; the captures are
+    # inspected at the end.
+    - query: |
+        out=$(swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session start --catalog otel-rules --name oap --rule-name meter_oap_instance_trace_count --client-id e2e-so11y 2>&1)
+        sid=$(echo "$out" | grep -oE '"sessionId": *"[^"]+"' | head -1 | sed 's/.*: *"//; s/"$//')
+        echo "$sid" > /tmp/e2e-so11y-dsl-session
+        printf 'started: %s\n' "$([ -n "$sid" ] && echo yes || echo no)"
+      expected: expected/dsl-session-started.yml
     # OAP application-level metrics (available in native image)
     - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_oap_instance_trace_count --instance-name=http://localhost:1234 --service-name=oap-server
       expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value-label-trace.yml
@@ -37,3 +48,12 @@
       expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value.yml
     - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="meter_oap_instance_trace_latency_percentile{p='90,99'}" --instance-name=http://localhost:1234 --service-name=oap-server
       expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value-percentile.yml
+    # The filter probe fired for every scrape and kept the so11y families.
+    - query: |
+        swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session get "$(cat /tmp/e2e-so11y-dsl-session)" \
+          | yq -p json -o yaml '{"records": ([.nodes[].records[]] | length), "filterSamples": ([.nodes[].records[].samples[] | select(.type == "filter")] | length), "kept": ([.nodes[].records[].samples[] | select(.type == "filter" and .continueOn == true)] | length)}' -
+      expected: expected/dsl-session-captures.yml
+    - query: |
+        swctl --display json --admin-url=http://${oap_host}:${oap_17128} admin dsl-debug session stop "$(cat /tmp/e2e-so11y-dsl-session)" \
+          | yq -p json -o yaml '{"localStopped": .localStopped}' -
+      expected: expected/dsl-session-stopped.yml

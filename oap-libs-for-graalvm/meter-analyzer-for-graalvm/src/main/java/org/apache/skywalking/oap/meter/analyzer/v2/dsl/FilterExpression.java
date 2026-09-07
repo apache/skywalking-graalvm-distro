@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import javassist.ClassPool;
+import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
@@ -37,6 +38,7 @@ import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 public class FilterExpression {
     private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
 
+    @Getter
     private final String literal;
     private final MalFilter malFilter;
 

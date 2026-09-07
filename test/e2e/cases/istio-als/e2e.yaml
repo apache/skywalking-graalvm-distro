@@ -24,6 +24,9 @@ setup:
       - namespace: istio-system
         resource: service/skywalking-oap
         port: 12800
+      - namespace: istio-system
+        resource: service/skywalking-oap
+        port: 17128
   steps:
     - name: set PATH
       command: export PATH=/tmp/skywalking-infra-e2e/bin:$PATH
@@ -84,8 +87,8 @@ setup:
           --set oap.image.tag=latest \
           --set oap.image.pullPolicy=IfNotPresent \
           --set oap.replicas=2 \
-          --set oap.env.SW_ENVOY_METRIC_ALS_HTTP_ANALYSIS=k8s-mesh \
-          --set oap.env.SW_ENVOY_METRIC_ALS_TCP_ANALYSIS=k8s-mesh \
+          --set oap.env.SW_ENVOY_METRIC_ALS_HTTP_ANALYSIS='k8s-mesh\,persistence' \
+          --set oap.env.SW_ENVOY_METRIC_ALS_TCP_ANALYSIS='k8s-mesh\,persistence' \
           --set oap.env.K8S_SERVICE_NAME_RULE='e2e::${service.metadata.name}' \
           --set oap.env.SW_HEALTH_CHECKER=default \
           --set oap.envoy.als.enabled=true \
@@ -266,3 +269,22 @@ verify:
             swctl --display yaml --base-url=http://${service_skywalking_oap_host}:${service_skywalking_oap_12800}/graphql instance list --service-name=e2e::reviews | yq e '.[0].name' - ) \
 
       expected: expected/metrics-has-value.yml
+
+    # SWIP-13 live debugger on the Envoy ALS LAL rule. `persistence` routes every HTTP access log
+    # entry into lal/envoy-als, whose debug captures (and the EnvoyAccessLog content) JSON-print the
+    # HTTPAccessLogEntry proto through JsonFormat: the native image needs reflection metadata for
+    # the whole descriptor closure, otherwise the payload degrades to `jsonformat-failed`.
+    - query: |
+        out=$(swctl --display json --admin-url=http://${service_skywalking_oap_host}:${service_skywalking_oap_17128} admin dsl-debug session start --catalog lal --name envoy-als --rule-name envoy-als --client-id e2e-istio-als 2>&1)
+        sid=$(echo "$out" | grep -oE '"sessionId": *"[^"]+"' | head -1 | sed 's/.*: *"//; s/"$//')
+        echo "$sid" > /tmp/e2e-istio-als-dsl-session
+        printf 'started: %s\n' "$([ -n "$sid" ] && echo yes || echo no)"
+      expected: expected/dsl-session-started.yml
+    - query: |
+        swctl --display json --admin-url=http://${service_skywalking_oap_host}:${service_skywalking_oap_17128} admin dsl-debug session get "$(cat /tmp/e2e-istio-als-dsl-session)" \
+          | yq -p json -o yaml '{"records": ([.nodes[].records[]] | length), "rendered": ([.nodes[].records[].samples[] | select(.type == "input" and .payload.input.commonProperties != null)] | length), "failed": ([.nodes[].records[].samples[] | select(.payload.input.error == "jsonformat-failed" or .payload.output.error == "jsonformat-failed")] | length)}' -
+      expected: expected/dsl-session-envoy-als.yml
+    - query: |
+        swctl --display json --admin-url=http://${service_skywalking_oap_host}:${service_skywalking_oap_17128} admin dsl-debug session stop "$(cat /tmp/e2e-istio-als-dsl-session)" \
+          | yq -p json -o yaml '{"localStopped": .localStopped}' -
+      expected: expected/dsl-session-stopped.yml

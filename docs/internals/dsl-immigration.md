@@ -242,6 +242,7 @@ The precompiler auto-generates `reflect-config.json` from manifests:
 - MAL/LAL/Hierarchy expression classes: constructor-only access
 - Annotation-scanned classes: full method/field access
 - Armeria HTTP handlers, GraphQL resolvers/types: full access
+- LAL input types (Envoy `HTTPAccessLogEntry` / `TCPAccessLogEntry`) and every message, Builder and enum type reachable through their proto descriptors: full access. Upstream JSON-prints these entries with protobuf's `JsonFormat` (the `EnvoyAccessLog` content and the DSL debug captures), whose accessor table finds the generated getters by reflection. `LalInputTypeReflectionTest` walks the descriptors and fails on any gap.
 
 MAL v2 closures (tag/forEach/decorate functions) are compiled into companion classes next to the expression class, so no runtime lambda wiring is needed; the static analysis sees them as ordinary classes.
 

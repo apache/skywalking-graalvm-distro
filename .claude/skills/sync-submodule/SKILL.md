@@ -180,6 +180,17 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
 - **Same-name MAL counter windows**: since 11.0.0 `CounterWindow` is keyed by sample name, not
   metric name, so the comparison harness runs the fresh and pre-compiled paths back to back with a
   `CounterWindow.INSTANCE.reset()` in between.
+- **Diff the public API of every same-FQCN replacement, not only the constructors**: a Lombok
+  `@Getter` upstream adds a method the replacement must keep (11.0.0: `FilterExpression#getLiteral()`,
+  read by `Analyzer` only inside the debug-gated filter probe). The comparison tests never take that
+  branch, so the miss surfaces as `NoSuchMethodError` on the ingestion thread the moment an operator
+  starts a session. `FilteredRuleDebugCaptureTest` covers the MAL filter probe; add the equivalent
+  when a new probe reads a replaced class.
+- **Protobuf `JsonFormat` needs reflection metadata**: it prints/parses generated messages through
+  the accessor table, which looks getters up with `Class.getMethod`. The precompiler registers the
+  descriptor closure of every LAL input type (`addProtoMessageEntries`); when upstream starts
+  JSON-printing another generated type (a new LAL input type, an OTLP/JSON receiver...), extend the
+  root set or the native image answers `Generated message class ... missing method ...`.
 
 - **Reflection errors at native image runtime**: New classes instantiated via `Class.forName().newInstance()` need entries in `reflect-config.json` or `reachability-metadata.json`
 - **Config loading failures**: New `ModuleConfig` subclasses need config-generator regeneration AND may need `@Setter` same-FQCN replacement

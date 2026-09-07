@@ -21,6 +21,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.ClassPath;
+import com.google.protobuf.Descriptors;
+import com.google.protobuf.Message;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -30,6 +32,8 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,7 +43,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -1538,8 +1544,11 @@ public class Precompiler {
         // LAL v2 expression classes — one FQCN per line, constructor-only
         addConstructorEntries(entries, metaInf.resolve("lal-v2-classes.txt"));
 
-        // LAL effective input types (proto classes) — the runtime DSL replacement resolves them by
-        // name (Class.forName) to route mixed-type inputs, so they need a name-only entry.
+        // LAL effective input types (proto classes). The runtime DSL replacement resolves them by
+        // name to route mixed-type inputs, and the LAL debug dump / EnvoyAccessLogBuilder print them
+        // through protobuf's JsonFormat, whose accessor table finds the generated getters and setters
+        // by reflection on the message, its Builder and every nested message and enum type. Register
+        // the whole descriptor closure with full access.
         Path lalRules = metaInf.resolve("lal-v2-rules.txt");
         if (Files.exists(lalRules)) {
             Properties lalProps = new Properties();
@@ -1552,11 +1561,7 @@ public class Precompiler {
                     inputTypes.add(lalProps.getProperty(key).trim());
                 }
             }
-            for (String inputType : inputTypes) {
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("name", inputType);
-                entries.add(entry);
-            }
+            addProtoMessageEntries(entries, inputTypes);
         }
 
         // Hierarchy v2 rule classes — one FQCN per line, constructor-only
@@ -1601,6 +1606,103 @@ public class Precompiler {
         ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
         mapper.writeValue(nativeImageDir.resolve("resource-config.json").toFile(), resourceConfig);
         log.info("Generated resource-config.json with {} resource patterns", includes.size());
+    }
+
+    /**
+     * Register every message and enum type reachable from {@code rootTypes} through the proto
+     * descriptors, plus their {@code Builder} classes, with full access. A non-message root gets a
+     * name-only entry.
+     */
+    private static void addProtoMessageEntries(List<Map<String, Object>> entries, Set<String> rootTypes) {
+        Set<Class<?>> closure = new LinkedHashSet<>();
+        for (String rootType : rootTypes) {
+            Class<?> root;
+            try {
+                root = Class.forName(rootType);
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException("LAL input type is not on the precompiler classpath: " + rootType, e);
+            }
+            if (Message.class.isAssignableFrom(root)) {
+                collectProtoClosure(root, closure);
+            } else {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("name", rootType);
+                entries.add(entry);
+            }
+        }
+        for (Class<?> clazz : closure) {
+            entries.add(fullAccessEntry(clazz.getName()));
+        }
+        log.info("Registered {} protobuf classes reachable from {} LAL input types", closure.size(), rootTypes.size());
+    }
+
+    private static void collectProtoClosure(Class<?> messageClass, Set<Class<?>> closure) {
+        if (!closure.add(messageClass)) {
+            return;
+        }
+        for (Class<?> nested : messageClass.getDeclaredClasses()) {
+            if (Message.Builder.class.isAssignableFrom(nested)) {
+                closure.add(nested);
+            }
+        }
+        Descriptors.Descriptor descriptor;
+        try {
+            descriptor = (Descriptors.Descriptor) messageClass.getMethod("getDescriptor").invoke(null);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Not a generated protobuf message: " + messageClass.getName(), e);
+        }
+        for (Descriptors.FieldDescriptor field : descriptor.getFields()) {
+            Descriptors.FieldDescriptor.JavaType javaType = field.getJavaType();
+            if (javaType != Descriptors.FieldDescriptor.JavaType.MESSAGE
+                && javaType != Descriptors.FieldDescriptor.JavaType.ENUM) {
+                continue;
+            }
+            Class<?> fieldType = field.isMapField()
+                ? mapValueType(messageClass, field)
+                : accessorReturnType(messageClass, field);
+            if (fieldType == null) {
+                continue; // map with scalar values: nothing generated to register
+            }
+            if (Message.class.isAssignableFrom(fieldType)) {
+                collectProtoClosure(fieldType, closure);
+            } else if (fieldType.isEnum()) {
+                closure.add(fieldType);
+            }
+        }
+    }
+
+    /** {@code getFoo()} for singular fields, {@code getFoo(int)} for repeated ones. */
+    private static Class<?> accessorReturnType(Class<?> messageClass, Descriptors.FieldDescriptor field) {
+        return findGetter(messageClass, "get" + field.getName(), field.isRepeated() ? 1 : 0).getReturnType();
+    }
+
+    /** The value type argument of {@code Map<K, V> getFooMap()}; {@code null} for scalar values. */
+    private static Class<?> mapValueType(Class<?> messageClass, Descriptors.FieldDescriptor field) {
+        Type type = findGetter(messageClass, "get" + field.getName() + "Map", 0).getGenericReturnType();
+        if (type instanceof ParameterizedType) {
+            Type value = ((ParameterizedType) type).getActualTypeArguments()[1];
+            if (value instanceof Class) {
+                return (Class<?>) value;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * protobuf-java derives getter names from the proto field name (underscores to camel case, a
+     * trailing '_' when the name clashes with a reserved one); match case- and underscore-insensitively
+     * instead of replicating its rules.
+     */
+    private static Method findGetter(Class<?> messageClass, String name, int parameterCount) {
+        String wanted = name.replace("_", "").toLowerCase(Locale.ROOT);
+        for (Method method : messageClass.getMethods()) {
+            if (method.getDeclaringClass() != Object.class
+                && method.getParameterCount() == parameterCount
+                && method.getName().replace("_", "").toLowerCase(Locale.ROOT).equals(wanted)) {
+                return method;
+            }
+        }
+        throw new IllegalStateException("No getter " + name + " on " + messageClass.getName());
     }
 
     private static Map<String, Object> fullAccessEntry(String className) {
