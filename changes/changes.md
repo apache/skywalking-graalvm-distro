@@ -1,5 +1,36 @@
 # Changes
 
+## 0.5.0
+
+### Upstream Sync
+
+- Sync SkyWalking submodule to upstream master `476afadecd` (11.1.0-SNAPSHOT), 13 commits past the v11.0.0 tag.
+- Wire the two new analyzer modules: `ai-evaluation` (SWIP-16 LLM-as-judge over sampled GenAI spans; disabled by default, configured through the new `config/ai-evaluation.yml`) and `ai-agent-conversation` (AI agent conversations landed by the AI Sessionizer; on by default because the GraphQL query module requires it, turned off with its `none` provider).
+- Adopt every rule file upstream added or changed: `lal/ai-agent.yaml` (`ConversationFile` output builder), `meter-analyzer-config/gen-ai-model.yaml` (judge scores), `otel-rules/ai-agent/runtime-{instance,service}.yaml`, `otel-rules/banyandb/banyandb-trace-sampling.yaml`, and the AI-evaluation counters in `otel-rules/oap.yaml` — all enabled with the upstream defaults.
+- Mirror the new `application.yml` sections and defaults, and pick up upstream's BanyanDB credential / trust-CA hot reload (`secretsManagementFile`), the `recordsAIAgent` BanyanDB group, the Zipkin cold-stage query, and the ports opening once boot completes (`ModuleProvider#notifyBootCompleted`, which the fixed module manager reaches through `BootstrapFlow`).
+
+### GraalVM Native Image Compatibility
+
+- Embed every `query-protocol/*.graphqls` schema with one glob instead of a per-file list; upstream's new `gen-ai-evaluation-record` and `ai-agent-conversation` schemas were missing and the native OAP died at boot.
+- The precompiler's Armeria scan collects `@Decorator` targets (the AI agent conversation view's `CompressResponse`): Armeria instantiates them reflectively, and without the metadata the native OAP died at boot with "cannot inject the dependency".
+- Register the admin-server family's Jackson response POJOs (`org.apache.skywalking.oap.server.admin.*.response.*`) for reflection: `/inspect/*` answered HTTP 400 (`No serializer found for class ...MetricsResponse`) in the native image since the 11.0.0 sync.
+- Register the protobuf descriptor closure of the OTLP/HTTP JSON receivers' `Export{Logs,Metrics,Trace}ServiceRequest` and of `LogData` (parsed by `ProtoBufJsonUtils`): OTLP/HTTP JSON requests failed natively with `Generated message class ... missing method getResourceLogsList`.
+- Register the `ConversationFile` LAL output builder for reflection, regenerate the config loaders (`AIEvaluationConfig`, `AIAgentConversationConfig`, `BanyanDBStorageConfig$RecordsAIAgent`), and package `ai-evaluation.yml` in both distributions.
+
+### Documentation
+
+- Document the new modules in `distro-policy.md` and `configuration.md` (new `ai-evaluation` / `ai-agent-conversation` sections; refreshed `lalFiles`, `malFiles` and `meterAnalyzerActiveFiles` defaults), refresh the build-time counts, move the `version-mapping.md` dev row to `0.5.0-SNAPSHOT` and add `0.4.0` → `11.0.0`, and record the native-image pitfalls in the sync skill.
+
+### Testing
+
+- Add MAL comparison tests for the AI agent runtime, BanyanDB trace-sampling and gen-ai-model rules and a LAL pre-compilation test for `ai-agent.yaml`; `OapTest` feeds the new `ai_evaluation_*` families; the provider / rule inventories and the precompiled-YAML staleness baseline track the new files.
+
+### E2E Tests
+
+- New cases: `ai-agent` (AI Sessionizer files over OTLP logs, the `asz.view` document equal to the Sessionizer's own, list / filter / raw-file / metrics checks), `banyandb-trace-sampling` (a plugin-capable BanyanDB running the sampler chain), and `banyandb-auth-rotation` / `banyandb-ca-rotation` (credential and trust-CA hot reload, then the shared storage suite).
+- `virtual-genai` follows upstream's split: the mock LLM and the Spring AI service run from the published `e2e-mock-llm-server` / `e2e-spring-ai-service` images, and the case also asserts the LLM-as-judge evaluation records and metrics.
+- Bump `SW_CTL_COMMIT` to `1b6837da` (ai-agent commands) and `SW_E2E_SERVICE_COMMIT` to `51e72735`; add `SW_AI_SESSIONIZER_COMMIT`.
+
 ## 0.4.0
 
 ### Upstream Sync

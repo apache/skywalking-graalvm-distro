@@ -21,10 +21,10 @@
 ## Technical Notes
 - **V2 DSL engines**: All four DSL compilers (OAL, MAL, LAL, Hierarchy) use the same pipeline: ANTLR4 parse → immutable AST → Javassist bytecode. Upstream PR #13723 removed Groovy from all production code. The precompiler runs these v2 engines at build time via `setClassOutputDir()` / `setClassNameHint()` / `setSourceRef()`, capturing `.class` files into the output JAR. Since 11.0.0 generated class names carry the YAML line (`{yaml}_L{line}_{hint}`, via `DslSourceRef` + `DslClassNaming`), so build-time names match the JVM distro.
 - **OAL engine**: Generates ~1330 metrics/builder/dispatcher classes via Javassist at startup. Run at build time via `OALEngineV2.start()` with `setGeneratedFilePath()`. Uses ANTLR4 + FreeMarker + Javassist.
-- **MAL compiler**: Compiles ~1470 MAL expressions from 90 YAML rule files (incl. `meter-analyzer-config`, which upstream loads through `Rules` since 11.0.0) via `MALClassGenerator`. Each expression becomes a `MalExpression` implementation class. Closures (TagFunction, ForEachFunction, PropertiesExtractor, DecorateFunction) compile into companion classes next to the expression class. **Per-file manifests**: `META-INF/mal-v2/` mirrors original YAML directory structure; each config file contains rule names, expressions, filter, and compiled class FQCNs. Runtime lookup by expression text.
-- **LAL compiler**: Compiles 15 LAL rules from 11 YAML files via `LALClassGenerator`. Each rule becomes a `LalExpression` implementation class. `META-INF/lal-v2-rules.txt` maps `lal/<file>.yaml:<line>` (the `DslSourceRef` upstream passes) to the class and records the effective input type, which upstream `LogFilterListener` uses to route Envoy HTTP vs TCP access logs.
+- **MAL compiler**: Compiles ~1540 MAL expressions from 94 YAML rule files (incl. `meter-analyzer-config`, which upstream loads through `Rules` since 11.0.0) via `MALClassGenerator`. Each expression becomes a `MalExpression` implementation class. Closures (TagFunction, ForEachFunction, PropertiesExtractor, DecorateFunction) compile into companion classes next to the expression class. **Per-file manifests**: `META-INF/mal-v2/` mirrors original YAML directory structure; each config file contains rule names, expressions, filter, and compiled class FQCNs. Runtime lookup by expression text.
+- **LAL compiler**: Compiles 16 LAL rules from 12 YAML files via `LALClassGenerator`. Each rule becomes a `LalExpression` implementation class. `META-INF/lal-v2-rules.txt` maps `lal/<file>.yaml:<line>` (the `DslSourceRef` upstream passes) to the class and records the effective input type, which upstream `LogFilterListener` uses to route Envoy HTTP vs TCP access logs.
 - **Hierarchy compiler**: Compiles 4 hierarchy matching rules via `HierarchyRuleClassGenerator`. Each rule becomes a `BiFunction<Service, Service, Boolean>` implementation class, listed by name in `META-INF/hierarchy-v2-rules.txt`.
-- **MeterSystem**: `MeterSystem.create()` uses Javassist to generate ~1430 meter function subclasses. Run at build time, export `.class` files. Separate from MAL DSL compilation.
+- **MeterSystem**: `MeterSystem.create()` uses Javassist to generate ~1500 meter function subclasses. Run at build time, export `.class` files. Separate from MAL DSL compilation.
 - **Same-FQCN replacement**: Classes in `oap-libs-for-graalvm/*/src/main/java/` with the same fully-qualified class name as upstream classes are repackaged via `maven-shade-plugin` (original `.class` excluded). Used for v2 `DSL.java` (MAL/LAL), `MeterSystem.java`, `HierarchyDefinitionService.java`, etc.
 - **Classpath scanning**: Guava `ClassPath.from()` used in multiple places. Run at build-time pre-compilation as verification gate, export static class index.
 - **Config loading**: `YamlConfigLoaderUtils.copyProperties()` replaced with same-FQCN version that uses Lombok setters instead of `Field.setAccessible()`. See [docs/internals/config-init-immigration.md](docs/internals/config-init-immigration.md).
@@ -33,8 +33,8 @@
 - **Native image**: `oap-graalvm-native` uses `native-maven-plugin` with `-Pnative` profile. Console-only `log4j2.xml` avoids RollingFile reflection chain. ~203MB binary, boots to full module init.
 
 ## Test Suites
-- **MAL**: Verify pre-compiled `MalExpression` classes from build-time JAR produce identical results to fresh v2 compilation. Covers all 90 MAL YAML rule files.
-- **LAL**: Verify pre-compiled `LalExpression` classes produce identical results. Covers all 11 LAL YAML files.
+- **MAL**: Verify pre-compiled `MalExpression` classes from build-time JAR produce identical results to fresh v2 compilation. Covers all 94 MAL YAML rule files.
+- **LAL**: Verify pre-compiled `LalExpression` classes produce identical results. Covers all 12 LAL YAML files.
 - **Hierarchy**: Verify pre-compiled hierarchy rule classes match fresh v2 compilation.
 
 See [docs/internals/dsl-immigration.md](docs/internals/dsl-immigration.md) for details.

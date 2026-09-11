@@ -103,6 +103,8 @@
                 <include>trace-sampling-policy-settings.yml</include>
                 <!-- GenAI pricing configuration (loaded by GenAIConfigLoader) -->
                 <include>gen-ai-config.yml</include>
+                <!-- AI evaluation judge/tasks (loaded by AIEvaluationConfigLoader) -->
+                <include>ai-evaluation.yml</include>
             </includes>
         </fileSet>
         <!-- logs/ — empty directory for runtime logs -->

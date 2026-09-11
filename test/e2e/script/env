@@ -17,17 +17,18 @@
 # Update when syncing the skywalking submodule.
 SW_AGENT_JAVA_COMMIT=ac0df43d7140e726eba9e5e5b1b75cf364c71dff
 SW_BANYANDB_COMMIT=3b83e18fb0481d02e44eaa5df137fcf7b000754b
-SW_CTL_COMMIT=85e5afdb3d55c6e5af66a472c3fe8ac024d11690
+SW_CTL_COMMIT=1b6837da6361f1d735ac9ef1ea8cfc245918ff35
 SW_KUBERNETES_COMMIT_SHA=da0e267f877b9b8e5f7728ae4ea7dc7723a2a073
+SW_AI_SESSIONIZER_COMMIT=dd083ccb141d2bd2678003f1a31094b2a37b40c1
 
 # UI image pin for the istio-als e2e test (ghcr.io/apache/skywalking/ui:<sha>).
-# NOT bumped to the synced submodule commit 6f1fd78e87 (v11.0.0): 11.0.0 dropped the bundled UI,
+# NOT bumped to the synced submodule commit: 11.0.0 dropped the bundled UI,
 # so ghcr.io/apache/skywalking/ui is no longer published at recent commits. Kept at the
 # last commit whose UI image exists. The pins below track the sync.
 SW_UPSTREAM_COMMIT=f79451d3de23edb15277f5b6e315dc6779e73e1f
 
 # Last upstream commit that touched test/e2e-v2/java-test-service/ (image must be published)
-SW_E2E_SERVICE_COMMIT=95a296e2c810e6280b16975dd411e9c595a16836
+SW_E2E_SERVICE_COMMIT=51e727359fd00f006cf7a98511ae205176171969
 
 # OTEL collector version for infrastructure monitoring tests
 OTEL_COLLECTOR_VERSION=0.102.1

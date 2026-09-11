@@ -246,6 +246,14 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>gen-ai-analyzer</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ai-evaluation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ai-agent-conversation</artifactId>
+        </dependency>
 
         <!-- Receivers -->
         <dependency>

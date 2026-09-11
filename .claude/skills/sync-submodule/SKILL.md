@@ -188,9 +188,41 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   when a new probe reads a replaced class.
 - **Protobuf `JsonFormat` needs reflection metadata**: it prints/parses generated messages through
   the accessor table, which looks getters up with `Class.getMethod`. The precompiler registers the
-  descriptor closure of every LAL input type (`addProtoMessageEntries`); when upstream starts
-  JSON-printing another generated type (a new LAL input type, an OTLP/JSON receiver...), extend the
-  root set or the native image answers `Generated message class ... missing method ...`.
+  descriptor closure of every LAL input type plus the OTLP/HTTP JSON receivers' `Export*ServiceRequest`
+  and `LogData` (`protoJsonRoots` → `addProtoMessageEntries`); when upstream starts JSON-parsing or
+  printing another generated type (`git grep "JsonFormat\.(parser|printer)"`), extend the root set or
+  the native image answers `Generated message class ... missing method ...` (11.1: the ai-agent
+  case's OTLP/JSON log posts exposed the missing OTLP roots).
+- **`LALOutputBuilder` implementations are a hand list**: the precompiler resolves `outputType` short
+  names through the SPI at build time, but their reflection entries sit in `Precompiler`'s
+  `configPojos` list. A new builder (11.1: `ConversationFile` from `ai-agent-conversation`) goes on
+  that list, and its module must be a precompiler dependency or the LAL rule fails to compile.
+- **Explicit-input MAL tests go stale when upstream adds a rule to an existing file**: `OapTest`-style
+  tests (hand-built `buildInput`) fail with "both paths returned EMPTY" on the new rule until its
+  sample family is added to the input; auto-discovery tests pick new rules up by themselves.
+- **Classpath resources must be globbed into the native image**: `oap-graalvm-native`'s
+  `reachability-metadata.json` lists the resources the binary embeds. JVM unit tests never notice a
+  missing one; the native OAP dies at boot (11.1: `classpath:query-protocol/gen-ai-evaluation-record.graphqls`,
+  now covered by the `query-protocol/*.graphqls` glob). When upstream starts reading a new
+  classpath resource (not a `config/` file), add a glob there and boot the native image.
+- **Armeria instantiates handler-referenced classes reflectively**: `@ExceptionHandler`,
+  `@RequestConverter` and `@Decorator` targets need constructor metadata. The precompiler's
+  `scanArmeriaHandlers` collects all three (11.1 added `@Decorator` for the AI agent conversation
+  view's `CompressResponse`; without it the native OAP dies at boot with "cannot inject the
+  dependency for ..."). A new Armeria annotation that names a class needs the same treatment.
+- **Jackson response POJOs need reflection metadata**: Armeria `HttpResponse.ofJson(pojo)` /
+  `@ProducesJson` serialize through Jackson, which finds no properties in the native image without
+  metadata and answers HTTP 400 ("No serializer found for class ..."). The precompiler's
+  `scanQueryEntityClasses` covers `org.apache.skywalking.oap.query.*.entity.*` and
+  `org.apache.skywalking.oap.server.admin.*.response.*` (the latter added in 11.1 after the storage
+  suite's `admin inspect` cases exposed it); a POJO outside those packages must be registered by hand.
+- **Native OAP boots faster than upstream assumes**: a case whose BanyanDB has no healthcheck
+  (`service_started` only, e.g. the distroless `-plugins` image) lets the native OAP connect before
+  BanyanDB listens, and it exits on `UNAVAILABLE`. Wrap the OAP entrypoint in `until nc -z ...`.
+- **Upstream e2e cases that bind-mount `java-test-service` jars**: don't build them in CI; every module
+  is published as `ghcr.io/apache/skywalking/<module>:${SW_E2E_SERVICE_COMMIT}` with the jar at
+  `/app.jar` — run the image directly, or copy the jar out through an init container when an agent
+  image must run it (`virtual-genai` spring-ai-service, `banyandb-trace-sampling` trace-mocker).
 
 - **Reflection errors at native image runtime**: New classes instantiated via `Class.forName().newInstance()` need entries in `reflect-config.json` or `reachability-metadata.json`
 - **Config loading failures**: New `ModuleConfig` subclasses need config-generator regeneration AND may need `@Setter` same-FQCN replacement

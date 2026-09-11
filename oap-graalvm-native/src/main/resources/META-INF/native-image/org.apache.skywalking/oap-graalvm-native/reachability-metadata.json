@@ -19861,73 +19861,7 @@
       "glob": "org/slf4j/impl/StaticLoggerBinder.class"
     },
     {
-      "glob": "query-protocol/aggregation.graphqls"
-    },
-    {
-      "glob": "query-protocol/alarm.graphqls"
-    },
-    {
-      "glob": "query-protocol/async-profiler.graphqls"
-    },
-    {
-      "glob": "query-protocol/browser-log.graphqls"
-    },
-    {
-      "glob": "query-protocol/common.graphqls"
-    },
-    {
-      "glob": "query-protocol/continuous-profiling.graphqls"
-    },
-    {
-      "glob": "query-protocol/ebpf-profiling.graphqls"
-    },
-    {
-      "glob": "query-protocol/event.graphqls"
-    },
-    {
-      "glob": "query-protocol/hierarchy.graphqls"
-    },
-    {
-      "glob": "query-protocol/log.graphqls"
-    },
-    {
-      "glob": "query-protocol/metadata-v2.graphqls"
-    },
-    {
-      "glob": "query-protocol/metadata.graphqls"
-    },
-    {
-      "glob": "query-protocol/metric.graphqls"
-    },
-    {
-      "glob": "query-protocol/metrics-v2.graphqls"
-    },
-    {
-      "glob": "query-protocol/metrics-v3.graphqls"
-    },
-    {
-      "glob": "query-protocol/pprof.graphqls"
-    },
-    {
-      "glob": "query-protocol/profile.graphqls"
-    },
-    {
-      "glob": "query-protocol/record.graphqls"
-    },
-    {
-      "glob": "query-protocol/top-n-records.graphqls"
-    },
-    {
-      "glob": "query-protocol/topology.graphqls"
-    },
-    {
-      "glob": "query-protocol/trace-v2.graphqls"
-    },
-    {
-      "glob": "query-protocol/trace.graphqls"
-    },
-    {
-      "glob": "query-protocol/ui-configuration.graphqls"
+      "glob": "query-protocol/*.graphqls"
     },
     {
       "glob": "service-apdex-threshold.yml"

@@ -57,6 +57,9 @@ public final class AcceptedModules {
         new ModuleProviderPair("log-analyzer", "default"),
         new ModuleProviderPair("event-analyzer", "default"),
         new ModuleProviderPair("gen-ai-analyzer", "default"),
+        new ModuleProviderPair("ai-evaluation", "default"),
+        new ModuleProviderPair("ai-agent-conversation", "default"),
+        new ModuleProviderPair("ai-agent-conversation", "none"),
         // Receivers
         new ModuleProviderPair("receiver-sharing-server", "default"),
         new ModuleProviderPair("receiver-register", "default"),

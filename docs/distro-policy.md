@@ -17,7 +17,7 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 | **Cluster** | ClusterModule | Standalone, Kubernetes |
 | **Configuration** | ConfigurationModule | Kubernetes |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
-| **Analyzers** | AnalyzerModule, LogAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule | default providers |
+| **Analyzers** | AnalyzerModule, LogAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule, AIEvaluationModule, AIAgentConversationModule | default providers (AIEvaluationModule disabled by default; AIAgentConversationModule also offers `none`) |
 | **Query** | QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule | default providers |
 | **Admin** | AdminServerModule, StatusModule, InspectModule, UIManagementModule, DSLDebuggingModule | default; runtime-rule excluded (mutations return 501) |
 | **Alarm** | AlarmModule | default |
@@ -69,13 +69,13 @@ Run all four v2 compilers at build time via their native exposed APIs (`setClass
 - Same-FQCN `OALEngineLoaderService` loads pre-compiled classes from manifests.
 
 ### MAL
-- `MALClassGenerator` compiles ~1470 MAL expressions from 90 YAML rule files at build time.
+- `MALClassGenerator` compiles ~1540 MAL expressions from 94 YAML rule files at build time.
 - Deterministic class naming via `DslSourceRef` (`{yaml}_L{line}_{metricName}`), the same names the JVM distro generates.
 - Same-FQCN v2 `DSL.java` loads pre-compiled `MalExpression` classes by computed name.
-- `MeterSystem.create()` also runs at build time → exports ~1430 Javassist meter classes.
+- `MeterSystem.create()` also runs at build time → exports ~1500 Javassist meter classes.
 
 ### LAL
-- `LALClassGenerator` compiles 15 LAL rules (11 YAML files) at build time.
+- `LALClassGenerator` compiles 16 LAL rules (12 YAML files) at build time.
 - Deterministic class naming via `DslSourceRef` (`{yaml}_L{line}_{ruleName}`).
 - Same-FQCN v2 `DSL.java` loads pre-compiled `LalExpression` classes by source coordinates from `META-INF/lal-v2-rules.txt`, which also records each rule's effective input type (upstream routes Envoy HTTP vs TCP access logs by it).
 
@@ -218,10 +218,12 @@ YAML parsing. No reflection involved — safe for GraalVM native image as-is.
 | `metadata-service-mapping.yaml` | 1 | `ResourceUtils.read()` | Metadata service mapping |
 | `service-apdex-threshold.yml` | 1 | `ApdexThresholdConfig` via `ResourceUtils.read()` | APDEX thresholds |
 | `trace-sampling-policy-settings.yml` | 1 | `TraceSamplingPolicyWatcher` via `ResourceUtils.read()` | Trace sampling |
+| `gen-ai-config.yml` | 1 | `GenAIConfigLoader` via `ResourceUtils.read()` | GenAI provider/model pricing |
+| `ai-evaluation.yml` | 1 | `AIEvaluationConfigLoader` via `ResourceUtils.read()` | LLM-as-judge endpoint, prompt and tasks (read only when `ai-evaluation` is enabled) |
 | `cilium-rules/**` | 2 | `CiliumFetcherProvider` via `ResourceUtils.getPathFiles()` | Cilium flow rules |
 | `openapi-definitions/**` | 1 | `EndpointNameGrouping` via `ResourceUtils.getPathFiles()` | OpenAPI grouping definitions |
 
-**Total: 15 files** included in the distro `config/` directory. (Upstream 11.0.0 removed the
+**Total: 17 files** included in the distro `config/` directory. (Upstream 11.0.0 removed the
 bundled `ui-initialized-templates/` + `UITemplateInitializer`; dashboard templates are now managed
 via the `ui-management` REST surface.)
 
@@ -234,16 +236,16 @@ packaged in JARs. The YAML source files are not needed at runtime.
 | Category | Count | Pre-compiled Into | Tool |
 |---|---|---|---|
 | `oal/*.oal` | 10 | ~640 metrics + ~640 builders + ~47 dispatchers (Javassist) | OAL v2 engine |
-| `meter-analyzer-config/*.yaml` | 13 | ~180 `MalExpression` classes (ANTLR4+Javassist) + meter classes | MAL v2 compiler |
-| `otel-rules/**/*.yaml` | 69 | ~1220 `MalExpression` classes + meter classes | MAL v2 compiler |
+| `meter-analyzer-config/*.yaml` | 14 | ~180 `MalExpression` classes (ANTLR4+Javassist) + meter classes | MAL v2 compiler |
+| `otel-rules/**/*.yaml` | 72 | ~1290 `MalExpression` classes + meter classes | MAL v2 compiler |
 | `log-mal-rules/*.yaml` | 4 | ~4 `MalExpression` classes | MAL v2 compiler |
 | `envoy-metrics-rules/*.yaml` | 2 | ~26 `MalExpression` classes + meter classes | MAL v2 compiler |
 | `telegraf-rules/*.yaml` | 1 | ~20 `MalExpression` classes + meter classes | MAL v2 compiler |
 | `zabbix-rules/*.yaml` | 1 | ~15 `MalExpression` classes + meter classes | MAL v2 compiler |
-| `lal/*.yaml` | 11 | 15 `LalExpression` classes (ANTLR4+Javassist) | LAL v2 compiler |
+| `lal/*.yaml` | 12 | 16 `LalExpression` classes (ANTLR4+Javassist) | LAL v2 compiler |
 | `hierarchy-definition.yml` | 1 | ~4 `BiFunction` hierarchy rule classes | Hierarchy v2 compiler |
 
-**Total: 112 files** consumed at build time, producing ~1330 OAL classes, ~1470 MAL expression classes, ~1430 meter classes, 15 LAL expression classes, and 4 hierarchy rule classes.
+**Total: 117 files** consumed at build time, producing ~1330 OAL classes, ~1540 MAL expression classes, ~1500 meter classes, 16 LAL expression classes, and 4 hierarchy rule classes.
 
 Additionally, the precompiler serializes parsed config POJOs as JSON manifests in
 `META-INF/config-data/` (7 JSON files for meter-analyzer-config, otel-rules,

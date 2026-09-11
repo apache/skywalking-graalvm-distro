@@ -57,6 +57,11 @@ import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModule;
 import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModuleProvider;
 import org.apache.skywalking.oap.analyzer.genai.module.GenAIAnalyzerModule;
 import org.apache.skywalking.oap.analyzer.genai.GenAIAnalyzerModuleProvider;
+import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationModule;
+import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationProvider;
+import org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationModule;
+import org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationProvider;
+import org.apache.skywalking.oap.server.ai.agent.conversation.NoneAIAgentConversationProvider;
 // Receivers
 import org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModule;
 import org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModuleProvider;
@@ -226,6 +231,19 @@ public class GraalVMOAPServerStartUp {
         manager.register(new LogAnalyzerModule(), new LogAnalyzerModuleProvider());
         manager.register(new EventAnalyzerModule(), new EventAnalyzerModuleProvider());
         manager.register(new GenAIAnalyzerModule(), new GenAIAnalyzerModuleProvider());
+        // AI evaluation (optional, disabled by default with selector: -)
+        if (configuration.has("ai-evaluation")) {
+            manager.register(new AIEvaluationModule(), new AIEvaluationProvider());
+        }
+        // AI agent conversations: always registered because the GraphQL query module requires it,
+        // so the `none` provider is how the feature is turned off.
+        ApplicationConfiguration.ModuleConfiguration conversationConfig =
+            configuration.getModuleConfiguration("ai-agent-conversation");
+        if (conversationConfig != null && conversationConfig.has("none")) {
+            manager.register(new AIAgentConversationModule(), new NoneAIAgentConversationProvider());
+        } else {
+            manager.register(new AIAgentConversationModule(), new AIAgentConversationProvider());
+        }
 
         // Receivers
         manager.register(new SharingServerModule(), new SharingServerModuleProvider());

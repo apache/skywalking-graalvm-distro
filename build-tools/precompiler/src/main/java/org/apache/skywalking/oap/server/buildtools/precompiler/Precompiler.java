@@ -858,7 +858,7 @@ public class Precompiler {
     /**
      * Scan for Armeria HTTP handler classes — classes with methods annotated with
      * {@code @Post}, {@code @Get}, or {@code @Path} from {@code com.linecorp.armeria.server.annotation}.
-     * Also collects classes referenced in {@code @ExceptionHandler} and {@code @RequestConverter}.
+     * Also collects classes referenced in {@code @ExceptionHandler}, {@code @RequestConverter} and {@code @Decorator}.
      * Armeria's annotatedService().build(handler) uses reflection to discover these annotations;
      * without reflection metadata, routes are silently not registered (returning 404).
      */
@@ -900,6 +900,7 @@ public class Precompiler {
                 if (matched) {
                     result.add(aClass.getName());
                     collectExceptionHandlerClasses(aClass, result);
+                    collectDecoratorClasses(aClass, result);
                 }
             } catch (NoClassDefFoundError | Exception ignored) {
             }
@@ -956,10 +957,35 @@ public class Precompiler {
     }
 
     /**
-     * Auto-discover all classes under {@code org.apache.skywalking.oap.query.*.entity} packages.
+     * Collect {@code @Decorator} targets on the handler class and its methods; Armeria instantiates
+     * them reflectively while building the annotated service, and a miss fails the boot.
+     */
+    private static void collectDecoratorClasses(Class<?> handlerClass, Set<String> result) {
+        Class<? extends Annotation> decoratorAnno = loadAnnotation(
+            "com.linecorp.armeria.server.annotation.Decorator");
+        if (decoratorAnno == null) {
+            return;
+        }
+        List<Annotation> decorators = new ArrayList<>(List.of(handlerClass.getAnnotationsByType(decoratorAnno)));
+        for (Method method : handlerClass.getMethods()) {
+            decorators.addAll(List.of(method.getAnnotationsByType(decoratorAnno)));
+        }
+        for (Annotation anno : decorators) {
+            try {
+                Class<?> decorator = (Class<?>) anno.annotationType().getMethod("value").invoke(anno);
+                result.add(decorator.getName());
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /**
+     * Auto-discover all classes under {@code org.apache.skywalking.oap.query.*.entity} and
+     * {@code org.apache.skywalking.oap.server.admin.*.response} packages.
      * These are Jackson-serialized POJOs (Lombok {@code @Data}) returned by Armeria HTTP handlers
-     * in query plugins (PromQL, LogQL, TraceQL, etc.). Inner static classes and codec serializers
-     * are included. Enums are excluded (Jackson handles them without reflection metadata).
+     * in query plugins (PromQL, LogQL, TraceQL, etc.) and the admin-server family (inspect,
+     * ui-management). Inner static classes and codec serializers are included. Enums are excluded
+     * (Jackson handles them without reflection metadata).
      *
      * <p>This replaces hardcoded class lists — new query plugins are picked up automatically.
      */
@@ -967,15 +993,14 @@ public class Precompiler {
         ImmutableSet<ClassPath.ClassInfo> allClasses) {
 
         // Match: org.apache.skywalking.oap.query.<plugin>.entity[.<sub>].<ClassName>
+        //        org.apache.skywalking.oap.server.admin.<module>.response.<ClassName>
         Set<String> result = new HashSet<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
             String name = classInfo.getName();
-            if (!name.startsWith("org.apache.skywalking.oap.query.")) {
-                continue;
-            }
-            // Check that the package contains ".entity."
-            String afterQuery = name.substring("org.apache.skywalking.oap.query.".length());
-            if (afterQuery.indexOf(".entity.") < 0) {
+            boolean queryEntity = name.startsWith("org.apache.skywalking.oap.query.") && name.contains(".entity.");
+            boolean adminResponse = name.startsWith("org.apache.skywalking.oap.server.admin.")
+                && name.contains(".response.");
+            if (!queryEntity && !adminResponse) {
                 continue;
             }
             try {
@@ -1494,6 +1519,7 @@ public class Precompiler {
             "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder",
             "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder",
             "org.apache.skywalking.oap.server.receiver.envoy.persistence.EnvoyAccessLogBuilder",
+            "org.apache.skywalking.oap.server.ai.agent.conversation.ingest.ConversationFileBuilder",
             // LALSourceTypeProvider SPI: ServiceLoader instantiates for per-layer input/output type resolution
             "org.apache.skywalking.oap.server.receiver.envoy.EnvoyHTTPLALSourceTypeProvider",
             // TTL status REST endpoint: Jackson serializes TTLDefinition returned by /status/config/ttl
@@ -1544,25 +1570,30 @@ public class Precompiler {
         // LAL v2 expression classes — one FQCN per line, constructor-only
         addConstructorEntries(entries, metaInf.resolve("lal-v2-classes.txt"));
 
-        // LAL effective input types (proto classes). The runtime DSL replacement resolves them by
-        // name to route mixed-type inputs, and the LAL debug dump / EnvoyAccessLogBuilder print them
-        // through protobuf's JsonFormat, whose accessor table finds the generated getters and setters
-        // by reflection on the message, its Builder and every nested message and enum type. Register
-        // the whole descriptor closure with full access.
+        // Proto messages that go through protobuf's JsonFormat, whose accessor table finds the
+        // generated getters and setters by reflection on the message, its Builder and every nested
+        // message and enum type. Register the whole descriptor closure with full access. Roots: the
+        // LAL effective input types (the runtime DSL replacement resolves them by name to route
+        // mixed-type inputs; the LAL debug dump / EnvoyAccessLogBuilder print them), the OTLP/HTTP
+        // JSON receivers' export requests, and LogData parsed by ProtoBufJsonUtils.
+        Set<String> protoJsonRoots = new TreeSet<>(List.of(
+            "io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
+            "io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
+            "io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
+            "org.apache.skywalking.apm.network.logging.v3.LogData"));
         Path lalRules = metaInf.resolve("lal-v2-rules.txt");
         if (Files.exists(lalRules)) {
             Properties lalProps = new Properties();
             try (InputStream is = Files.newInputStream(lalRules)) {
                 lalProps.load(is);
             }
-            Set<String> inputTypes = new TreeSet<>();
             for (String key : lalProps.stringPropertyNames()) {
                 if (key.endsWith(".inputType") && !lalProps.getProperty(key).isBlank()) {
-                    inputTypes.add(lalProps.getProperty(key).trim());
+                    protoJsonRoots.add(lalProps.getProperty(key).trim());
                 }
             }
-            addProtoMessageEntries(entries, inputTypes);
         }
+        addProtoMessageEntries(entries, protoJsonRoots);
 
         // Hierarchy v2 rule classes — one FQCN per line, constructor-only
         addConstructorEntries(entries, metaInf.resolve("hierarchy-v2-classes.txt"));
@@ -1620,7 +1651,7 @@ public class Precompiler {
             try {
                 root = Class.forName(rootType);
             } catch (ClassNotFoundException e) {
-                throw new IllegalStateException("LAL input type is not on the precompiler classpath: " + rootType, e);
+                throw new IllegalStateException("Proto JSON root type is not on the precompiler classpath: " + rootType, e);
             }
             if (Message.class.isAssignableFrom(root)) {
                 collectProtoClosure(root, closure);

@@ -37,6 +37,10 @@ corresponding environment variable:
 | `kafka-fetcher` | `SW_KAFKA_FETCHER=default` | disabled |
 | `cilium-fetcher` | `SW_CILIUM_FETCHER=default` | disabled |
 | `exporter` | `SW_EXPORTER=default` | disabled |
+| `ai-evaluation` | `SW_AI_EVALUATION=default` | disabled |
+
+`ai-agent-conversation` is on by default and cannot be removed with `-` (the GraphQL query module
+requires it); `SW_AI_AGENT_CONVERSATION=none` turns it off.
 
 ## Module Configuration Reference
 
@@ -142,7 +146,7 @@ for details on those files.
 | forceSampleErrorSegment | `SW_FORCE_SAMPLE_ERROR_SEGMENT` | `true` |
 | segmentStatusAnalysisStrategy | `SW_SEGMENT_STATUS_ANALYSIS_STRATEGY` | `FROM_SPAN_STATUS` |
 | noUpstreamRealAddressAgents | `SW_NO_UPSTREAM_REAL_ADDRESS` | `6000,9000` |
-| meterAnalyzerActiveFiles | `SW_METER_ANALYZER_ACTIVE_FILES` | `datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime,php-runtime,nodejs-runtime` |
+| meterAnalyzerActiveFiles | `SW_METER_ANALYZER_ACTIVE_FILES` | `datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime,php-runtime,nodejs-runtime,gen-ai-model` |
 | slowCacheReadThreshold | `SW_SLOW_CACHE_SLOW_READ_THRESHOLD` | `default:20,redis:10` |
 | slowCacheWriteThreshold | `SW_SLOW_CACHE_SLOW_WRITE_THRESHOLD` | `default:20,redis:10` |
 
@@ -154,8 +158,8 @@ for details on those files.
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
-| lalFiles | `SW_LOG_LAL_FILES` | `envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,default` |
-| malFiles | `SW_LOG_MAL_FILES` | `nginx` |
+| lalFiles | `SW_LOG_LAL_FILES` | `envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,envoy-ai-gateway,miniprogram,ai-agent,default` |
+| malFiles | `SW_LOG_MAL_FILES` | `nginx,miniprogram-wechat,miniprogram-alipay` |
 
 ---
 
@@ -164,6 +168,41 @@ for details on those files.
 **Selector**: `SW_EVENT_ANALYZER` (default: `default`)
 
 No additional settings.
+
+---
+
+### ai-evaluation (disabled by default)
+
+**Selector**: `SW_AI_EVALUATION` (default: `-`)
+
+LLM-as-judge evaluation of sampled GenAI spans (SWIP-16). The judge endpoint, model, API key, system
+prompt and tasks come from `config/ai-evaluation.yml`; with an incomplete judge section the module
+stays inactive.
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| sampleRate | `SW_AI_EVALUATION_SAMPLE_RATE` | `1000000` |
+| bufferSize | `SW_AI_EVALUATION_BUFFER_SIZE` | `100` |
+| consumerThreads | `SW_AI_EVALUATION_CONSUMER_THREADS` | `8` |
+| maxContentLength | `SW_AI_EVALUATION_MAX_CONTENT_LENGTH` | `16384` |
+
+---
+
+### ai-agent-conversation
+
+**Selector**: `SW_AI_AGENT_CONVERSATION` (default: `default`; `none` turns it off)
+
+AI agent conversations landed by the AI Sessionizer as OTLP logs under the `AI_AGENT` layer
+(`lal/ai-agent.yaml`), folded into `asz.view` documents on read.
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| fileReadWindow | `SW_AI_AGENT_CONVERSATION_FILE_READ_WINDOW` | `16` |
+| roundReadWindow | `SW_AI_AGENT_CONVERSATION_ROUND_READ_WINDOW` | `16` |
+| maxListLimit | `SW_AI_AGENT_CONVERSATION_MAX_LIST_LIMIT` | `10000` |
+| viewRequestTimeout | `SW_AI_AGENT_CONVERSATION_VIEW_REQUEST_TIMEOUT` | `120` |
+| maxFileBytes | `SW_AI_AGENT_CONVERSATION_MAX_FILE_BYTES` | `15728640` |
+| maxResponseBytes | `SW_AI_AGENT_CONVERSATION_MAX_RESPONSE_BYTES` | `104857600` |
 
 ---
 

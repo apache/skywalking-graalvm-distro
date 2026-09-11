@@ -390,6 +390,14 @@ jobs:
             case: banyandb-so11y
           - name: DSL Debugging OAL
             case: dsl-debugging-oal
+          - name: AI Agent Conversations
+            case: ai-agent
+          - name: BanyanDB Trace Sampling
+            case: banyandb-trace-sampling
+          - name: BanyanDB Auth Rotation
+            case: banyandb-auth-rotation
+          - name: BanyanDB CA Rotation
+            case: banyandb-ca-rotation
     steps:
       - name: Checkout with submodules
         uses: actions/checkout@v5
