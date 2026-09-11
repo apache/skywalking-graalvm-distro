@@ -12,6 +12,8 @@ org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig
 org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig
 org.apache.skywalking.oap.server.admin.status.StatusModuleConfig
 org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleConfig
+org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationConfig
+org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationConfig
 org.apache.skywalking.oap.server.ai.pipeline.AIPipelineConfig
 org.apache.skywalking.oap.server.analyzer.agent.kafka.module.KafkaFetcherConfig
 org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleConfig
@@ -41,6 +43,7 @@ org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$M
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsHour
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsMin
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Property
+org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsAIAgent
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsBrowserErrorLog
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsLog
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsNormal

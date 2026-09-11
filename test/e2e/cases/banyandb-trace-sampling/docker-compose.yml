@@ -1,0 +1,102 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Upstream test/e2e-v2/cases/banyandb/trace-sampling against the native image: a plugin-capable
+# BanyanDB node runs the sw-trace-sampler chain, an OTel collector scrapes its :2121 endpoint, and
+# otel-rules/banyandb/banyandb-trace-sampling.yaml turns that into meter_banyandb_trace_sampling_*.
+# See the upstream compose for why each BanyanDB/OAP knob is set the way it is.
+services:
+  plugin-carrier:
+    image: "ghcr.io/apache/skywalking-banyandb:${SW_BANYANDB_COMMIT}-plugins-carrier"
+    command: sh -c "cp /plugins/*.so /shared/ && ls -l /shared"
+    volumes:
+      - plugins:/shared
+    networks:
+      - e2e
+
+  # Distroless host: no shell, so no healthcheck and no published ports.
+  banyandb:
+    image: "ghcr.io/apache/skywalking-banyandb:${SW_BANYANDB_COMMIT}-plugins"
+    command: standalone --measure-metadata-cache-wait-duration 1m --stream-metadata-cache-wait-duration 1m --trace-pipeline-native-plugin-enabled=true --trace-pipeline-trusted-plugin-dir=/plugins --trace-max-merge-parts=2 --trace-flush-timeout=500ms
+    volumes:
+      - plugins:/plugins
+    depends_on:
+      plugin-carrier:
+        condition: service_completed_successfully
+    networks:
+      - e2e
+
+  otel-collector:
+    image: otel/opentelemetry-collector:${OTEL_COLLECTOR_VERSION}
+    networks:
+      - e2e
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/banyandb/trace-sampling/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    expose:
+      - 55678
+    depends_on:
+      banyandb:
+        condition: service_started
+
+  # The distroless BanyanDB has no healthcheck, and the native OAP reaches storage well before a
+  # JVM one would, so it waits for the port itself instead of exiting on the first refused connect.
+  oap:
+    image: skywalking-oap-native:latest
+    entrypoint: ["/bin/sh", "-c", "until nc -z banyandb 17912; do sleep 1; done; exec ./oap-server -Dlog4j2.configurationFile=config/log4j2.xml"]
+    expose:
+      - 11800
+      - 12800
+    networks:
+      - e2e
+    ports:
+      - 12800
+    environment:
+      SW_HEALTH_CHECKER: default
+      SW_CONFIGURATION: none
+      SW_STORAGE_BANYANDB_TARGETS: "banyandb:17912"
+      SW_STORAGE_BANYANDB_TRACE_PIPELINE_ENABLED: "true"
+      SW_STORAGE_BANYANDB_TRACE_SHARD_NUM: "1"
+      SW_STORAGE_BANYANDB_TRACE_SAMPLER_DURATION_THRESHOLD_MS: "60000"
+      SW_STORAGE_BANYANDB_TRACE_SAMPLER_KEEP_ERRORS: "false"
+      SW_STORAGE_BANYANDB_TRACE_SAMPLER_HEALTHY_SAMPLE_RATE: "0"
+      SW_STORAGE_BANYANDB_TRACE_PIPELINE_MERGE_GRACE_SECONDS: "20"
+    depends_on:
+      banyandb:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "nc -nz 127.0.0.1 11800 || exit 1"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+
+  # Fuel for the sampler only; nothing asserts the traces. Upstream bind-mounts the jar it builds,
+  # the published image carries the same Java 8 jar. MINUS_DAYS=0 keeps them in the hot stage.
+  trace-mocker:
+    image: "ghcr.io/apache/skywalking/trace-mocker:${SW_E2E_SERVICE_COMMIT}"
+    environment:
+      OAP_HOST: oap
+      MINUS_DAYS: 0
+    networks:
+      - e2e
+    depends_on:
+      oap:
+        condition: service_healthy
+
+volumes:
+  plugins:
+
+networks:
+  e2e:

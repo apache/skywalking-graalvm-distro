@@ -52,13 +52,17 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | AWS API Gateway | `aws-api-gateway/` | AWS API Gateway (Firehose) |
 | Self Observability | `so11y/` | OAP self-observability (Prometheus telemetry via OTel collector) |
 | MQE | `mqe/` | Metrics Query Engine |
-| Virtual GenAI | `virtual-genai/` | GenAI provider/model metrics (`gen-ai-analyzer`) |
+| Virtual GenAI | `virtual-genai/` | GenAI provider/model metrics (`gen-ai-analyzer`), LLM-as-judge evaluation (`ai-evaluation`, `gen-ai-model` MAL) |
 | TraceQL SkyWalking | `traceql-skywalking/` | `traceQL` (SkyWalking datasource) |
 | DSL Management | `dsl-management/` | Read-only DSL catalogs (`/runtime/rule/*`, `/runtime/oal/*`) + HTTP 501 for runtime-rule mutations, via curl and `swctl admin` |
 | DSL Debugging | `dsl-debugging/` | SWIP-13 live debugger: status + session cycles on bundled MAL and LAL rules |
 | Airflow | `airflow/` | Airflow layer OTel rules (upstream mock replay sender) |
 | BanyanDB Self Observability | `banyandb-so11y/` | BanyanDB self-observability (SWIP-15: liaison + data node, endpoint + instance-relation rules) |
 | DSL Debugging OAL | `dsl-debugging-oal/` | Upstream OAL live-debug flow (real samples on `service_relation_server_cpm`) |
+| AI Agent Conversations | `ai-agent/` | `ai-agent-conversation` (AI Sessionizer files via `lal/ai-agent.yaml`, `asz.view` fold), `ai-agent/*` OTel rules |
+| BanyanDB Trace Sampling | `banyandb-trace-sampling/` | `banyandb-trace-sampling` OTel rules (plugin-capable BanyanDB running the sampler chain) |
+| BanyanDB Auth Rotation | `banyandb-auth-rotation/` | BanyanDB credential hot-reload (`secretsManagementFile`) + storage suite |
+| BanyanDB CA Rotation | `banyandb-ca-rotation/` | BanyanDB TLS trust CA hot-reload + storage suite |
 
 ---
 

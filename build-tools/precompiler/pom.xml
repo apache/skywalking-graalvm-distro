@@ -94,6 +94,12 @@
             <artifactId>agent-analyzer</artifactId>
         </dependency>
 
+        <!-- LAL output builder `ConversationFile` (lal/ai-agent.yaml), resolved through the LALOutputBuilder SPI -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ai-agent-conversation</artifactId>
+        </dependency>
+
         <!-- Query plugins (GraphQL resolvers, HTTP handlers, adapter types) -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>

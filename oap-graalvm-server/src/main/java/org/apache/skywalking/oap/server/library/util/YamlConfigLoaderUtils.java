@@ -38,6 +38,9 @@ import org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig;
 import org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig;
 import org.apache.skywalking.oap.server.admin.status.StatusModuleConfig;
 import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleConfig;
+import org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationConfig;
+import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationConfig;
+import org.apache.skywalking.oap.server.ai.evaluation.level.EvaluationLevelConfig;
 import org.apache.skywalking.oap.server.ai.pipeline.AIPipelineConfig;
 import org.apache.skywalking.oap.server.analyzer.agent.kafka.module.KafkaFetcherConfig;
 import org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleConfig;
@@ -124,14 +127,18 @@ public class YamlConfigLoaderUtils {
         }
         if (dest instanceof CoreModuleConfig) {
             copyToCoreModuleConfig((CoreModuleConfig) dest, src, moduleName, providerName);
-        } else if (dest instanceof ClusterModuleKubernetesConfig) {
-            copyToClusterModuleKubernetesConfig((ClusterModuleKubernetesConfig) dest, src, moduleName, providerName);
-        } else if (dest instanceof SharingServerConfig) {
-            copyToSharingServerConfig((SharingServerConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof AIEvaluationConfig) {
+            copyToAIEvaluationConfig((AIEvaluationConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof AnalyzerModuleConfig) {
             copyToAnalyzerModuleConfig((AnalyzerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof GenAIConfig) {
             copyToGenAIConfig((GenAIConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof AIAgentConversationConfig) {
+            copyToAIAgentConversationConfig((AIAgentConversationConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof ClusterModuleKubernetesConfig) {
+            copyToClusterModuleKubernetesConfig((ClusterModuleKubernetesConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof SharingServerConfig) {
+            copyToSharingServerConfig((SharingServerConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ZipkinReceiverConfig) {
             copyToZipkinReceiverConfig((ZipkinReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ZipkinQueryConfig) {
@@ -212,6 +219,8 @@ public class YamlConfigLoaderUtils {
             copyToRecordsLog((BanyanDBStorageConfig.RecordsLog) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.RecordsBrowserErrorLog) {
             copyToRecordsBrowserErrorLog((BanyanDBStorageConfig.RecordsBrowserErrorLog) dest, src, moduleName, providerName);
+        } else if (dest instanceof BanyanDBStorageConfig.RecordsAIAgent) {
+            copyToRecordsAIAgent((BanyanDBStorageConfig.RecordsAIAgent) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.MetricsMin) {
             copyToMetricsMin((BanyanDBStorageConfig.MetricsMin) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.MetricsHour) {
@@ -431,6 +440,174 @@ public class YamlConfigLoaderUtils {
     }
 
     @SuppressWarnings("unchecked")
+    private static void copyToAIEvaluationConfig(
+            final AIEvaluationConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "sampleRate":
+                    cfg.setSampleRate(((Number) value).intValue());
+                    break;
+                case "bufferSize":
+                    cfg.setBufferSize(((Number) value).intValue());
+                    break;
+                case "consumerThreads":
+                    cfg.setConsumerThreads(((Number) value).intValue());
+                    break;
+                case "maxContentLength":
+                    cfg.setMaxContentLength(((Number) value).intValue());
+                    break;
+                case "judge":
+                    cfg.setJudge((Properties) value);
+                    break;
+                case "systemPrompt":
+                    cfg.setSystemPrompt((String) value);
+                    break;
+                case "tasks":
+                    cfg.setTasks((List) value);
+                    break;
+                case "level":
+                    cfg.setLevel((EvaluationLevelConfig) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToAnalyzerModuleConfig(
+            final AnalyzerModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "traceSamplingPolicySettingsFile":
+                    cfg.setTraceSamplingPolicySettingsFile((String) value);
+                    break;
+                case "noUpstreamRealAddressAgents":
+                    cfg.setNoUpstreamRealAddressAgents((String) value);
+                    break;
+                case "slowDBAccessThreshold":
+                    cfg.setSlowDBAccessThreshold((String) value);
+                    break;
+                case "dbLatencyThresholdsAndWatcher":
+                    cfg.setDbLatencyThresholdsAndWatcher((DBLatencyThresholdsAndWatcher) value);
+                    break;
+                case "slowCacheWriteThreshold":
+                    cfg.setSlowCacheWriteThreshold((String) value);
+                    break;
+                case "cacheWriteLatencyThresholdsAndWatcher":
+                    cfg.setCacheWriteLatencyThresholdsAndWatcher((CacheWriteLatencyThresholdsAndWatcher) value);
+                    break;
+                case "slowCacheReadThreshold":
+                    cfg.setSlowCacheReadThreshold((String) value);
+                    break;
+                case "cacheReadLatencyThresholdsAndWatcher":
+                    cfg.setCacheReadLatencyThresholdsAndWatcher((CacheReadLatencyThresholdsAndWatcher) value);
+                    break;
+                case "uninstrumentedGatewaysConfig":
+                    cfg.setUninstrumentedGatewaysConfig((UninstrumentedGatewaysConfig) value);
+                    break;
+                case "traceSamplingPolicyWatcher":
+                    cfg.setTraceSamplingPolicyWatcher((TraceSamplingPolicyWatcher) value);
+                    break;
+                case "traceAnalysis":
+                    cfg.setTraceAnalysis((boolean) value);
+                    break;
+                case "maxSlowSQLLength":
+                    cfg.setMaxSlowSQLLength(((Number) value).intValue());
+                    break;
+                case "configPath":
+                    log.warn("Cannot set final field 'configPath' in {} provider of {} module", providerName, moduleName);
+                    break;
+                case "meterAnalyzerActiveFiles":
+                    cfg.setMeterAnalyzerActiveFiles((String) value);
+                    break;
+                case "forceSampleErrorSegment":
+                    cfg.setForceSampleErrorSegment((boolean) value);
+                    break;
+                case "segmentStatusAnalysisStrategy":
+                    cfg.setSegmentStatusAnalysisStrategy((String) value);
+                    break;
+                case "virtualPeers":
+                    cfg.setVirtualPeers((List) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToGenAIConfig(
+            final GenAIConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "providers":
+                    cfg.setProviders((List) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToAIAgentConversationConfig(
+            final AIAgentConversationConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "fileReadWindow":
+                    cfg.setFileReadWindow(((Number) value).intValue());
+                    break;
+                case "roundReadWindow":
+                    cfg.setRoundReadWindow(((Number) value).intValue());
+                    break;
+                case "maxResponseBytes":
+                    cfg.setMaxResponseBytes(((Number) value).intValue());
+                    break;
+                case "viewRequestTimeout":
+                    cfg.setViewRequestTimeout(((Number) value).intValue());
+                    break;
+                case "maxListLimit":
+                    cfg.setMaxListLimit(((Number) value).intValue());
+                    break;
+                case "maxFileBytes":
+                    cfg.setMaxFileBytes(((Number) value).intValue());
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private static void copyToClusterModuleKubernetesConfig(
             final ClusterModuleKubernetesConfig cfg, final Properties src,
             final String moduleName, final String providerName) {
@@ -523,96 +700,6 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "httpMaxRequestHeaderSize":
                     cfg.setHttpMaxRequestHeaderSize(((Number) value).intValue());
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void copyToAnalyzerModuleConfig(
-            final AnalyzerModuleConfig cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "traceSamplingPolicySettingsFile":
-                    cfg.setTraceSamplingPolicySettingsFile((String) value);
-                    break;
-                case "noUpstreamRealAddressAgents":
-                    cfg.setNoUpstreamRealAddressAgents((String) value);
-                    break;
-                case "slowDBAccessThreshold":
-                    cfg.setSlowDBAccessThreshold((String) value);
-                    break;
-                case "dbLatencyThresholdsAndWatcher":
-                    cfg.setDbLatencyThresholdsAndWatcher((DBLatencyThresholdsAndWatcher) value);
-                    break;
-                case "slowCacheWriteThreshold":
-                    cfg.setSlowCacheWriteThreshold((String) value);
-                    break;
-                case "cacheWriteLatencyThresholdsAndWatcher":
-                    cfg.setCacheWriteLatencyThresholdsAndWatcher((CacheWriteLatencyThresholdsAndWatcher) value);
-                    break;
-                case "slowCacheReadThreshold":
-                    cfg.setSlowCacheReadThreshold((String) value);
-                    break;
-                case "cacheReadLatencyThresholdsAndWatcher":
-                    cfg.setCacheReadLatencyThresholdsAndWatcher((CacheReadLatencyThresholdsAndWatcher) value);
-                    break;
-                case "uninstrumentedGatewaysConfig":
-                    cfg.setUninstrumentedGatewaysConfig((UninstrumentedGatewaysConfig) value);
-                    break;
-                case "traceSamplingPolicyWatcher":
-                    cfg.setTraceSamplingPolicyWatcher((TraceSamplingPolicyWatcher) value);
-                    break;
-                case "traceAnalysis":
-                    cfg.setTraceAnalysis((boolean) value);
-                    break;
-                case "maxSlowSQLLength":
-                    cfg.setMaxSlowSQLLength(((Number) value).intValue());
-                    break;
-                case "configPath":
-                    log.warn("Cannot set final field 'configPath' in {} provider of {} module", providerName, moduleName);
-                    break;
-                case "meterAnalyzerActiveFiles":
-                    cfg.setMeterAnalyzerActiveFiles((String) value);
-                    break;
-                case "forceSampleErrorSegment":
-                    cfg.setForceSampleErrorSegment((boolean) value);
-                    break;
-                case "segmentStatusAnalysisStrategy":
-                    cfg.setSegmentStatusAnalysisStrategy((String) value);
-                    break;
-                case "virtualPeers":
-                    cfg.setVirtualPeers((List) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void copyToGenAIConfig(
-            final GenAIConfig cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "providers":
-                    cfg.setProviders((List) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1250,6 +1337,9 @@ public class YamlConfigLoaderUtils {
                 case "recordsBrowserErrorLog":
                     cfg.setRecordsBrowserErrorLog((BanyanDBStorageConfig.RecordsBrowserErrorLog) value);
                     break;
+                case "recordsAIAgent":
+                    cfg.setRecordsAIAgent((BanyanDBStorageConfig.RecordsAIAgent) value);
+                    break;
                 case "metricsMin":
                     cfg.setMetricsMin((BanyanDBStorageConfig.MetricsMin) value);
                     break;
@@ -1877,6 +1967,9 @@ public class YamlConfigLoaderUtils {
                 case "sslTrustCAPath":
                     cfg.setSslTrustCAPath((String) value);
                     break;
+                case "secretsManagementFile":
+                    cfg.setSecretsManagementFile((String) value);
+                    break;
                 case "asyncProfilerTaskQueryMaxSize":
                     cfg.setAsyncProfilerTaskQueryMaxSize(((Number) value).intValue());
                     break;
@@ -2185,6 +2278,51 @@ public class YamlConfigLoaderUtils {
     @SuppressWarnings("unchecked")
     private static void copyToRecordsBrowserErrorLog(
             final BanyanDBStorageConfig.RecordsBrowserErrorLog cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "shardNum":
+                    cfg.setShardNum(((Number) value).intValue());
+                    break;
+                case "segmentInterval":
+                    cfg.setSegmentInterval(((Number) value).intValue());
+                    break;
+                case "ttl":
+                    cfg.setTtl(((Number) value).intValue());
+                    break;
+                case "replicas":
+                    cfg.setReplicas(((Number) value).intValue());
+                    break;
+                case "enableWarmStage":
+                    cfg.setEnableWarmStage((boolean) value);
+                    break;
+                case "enableColdStage":
+                    cfg.setEnableColdStage((boolean) value);
+                    break;
+                case "defaultQueryStages":
+                    cfg.setDefaultQueryStages((List) value);
+                    break;
+                case "additionalLifecycleStages":
+                    cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToRecordsAIAgent(
+            final BanyanDBStorageConfig.RecordsAIAgent cfg, final Properties src,
             final String moduleName, final String providerName) {
         final Enumeration<?> propertyNames = src.propertyNames();
         while (propertyNames.hasMoreElements()) {

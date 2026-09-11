@@ -80,6 +80,10 @@ class OapTest extends MALScriptComparisonBase {
      * trace_analysis_error_count{service="oap-svc",host_name="oap-host-1",protocol="grpc"} 10.0
      * spans_dropped_count{service="oap-svc",host_name="oap-host-1",protocol="grpc"} 5.0
      *
+     * # --- AI Evaluation ---
+     * ai_evaluation_dropped_count{service="oap-svc",host_name="oap-host-1",reason="pipeline_capacity"} 4.0
+     * ai_evaluation_error_count{service="oap-svc",host_name="oap-host-1",reason="timeout"} 3.0
+     *
      * # --- Mesh ---
      * mesh_analysis_latency_count{service="oap-svc",host_name="oap-host-1"} 3000.0
      * mesh_analysis_latency{...le buckets...} histogram
@@ -207,6 +211,18 @@ class OapTest extends MALScriptComparisonBase {
                 SampleFamilyBuilder.newBuilder(
                     labeled("spans_dropped_count", scope,
                         "protocol", "grpc", 5.0 * scale, timestamp)
+                ).build())
+
+            // --- AI Evaluation ---
+            .put("ai_evaluation_dropped_count",
+                SampleFamilyBuilder.newBuilder(
+                    labeled("ai_evaluation_dropped_count", scope,
+                        "reason", "pipeline_capacity", 4.0 * scale, timestamp)
+                ).build())
+            .put("ai_evaluation_error_count",
+                SampleFamilyBuilder.newBuilder(
+                    labeled("ai_evaluation_error_count", scope,
+                        "reason", "timeout", 3.0 * scale, timestamp)
                 ).build())
 
             // --- Mesh ---

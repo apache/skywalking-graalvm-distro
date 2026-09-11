@@ -1,0 +1,213 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Upstream test/e2e-v2/cases/ai-agent/banyandb against the native image. The AI Sessionizer (asz)
+# lands Session Data / Session Flow files over OTLP logs; lal/ai-agent.yaml hands them to the
+# pre-compiled ConversationFile output builder, and the ai-agent-conversation module folds them back
+# into asz.view documents that must equal the Sessionizer's own. The one-shot asz steps are upstream's,
+# chained through service_completed_successfully (the asz image is distroless, no shell).
+x-asz: &asz
+  image: ghcr.io/apache/skywalking-ai-sessionizer:${SW_AI_SESSIONIZER_COMMIT}
+  volumes:
+    - aszdata:/asz/data
+    - ../../../../skywalking/test/e2e-v2/cases/ai-agent/fixture.yaml:/asz/fixture.yaml:ro
+    - ../../../../skywalking/test/e2e-v2/cases/ai-agent/three-rounds.yaml:/asz/three-rounds.yaml:ro
+    - ../../../../skywalking/test/e2e-v2/cases/ai-agent/lost-file.yaml:/asz/lost-file.yaml:ro
+    - ../../../../skywalking/test/e2e-v2/cases/ai-agent/workspace-changes.yaml:/asz/workspace-changes.yaml:ro
+  networks:
+    - e2e
+
+services:
+  banyandb:
+    extends:
+      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
+      service: banyandb
+    ports:
+      - 17912
+
+  oap:
+    image: skywalking-oap-native:latest
+    expose:
+      - 11800
+      - 12800
+    networks:
+      - e2e
+    ports:
+      - 12800
+    environment:
+      SW_HEALTH_CHECKER: default
+      SW_STORAGE_BANYANDB_TARGETS: banyandb:17912
+      SW_CONFIGURATION: none
+      SW_AI_AGENT_CONVERSATION_MAX_FILE_BYTES: 2097152
+    depends_on:
+      banyandb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -nz 127.0.0.1 11800 || exit 1"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+
+  asz-volume:
+    image: busybox:1.36
+    command: ["sh", "-c", "chown -R 65532:65532 /asz/data"]
+    volumes:
+      - aszdata:/asz/data
+    networks:
+      - e2e
+
+  # ---- fixture.yaml: three sessions, one stage
+  asz-build:
+    <<: *asz
+    command: ["scenario", "build", "/asz/fixture.yaml", "--format", "sd", "--out", "/asz/data", "--repeat", "3"]
+    depends_on:
+      asz-volume:
+        condition: service_completed_successfully
+  asz-config:
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - "cp /asz/data/asz.yaml /asz/data/asz-local.yaml && printf 'export:\\n  otlp:\\n    protocol: grpc\\n    endpoint: oap:11800\\n    service_name: e2e-ai-agent\\n    instance_id: e2e-sender\\n' >> /asz/data/asz.yaml"
+    volumes:
+      - aszdata:/asz/data
+    depends_on:
+      asz-build:
+        condition: service_completed_successfully
+    networks:
+      - e2e
+  asz-collect:
+    <<: *asz
+    command: ["collect", "-once", "-config", "/asz/data/asz.yaml"]
+    depends_on:
+      asz-config:
+        condition: service_completed_successfully
+      oap:
+        condition: service_healthy
+  # ---- workspace-changes.yaml: one session whose every tool call changed files
+  wc-build:
+    <<: *asz
+    command: ["scenario", "build", "/asz/workspace-changes.yaml", "--format", "sd", "--out", "/asz/data"]
+    depends_on:
+      asz-collect:
+        condition: service_completed_successfully
+  wc-collect:
+    <<: *asz
+    command: ["collect", "-once", "-config", "/asz/data/asz.yaml"]
+    depends_on:
+      wc-build:
+        condition: service_completed_successfully
+  # ---- three-rounds.yaml: one session in three stages
+  mr-build-1:
+    <<: *asz
+    command: ["scenario", "build", "/asz/three-rounds.yaml", "--format", "sd", "--out", "/asz/data", "--through", "first"]
+    depends_on:
+      wc-collect:
+        condition: service_completed_successfully
+  mr-collect-1:
+    <<: *asz
+    command: ["collect", "-once", "-config", "/asz/data/asz.yaml"]
+    depends_on:
+      mr-build-1:
+        condition: service_completed_successfully
+  mr-build-2:
+    <<: *asz
+    command: ["scenario", "build", "/asz/three-rounds.yaml", "--format", "sd", "--out", "/asz/data", "--through", "second"]
+    depends_on:
+      mr-collect-1:
+        condition: service_completed_successfully
+  mr-collect-2:
+    <<: *asz
+    command: ["collect", "-once", "-config", "/asz/data/asz.yaml"]
+    depends_on:
+      mr-build-2:
+        condition: service_completed_successfully
+  mr-build-3:
+    <<: *asz
+    command: ["scenario", "build", "/asz/three-rounds.yaml", "--format", "sd", "--out", "/asz/data"]
+    depends_on:
+      mr-collect-2:
+        condition: service_completed_successfully
+  mr-collect-3:
+    <<: *asz
+    command: ["collect", "-once", "-config", "/asz/data/asz.yaml"]
+    depends_on:
+      mr-build-3:
+        condition: service_completed_successfully
+  # ---- lost-file.yaml: a landed file lost after a round bound to it
+  lf-build-1:
+    <<: *asz
+    command: ["scenario", "build", "/asz/lost-file.yaml", "--format", "sd", "--out", "/asz/data", "--through", "helped"]
+    depends_on:
+      mr-collect-3:
+        condition: service_completed_successfully
+  lf-collect-1:
+    <<: *asz
+    command: ["collect", "-once", "-config", "/asz/data/asz-local.yaml"]
+    depends_on:
+      lf-build-1:
+        condition: service_completed_successfully
+  lf-build-2:
+    <<: *asz
+    command: ["scenario", "build", "/asz/lost-file.yaml", "--format", "sd", "--out", "/asz/data"]
+    depends_on:
+      lf-collect-1:
+        condition: service_completed_successfully
+  lf-collect-2:
+    <<: *asz
+    command: ["collect", "-once", "-config", "/asz/data/asz-local.yaml"]
+    depends_on:
+      lf-build-2:
+        condition: service_completed_successfully
+  lf-lose:
+    image: busybox:1.36
+    command: ["sh", "-c", "rm /asz/data/c9d9b18b-be85-4906-850d-40a1cd240171/streams/a8e44ac8611c94121/transcript-*.sd"]
+    volumes:
+      - aszdata:/asz/data
+    networks:
+      - e2e
+    depends_on:
+      lf-collect-2:
+        condition: service_completed_successfully
+  lf-push:
+    <<: *asz
+    command: ["push", "-config", "/asz/data/asz.yaml"]
+    depends_on:
+      lf-lose:
+        condition: service_completed_successfully
+
+  asz:
+    <<: *asz
+    command: ["view", "-config", "/asz/data/asz.yaml", "0.0.0.0:8787"]
+    depends_on:
+      lf-push:
+        condition: service_completed_successfully
+
+  # infra-e2e probes published ports with /bin/sh, which the distroless asz image lacks.
+  aszview:
+    image: alpine/socat:1.8.0.0
+    command: ["TCP-LISTEN:8787,fork,reuseaddr", "TCP:asz:8787"]
+    ports:
+      - 8787
+    depends_on:
+      - asz
+    networks:
+      - e2e
+
+volumes:
+  aszdata:
+
+networks:
+  e2e:
