@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * after {@code skywalking/} submodule updates.
  *
  * <p>Scans the upstream source tree for ModuleProvider implementations and
- * OAL/MAL/LAL rule files, comparing them against explicit inventories. Any
+ * OAL/MAL/LAL/TAL rule files, comparing them against explicit inventories. Any
  * unrecognized addition causes a test failure, forcing the developer to
  * categorize new providers (ACCEPTED/NOT_ACCEPTED) and add new rule files
  * to the precompiler.
@@ -190,7 +190,7 @@ class ImmigrationScopeTest {
         String[] ruleDirectories = {
             "oal", "meter-analyzer-config", "otel-rules",
             "log-mal-rules", "lal", "envoy-metrics-rules",
-            "telegraf-rules", "zabbix-rules"
+            "telegraf-rules", "zabbix-rules", "tal"
         };
         for (String dir : ruleDirectories) {
             Path ruleDir = resources.resolve(dir);

@@ -1,22 +1,23 @@
-# DSL Build-Time Pre-Compilation (OAL/MAL/LAL/Hierarchy)
+# DSL Build-Time Pre-Compilation (OAL/MAL/LAL/TAL/Hierarchy)
 
 ## Context
 
-SkyWalking OAP uses four DSL compilers that generate Java bytecode at startup via Javassist:
+SkyWalking OAP uses five DSL compilers that generate Java bytecode at startup via Javassist:
 
 | DSL | Purpose | Compiled Interface | Generated Classes |
 |-----|---------|-------------------|-------------------|
 | **OAL** | Metrics aggregation rules | Metrics, Builder, Dispatcher classes | ~620 metrics + ~620 builders + ~45 dispatchers |
 | **MAL** | Meter expression rules | `MalExpression` | ~1250 expression classes |
 | **LAL** | Log analysis rules | `LalExpression` | ~10 expression classes (6 unique) |
+| **TAL** | Trace (OTLP span) analysis rules | `TalExpression` | 2 expression classes |
 | **Hierarchy** | Service hierarchy matching | `BiFunction<Service, Service, Boolean>` | ~4 rule classes |
 
-All four share the same pipeline (since upstream PR #13723):
+All five share the same pipeline (since upstream PR #13723; TAL since 11.1):
 ```
 DSL text → ANTLR4 parse → Immutable AST → Javassist bytecode → .class
 ```
 
-GraalVM native image cannot run Javassist at runtime. **Solution**: run all four compilers at build time via their exposed APIs (`setClassOutputDir()`, `setClassNameHint()`), capture `.class` files into the precompiler output JAR. At runtime, load pre-compiled classes instead of compiling.
+GraalVM native image cannot run Javassist at runtime. **Solution**: run all five compilers at build time via their exposed APIs (`setClassOutputDir()`, `setClassNameHint()`), capture `.class` files into the precompiler output JAR. At runtime, load pre-compiled classes instead of compiling.
 
 ---
 
@@ -105,6 +106,48 @@ For each LAL YAML rule file (8 files, 10 rules):
 
 Generated class package: `org.apache.skywalking.oap.log.analyzer.v2.compiler.rt.*`
 
+### TAL
+
+Uses one `TALClassGenerator` per rule with `setClassOutputDir()`, `setSourceRef()` and `setClassNameHint()`,
+mirroring upstream `SpanFilterListener.Factory.compile` + `TalDSL.of`:
+
+```
+For each tal/*.yaml file (TALConfigs.load stamps sourcePath, line and the file's metricPrefix):
+  For each rule:
+    a. input type  = the TALSourceTypeProvider claiming rule.inputType (`otlp` -> OTLP Span)
+       output type = the TALOutputBuilder named by rule.outputType (`SlowSQL` -> DatabaseSlowStatementBuilder)
+       Layer.valueOf(rule.layer)
+    b. TalExpression expr = generator.compile(dsl)       // .class + .java written to classOutputDir
+    c. TALMetricShapes.claim(sourceRef + "#" + rule, generator.getMetricDeclarations())
+    d. generator.createMetrics(meterSystem)              // the build-time MeterSystem MAL uses
+```
+
+| File | Rules | Metrics |
+|------|-------|---------|
+| `otlp-general.yaml` | 2 (`otlp-general`, `otlp-slow-sql`) | 28 `otlp_*` |
+
+Every file is loaded before any rule compiles, as upstream's `loadStaticRules` does, so a layer one file declares
+under `layerDefinitions` serves the rules of every file. A rule that does not compile, or that names an unknown
+layer, input type or output type, fails the build with upstream's boot-time message. Upstream's TAL compiler emits
+no debug probes, so TAL rules are not live-debuggable.
+
+Nothing in the pass is specific to the shipped file: input providers and output builders come from the SPIs
+(recorded in `tal-io-classes.txt` for reflection, with the input types and any builder a rule names by class), every declaration shape is carried (`buckets`, `ranks`,
+`labelLimit`), the input types join the protobuf reflection roots as LAL's do, and `tal.json` is keyed by each file's
+own name (every file, as upstream takes any file `talFiles` names by its stem; two files sharing a stem fail the
+build). The manifest is written with `Properties#store`'s escapes in UTF-8 and read back the same way, so any rule or
+file name round-trips, and records every input a class was compiled from (coordinates, name, DSL digest, input and
+output type, metric prefix): two rules can share a line in flow-style YAML, and the runtime `TalDSL` loads only the
+class compiled from exactly the inputs it is given. The files are installed in upstream's order (by stem through the
+`HashMap` `RuleSetMerger.merge` returns), which decides which rule runs first on a span. `TALPrecompileTest` compiles operator-style fixtures (every metric function, labeled metrics with a label
+limit, percentile buckets and ranks, alias and FQCN input/output types, a `.yml` file, a rules-less file declaring a
+layer another file uses) and the build failures; `TALDocScriptsTest` extracts the scripts of upstream's
+`tal.md` and `trace-analyzer-practices.md`, splices each practice into a copy of the shipped file where the page
+says, compiles them through the same pass and runs the classes the manifest names against spans each practice is
+about.
+
+Generated class package: `org.apache.skywalking.oap.trace.analyzer.v2.compiler.rt.*`
+
 ### Hierarchy
 
 Uses `HierarchyRuleClassGenerator` with `setClassOutputDir()` and `setClassNameHint()`.
@@ -184,6 +227,13 @@ return new Expression(metricName, expression, malExpr);
 
 `of(moduleManager, config, dsl, inputType, outputType, ruleName, sourceRef)` looks the rule up by its `DslSourceRef` coordinates (`lal/<file>.yaml:<line>`) in `META-INF/lal-v2-rules.txt` and loads via `Class.forName()`. The manifest also carries the effective input type the compiler resolved, which upstream `LogFilterListener` uses to route Envoy HTTP vs TCP access logs to the right rule.
 
+### TAL: `TalDSL` + `TALConfigs`
+
+**Upstream**: `analyzer/trace-analyzer/.../v2/dsl/TalDSL.java`, `.../v2/provider/TALConfigs.java`
+**Replacement**: `oap-libs-for-graalvm/trace-analyzer-for-graalvm/`
+
+`TALConfigs.load` reads `META-INF/config-data/tal.json` (keyed by file name, with extension) and re-stamps sourceName/sourcePath/metricPrefix and inline layers as upstream does, so the upstream `SpanFilterListener.Factory` builds the same `DslSourceRef`. `TalDSL.of(...)` looks the rule up by those coordinates (`tal/<file>.yaml:<line>`, never by name alone) in `META-INF/tal-v2-rules.txt`, fails if the rule name or the input type differs from the one the class was compiled for, instantiates the class, then claims and creates the metric declarations recorded in the manifest (`meterSystem.create` + `limitLabels`), exactly the calls upstream's `createMetrics` makes. `TALRecordedTraceComparisonTest` runs the shipped rules over upstream's recorded OTel Demo trace through a fresh compile and through the pre-compiled classes and requires identical metrics, traffic, alias rows and slow-statement records.
+
 ### Hierarchy: `HierarchyDefinitionService`
 
 **Upstream**: `server-core/.../core/config/HierarchyDefinitionService.java`
@@ -201,13 +251,13 @@ Guava `ClassPath.from()` is used in several places. All replaced with manifest-b
 |---|---|---|
 | `AnnotationScan` | `META-INF/annotation-scan/{Annotation}.txt` | 6 annotation manifests |
 | `SourceReceiverImpl` | `META-INF/annotation-scan/SourceDispatcher.txt` | Dispatcher/decorator discovery |
-| `MeterSystem` | `META-INF/annotation-scan/MeterFunction.txt` | 16 meter function classes |
+| `MeterSystem` | `META-INF/annotation-scan/MeterFunction.txt` | 18 meter function classes |
 
 ---
 
 ## MeterSystem Javassist (Unchanged)
 
-`MeterSystem.create()` generates one dynamic meter subclass per metric rule (~1430 classes) via Javassist. This is separate from MAL DSL compilation and is handled the same as before: run at build time, export `.class` files, load from manifests at runtime.
+`MeterSystem.create()` generates one dynamic meter subclass per metric rule (~1530 for MAL, 28 for TAL) via Javassist. This is separate from MAL DSL compilation and is handled the same as before: run at build time, export `.class` files, load from manifests at runtime.
 
 ---
 
@@ -225,6 +275,10 @@ All manifests are in `META-INF/` within the precompiler output JAR:
 | `mal-v2-classes.txt` | FQCN per line | Reflection config for MAL expression classes |
 | `lal-v2-classes.txt` | FQCN per line | Reflection config for LAL expression classes |
 | `lal-v2-rules.txt` | Properties (`rule.N.source/line/name/class/inputType`) | Runtime LAL lookup by source coordinates + effective input type |
+| `tal-v2-classes.txt` | FQCN per line | Reflection config for TAL expression classes |
+| `tal-v2-rules.txt` | Escaped UTF-8 properties (`rule.N.source/line/name/class/inputType/outputType/metricPrefix/dslSha256`, `rule.N.metric.M.fullName/function/scopeType/declaredName/buckets/ranks/labelLimit`) | Runtime TAL lookup by the inputs each class was compiled from + the metrics each rule creates |
+| `tal-meter-classes.txt` | `name=FQCN` | Meter classes generated for TAL metrics |
+| `tal-io-classes.txt` | FQCN per line | TAL input types, `TALSourceTypeProvider` / `TALOutputBuilder` implementations and class-named builders, for reflection |
 | `hierarchy-v2-classes.txt` | FQCN per line | Reflection config for hierarchy rule classes |
 | `hierarchy-v2-rules.txt` | `ruleName=FQCN` | Runtime hierarchy rule lookup |
 | `mal-meter-classes.txt` | `name\|scopeId\|func\|type\|FQCN` | MeterSystem pre-generated classes |
@@ -239,7 +293,9 @@ All manifests are in `META-INF/` within the precompiler output JAR:
 
 The precompiler auto-generates `reflect-config.json` from manifests:
 - OAL metrics/dispatchers: constructor-only access
-- MAL/LAL/Hierarchy expression classes: constructor-only access
+- MAL/LAL/TAL/Hierarchy expression classes and MAL/TAL meter classes: constructor-only access
+- TAL `PairingFact` and `SpanMetadata`: full access (`PairingFact` crosses OAP nodes as stream data and `RemoteHandleWorker` rebuilds it with `newInstance()`; both are what a rule's `pairing` / `meta` hand to `toJson()`, which serializes objects through Gson's reflective adapters)
+- The protobuf runtime classes Gson walks when `toJson()` is given a protobuf input (`ByteString` and its subclasses, `AbstractMessage(Lite)`, `GeneratedMessage`, `UnknownFieldSet`, the primitive and lazy lists, `MapField`), so `toJson(span)` returns natively what it returns on the JVM
 - Annotation-scanned classes: full method/field access
 - Armeria HTTP handlers, GraphQL resolvers/types: full access
 - LAL input types (Envoy `HTTPAccessLogEntry` / `TCPAccessLogEntry`) and every message, Builder and enum type reachable through their proto descriptors: full access. Upstream JSON-prints these entries with protobuf's `JsonFormat` (the `EnvoyAccessLog` content and the DSL debug captures), whose accessor table finds the generated getters by reflection. `LalInputTypeReflectionTest` walks the descriptors and fails on any gap.
@@ -261,6 +317,8 @@ MAL v2 closures (tag/forEach/decorate functions) are compiled into companion cla
 | `DSL` (LAL v2) | `log-analyzer-for-graalvm` | Load pre-compiled LalExpression classes |
 | `Rules` | `meter-analyzer-for-graalvm` | Load rule configs from JSON manifests |
 | `LALConfigs` | `log-analyzer-for-graalvm` | Load LAL configs from JSON manifests |
+| `TalDSL` | `trace-analyzer-for-graalvm` | Load pre-compiled TalExpression classes + create their metrics from the manifest |
+| `TALConfigs` | `trace-analyzer-for-graalvm` | Load TAL configs from JSON manifests |
 
 ---
 

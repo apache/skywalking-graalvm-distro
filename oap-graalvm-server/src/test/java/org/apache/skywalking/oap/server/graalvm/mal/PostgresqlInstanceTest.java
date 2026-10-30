@@ -105,7 +105,7 @@ class PostgresqlInstanceTest extends MALScriptComparisonBase {
      * pg_stat_database_blks_read{datname="mydb",host_name="pg-host-1",service_instance_id="pg:5432"} 5000.0
      *
      * # --- Temporary files (rate with sum) ---
-     * pg_stat_database_temp_bytes{datname="mydb",host_name="pg-host-1",service_instance_id="pg:5432"} 1048576.0
+     * pg_stat_database_temp_files{datname="mydb",host_name="pg-host-1",service_instance_id="pg:5432"} 12.0
      *
      * # --- Checkpoint metrics (rate, no datname aggregation) ---
      * pg_stat_bgwriter_checkpoint_write_time_total{host_name="pg-host-1",service_instance_id="pg:5432"} 45000.0
@@ -226,9 +226,9 @@ class PostgresqlInstanceTest extends MALScriptComparisonBase {
                     scopeWithDb, 5000.0 * scale, timestamp))
 
             // --- Temporary files ---
-            .put("pg_stat_database_temp_bytes",
-                single("pg_stat_database_temp_bytes",
-                    scopeWithDb, 1048576.0 * scale, timestamp))
+            .put("pg_stat_database_temp_files",
+                single("pg_stat_database_temp_files",
+                    scopeWithDb, 12.0 * scale, timestamp))
 
             // --- Checkpoint metrics ---
             .put("pg_stat_bgwriter_checkpoint_write_time_total",

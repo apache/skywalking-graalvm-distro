@@ -21,7 +21,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | Simple Java Agent | `simple-java-agent/` | Core tracing, metrics, topology (Java agent) |
 | Istio ALS | `istio-als/` | Envoy ALS receiver, LAL input-type routing, K8s cluster |
 | Event | `event/` | `receiver-event` |
-| Alarm | `alarm/` | `alarm` module, webhook |
+| Alarm | `alarm/` | `alarm` module, webhook, admin `/status/alarm/*` (rules, rule detail, running context) |
 | Log | `log/` | `receiver-log`, LAL engine |
 | Meter | `meter/` | `receiver-meter`, MAL (`meter-analyzer-config`), virtual cache/DB |
 | Trace Profiling | `trace-profiling/` | Trace profiling lifecycle |
@@ -47,7 +47,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | MongoDB | `mongodb/` | MongoDB OTel rules |
 | Flink | `flink/` | Flink OTel rules |
 | AWS DynamoDB | `aws-dynamodb/` | AWS DynamoDB (Firehose) |
-| AWS S3 | `aws-s3/` | AWS S3 (Firehose) |
+| AWS S3 | `aws-s3/` | AWS S3 metrics (OTLP over gRPC) + the Firehose HTTP receiver (`/aws/firehose/metrics` request and answer) |
 | AWS EKS | `aws-eks/` | AWS EKS OTel rules |
 | AWS API Gateway | `aws-api-gateway/` | AWS API Gateway (Firehose) |
 | Self Observability | `so11y/` | OAP self-observability (Prometheus telemetry via OTel collector) |
@@ -63,6 +63,20 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | BanyanDB Trace Sampling | `banyandb-trace-sampling/` | `banyandb-trace-sampling` OTel rules (plugin-capable BanyanDB running the sampler chain) |
 | BanyanDB Auth Rotation | `banyandb-auth-rotation/` | BanyanDB credential hot-reload (`secretsManagementFile`) + storage suite |
 | BanyanDB CA Rotation | `banyandb-ca-rotation/` | BanyanDB TLS trust CA hot-reload + storage suite |
+| OTLP Traces Native | `otlp-traces-native/` | Native OTLP span storage (`otlpTraceStorage: otlp`), TraceQL `/otlp` datasource, `trace-analyzer` (TAL `otlp-general`: services, topology, metrics, slow statements) |
+| OTLP Traces Cluster | `otlp-traces-cluster/` | kind, two OAP replicas on the Kubernetes coordinator: TAL span pairing across nodes (each call's CLIENT and SERVER halves reach different replicas; its alias needs the `PairingFact` to cross to the trace's owner) |
+| VM OTel Hostmetrics | `vm-otel-hostmetrics/` | OTel Collector hostmetrics + replayed Windows OTLP fixtures → `vm`, `windows`, `process-hostmetrics-{linux,windows}` OTel rules |
+| OTLP Virtual GenAI | `otlp-virtual-genai/` | GenAI metrics + LLM-as-judge evaluation from OTLP spans converted to Zipkin (`otlpTraceStorage: zipkin`) |
+| OTLP Virtual GenAI Native | `otlp-virtual-genai-native/` | GenAI metrics + evaluation from natively stored OTLP spans (`traceRef.type: OTLP`) |
+| Zipkin Virtual GenAI | `zipkin-virtual-genai/` | GenAI metrics + evaluation from Zipkin spans (`receiver-zipkin`) |
+| Mixed Virtual GenAI | `mixed-virtual-genai/` | Evaluation `traceRef` per trace store (SkyWalking, OTLP, Zipkin) and `relatedTrace` lookup on one OAP |
+| iOS | `ios/` | OTLP traces/logs from iOS: `ios-analyzer` span listeners (HTTP + MetricKit), `ios/*` OTel rules, `lal/ios-metrickit.yaml` |
+| WeChat Mini Program | `miniprogram-wechat/` | `miniprogram/wechat-*` OTel rules, `lal/miniprogram.yaml`, `log-mal-rules/miniprogram-wechat.yaml` (published SkyAPM simulator) |
+| Alipay Mini Program | `miniprogram-alipay/` | `miniprogram/alipay-*` OTel rules, `lal/miniprogram.yaml`, `log-mal-rules/miniprogram-alipay.yaml` (published SkyAPM simulator) |
+| UI Management | `ui-management/` | `ui-management` dashboard-template CRUD over admin-server via `swctl admin ui-template` |
+
+`envoy-ai-gateway/` is implemented but **not in the CI matrix**: it downloads a ~400 MB Ollama model at runtime
+(upstream doesn't run it in CI either). Run it manually.
 
 ---
 
@@ -170,6 +184,7 @@ These upstream cases use Elasticsearch, MySQL, or PostgreSQL and are not applica
 - `baseline/es/`, `baseline/mysql/`, `baseline/postgres/`
 - `zipkin/es/`, `zipkin/mysql/`, `zipkin/postgres/`
 - `ttl/es/`
+- `otlp-traces/native/es/`, `otlp-traces/native/mysql/`, `ai-agent/{es,mysql,postgres}/` (the BanyanDB variants are adopted)
 - `logql/` (Elasticsearch)
 - `cilium/` (Elasticsearch + K8s)
 - `istio/metrics/`, `istio/als/`, `istio/ambient-als/` (Elasticsearch + K8s)
@@ -186,5 +201,6 @@ These upstream cases use Elasticsearch, MySQL, or PostgreSQL and are not applica
 
 - `python/` (requires Kafka for agent reporting)
 - `win/` (Windows-only)
+- `airflow/cluster/` (a real Airflow cluster; the distro runs the `airflow/mock` replay instead)
 - `aws/`, `apisix/`, `clickhouse/`, `mysql/`, `postgresql/`, `redis/` (no e2e.yaml or wrong storage)
 - `mariadb/` (MySQL-based storage)

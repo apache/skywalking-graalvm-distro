@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # AI agent conversations E2E — native OAP with BanyanDB.
-# The cases mirror upstream test/e2e-v2/cases/ai-agent/ai-agent-cases.yaml one for one. They are
+# The cases mirror upstream test/e2e-v2/cases/ai-agent/ai-agent-cases.yaml, then ai-agent-cases-withheld.yaml, one for one. They are
 # inlined because upstream's queries call verify.sh by an upstream-root-relative path; the script and
 # every expected file are still upstream's, so the assertions track upstream.
 
@@ -70,5 +70,12 @@ verify:
       expected: ../../../../skywalking/test/e2e-v2/cases/ai-agent/expected/size.yml
     - query: bash skywalking/test/e2e-v2/cases/ai-agent/verify.sh changes http://${oap_host}:${oap_12800}
       expected: ../../../../skywalking/test/e2e-v2/cases/ai-agent/expected/changes.yml
+    - query: bash skywalking/test/e2e-v2/cases/ai-agent/verify.sh provider-bodies http://${oap_host}:${oap_12800}
+      expected: ../../../../skywalking/test/e2e-v2/cases/ai-agent/expected/provider-bodies.yml
+    - query: bash skywalking/test/e2e-v2/cases/ai-agent/verify.sh mcp http://${oap_host}:${oap_12800}
+      expected: ../../../../skywalking/test/e2e-v2/cases/ai-agent/expected/mcp.yml
     - query: bash skywalking/test/e2e-v2/cases/ai-agent/verify.sh metrics http://${oap_host}:${oap_12800}
       expected: ../../../../skywalking/test/e2e-v2/cases/ai-agent/expected/metrics.yml
+    # upstream ai-agent-cases-withheld.yaml: the oaphide OAP, with the hide setting, against the first OAP
+    - query: bash skywalking/test/e2e-v2/cases/ai-agent/verify.sh withheld http://${oaphide_host}:${oaphide_12800} http://${oap_host}:${oap_12800}
+      expected: ../../../../skywalking/test/e2e-v2/cases/ai-agent/expected/withheld.yml

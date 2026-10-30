@@ -40,3 +40,15 @@ verify:
   cases:
     - includes:
         - ../../../../skywalking/test/e2e-v2/cases/aws/s3/s3-cases.yaml
+    # The metrics above arrive over gRPC; an AWS metric stream reaches the OAP through the Firehose receiver, whose
+    # JSON body and answer Jackson maps. `AA==` is one empty length-delimited ExportMetricsServiceRequest, `/////w==`
+    # no protobuf at all.
+    - query: |
+        post() {
+          curl -s -X POST -H 'Content-Type: application/json' http://${oap_host}:${oap_12801}/aws/firehose/metrics \
+            --data '{"requestId":"'"$1"'","timestamp":1700000000000,"records":[{"data":"'"$2"'"}]}' \
+            | yq -p json -o json -I0 '{"requestId": .requestId, "errorMessage": .errorMessage, "timestamped": (.timestamp > 0)}'
+        }
+        echo "accepted: $(post e2e-accepted AA==)"
+        echo "rejected: $(post e2e-rejected /////w==)"
+      expected: expected/firehose.yml

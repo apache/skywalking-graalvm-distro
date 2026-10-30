@@ -55,6 +55,7 @@ public final class AcceptedModules {
         // Analyzers
         new ModuleProviderPair("agent-analyzer", "default"),
         new ModuleProviderPair("log-analyzer", "default"),
+        new ModuleProviderPair("trace-analyzer", "default"),
         new ModuleProviderPair("event-analyzer", "default"),
         new ModuleProviderPair("gen-ai-analyzer", "default"),
         new ModuleProviderPair("ai-evaluation", "default"),

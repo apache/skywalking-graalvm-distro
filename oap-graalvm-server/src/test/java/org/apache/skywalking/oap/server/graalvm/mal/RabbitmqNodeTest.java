@@ -33,15 +33,14 @@ import org.junit.jupiter.api.TestFactory;
  * <ul>
  *   <li>Tag closure in expSuffix — tags.cluster = 'rabbitmq::' + tags.cluster</li>
  *   <li>Scope: INSTANCE(['cluster'], ['node'], Layer.RABBITMQ)</li>
- *   <li>Multi-sample subtraction — rabbitmq_channels - rabbitmq_channel_consumers
- *       (publisher_total)</li>
+ *   <li>Passthrough — rabbitmq_global_publishers (publisher_total)</li>
  *   <li>Multi-sample addition — sum of 6 rate terms (outgoing_messages_total)</li>
  *   <li>rate('PT1M') — on incoming_messages, outgoing_messages_total</li>
  *   <li>tagEqual — filtering by usage=blocks_size / carriers_size (erlang_vm_allocators)</li>
  *   <li>tagEqual with multiple key-value pairs — usage + kind filtering</li>
- *   <li>Division and multiplication — allocated_used_percent, allocated_unused_percent</li>
+ *   <li>safeDiv and multiplication — allocated_used_percent, allocated_unused_percent</li>
  *   <li>Multi-sample subtraction — carriers_size - blocks_size
- *       (allocated_unused_bytes/percent)</li>
+ *       (allocated_unused_bytes/percent, multiblock/multiblock pool/singleblock unused)</li>
  *   <li>sum with aggregation labels — sum(['cluster','node']) and
  *       sum(['cluster','node','alloc'])</li>
  * </ul>
@@ -77,9 +76,9 @@ class RabbitmqNodeTest extends MALScriptComparisonBase {
      * # --- Rate metrics (incoming) ---
      * rabbitmq_global_messages_received_total{cluster="my-rabbitmq-cluster",node="rabbit@node1"} 100000.0
      *
-     * # --- Multi-sample subtraction (publisher_total = channels - channel_consumers) ---
+     * # --- Channels and publishers ---
      * rabbitmq_channels{cluster="my-rabbitmq-cluster",node="rabbit@node1"} 50.0
-     * rabbitmq_channel_consumers{cluster="my-rabbitmq-cluster",node="rabbit@node1"} 30.0
+     * rabbitmq_global_publishers{cluster="my-rabbitmq-cluster",node="rabbit@node1"} 20.0
      *
      * # --- Passthrough metrics ---
      * rabbitmq_connections{cluster="my-rabbitmq-cluster",node="rabbit@node1"} 120.0
@@ -94,12 +93,14 @@ class RabbitmqNodeTest extends MALScriptComparisonBase {
      * rabbitmq_global_messages_delivered_get_manual_ack_total{cluster="my-rabbitmq-cluster",node="rabbit@node1"} 3000.0
      *
      * # --- Erlang VM allocators (tagEqual on 'usage': blocks_size and carriers_size) ---
-     * # Also tagEqual on 'kind': mbcs, mbcs_pool for per-type metrics
+     * # Also tagEqual on 'kind': mbcs, mbcs_pool, sbcs for per-type metrics
      * # Additional aggregation label: alloc (allocator type)
      * erlang_vm_allocators{cluster="my-rabbitmq-cluster",node="rabbit@node1",usage="blocks_size",kind="mbcs",alloc="binary_alloc"} 2000000.0
      * erlang_vm_allocators{cluster="my-rabbitmq-cluster",node="rabbit@node1",usage="carriers_size",kind="mbcs",alloc="binary_alloc"} 4000000.0
      * erlang_vm_allocators{cluster="my-rabbitmq-cluster",node="rabbit@node1",usage="blocks_size",kind="mbcs_pool",alloc="binary_alloc"} 500000.0
      * erlang_vm_allocators{cluster="my-rabbitmq-cluster",node="rabbit@node1",usage="carriers_size",kind="mbcs_pool",alloc="binary_alloc"} 1000000.0
+     * erlang_vm_allocators{cluster="my-rabbitmq-cluster",node="rabbit@node1",usage="blocks_size",kind="sbcs",alloc="binary_alloc"} 750000.0
+     * erlang_vm_allocators{cluster="my-rabbitmq-cluster",node="rabbit@node1",usage="carriers_size",kind="sbcs",alloc="binary_alloc"} 1200000.0
      *
      * # --- Process resident memory ---
      * rabbitmq_process_resident_memory_bytes{cluster="my-rabbitmq-cluster",node="rabbit@node1"} 536870912.0
@@ -127,13 +128,13 @@ class RabbitmqNodeTest extends MALScriptComparisonBase {
                 single("rabbitmq_global_messages_received_total",
                     scope, 100000.0 * scale, timestamp))
 
-            // Channels and channel consumers (subtraction for publisher_total)
+            // Channels and publishers
             .put("rabbitmq_channels",
                 single("rabbitmq_channels",
                     scope, 50.0 * scale, timestamp))
-            .put("rabbitmq_channel_consumers",
-                single("rabbitmq_channel_consumers",
-                    scope, 30.0 * scale, timestamp))
+            .put("rabbitmq_global_publishers",
+                single("rabbitmq_global_publishers",
+                    scope, 20.0 * scale, timestamp))
 
             // Passthrough metrics
             .put("rabbitmq_connections",
@@ -189,6 +190,9 @@ class RabbitmqNodeTest extends MALScriptComparisonBase {
      *   <li>tagEqual('usage','blocks_size','kind','mbcs_pool') and
      *       tagEqual('usage','carriers_size','kind','mbcs_pool') for
      *       multiblock pool used/unused</li>
+     *   <li>tagEqual('usage','blocks_size','kind','sbcs') and
+     *       tagEqual('usage','carriers_size','kind','sbcs') for
+     *       singleblock used/unused</li>
      * </ul>
      */
     private static SampleFamily buildAllocatorSamples(
@@ -207,7 +211,13 @@ class RabbitmqNodeTest extends MALScriptComparisonBase {
                 500000.0 * scale, timestamp),
             // carriers_size + mbcs_pool
             allocSample(scope, "carriers_size", "mbcs_pool", "binary_alloc",
-                1000000.0 * scale, timestamp)
+                1000000.0 * scale, timestamp),
+            // blocks_size + sbcs
+            allocSample(scope, "blocks_size", "sbcs", "binary_alloc",
+                750000.0 * scale, timestamp),
+            // carriers_size + sbcs
+            allocSample(scope, "carriers_size", "sbcs", "binary_alloc",
+                1200000.0 * scale, timestamp)
         ).build();
     }
 

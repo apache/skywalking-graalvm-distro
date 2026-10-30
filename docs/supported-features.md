@@ -46,7 +46,7 @@ All receivers are included:
 | Profile | gRPC | On-demand profiling |
 | Async Profiler | gRPC | Java async-profiler |
 | pprof | gRPC | Go pprof profiling |
-| OpenTelemetry | gRPC (OTLP) | Metrics + Logs via OTLP |
+| OpenTelemetry | gRPC / HTTP (OTLP) | Traces, metrics and logs. Traces are analyzed by TAL and stored natively (`otlp_span`, queried through TraceQL `/otlp`), or converted to Zipkin with `SW_OTEL_TRACE_STORAGE=zipkin` |
 | Envoy / Istio ALS | gRPC | Access log service (HTTP and TCP entries), metrics |
 | Zipkin | HTTP | Zipkin v2 spans (disabled by default) |
 | Zabbix | TCP | Zabbix agent protocol (disabled by default) |
@@ -64,6 +64,7 @@ All receivers are included:
 | **PromQL** | 9090 | Prometheus-compatible query |
 | **LogQL** | 3100 | Loki-compatible log query |
 | **Zipkin** | 9412 | Zipkin v2 query API (disabled by default) |
+| **TraceQL** | 3200 | Tempo-compatible trace query for Grafana; `/otlp` (native OTLP spans), `/zipkin` and `/skywalking` datasources (disabled by default) |
 | **Status** | 17128 | Cluster / alarm / TTL status + `/debugging/*` debug-query trace, on the admin-server host (relocated from the query plugin in 11.0.0) |
 | **Inspect** | 17128 | SWIP-14 metric catalog + entity enumeration (`/inspect/*`), on the admin-server host |
 | **UI Management** | 17128 | Dashboard-template REST (`/ui-management/*`) consumed by the Horizon UI, on the admin-server host |
@@ -72,8 +73,13 @@ All receivers are included:
 
 | Analyzer | Included |
 |----------|----------|
-| Trace Analyzer | Yes |
+| Agent Analyzer (SkyWalking agent traces and meters, MAL) | Yes |
 | Log Analyzer (LAL) | Yes |
+| Trace Analyzer (TAL: OTLP spans into services, topology, metrics and slow statements) | Yes — rules compiled at build time, see [Configuration](configuration.md#trace-analyzer) |
+| iOS / iPadOS span analysis (OpenTelemetry Swift SDK) | Yes |
+| GenAI Analyzer (virtual GenAI services from LLM-call spans) | Yes |
+| AI Evaluation (SWIP-16 LLM-as-judge) | Yes (disabled by default) |
+| AI Agent Conversations (AI Sessionizer files) | Yes |
 | Event Analyzer | Yes |
 
 ### Other Modules
@@ -87,6 +93,18 @@ All receivers are included:
 | AI Pipeline | Included (baseline prediction) |
 | DSL live debugger (SWIP-13) | Included — sampling sessions over the bundled MAL/LAL/OAL rules, probes compiled in at build time |
 
+### TLS
+
+The same settings as upstream. gRPC TLS runs on the JDK TLS provider instead of OpenSSL
+(`netty_tcnative`): the distro replaces `DynamicSslContext` with a `SslProvider.JDK` copy.
+
+| Endpoint | Settings | Status |
+|----------|----------|--------|
+| Agent gRPC (`11800`) | `SW_CORE_GRPC_SSL_*` | TLS (`ssl` e2e). As upstream, no client certificate is asked for: `SW_CORE_GRPC_SSL_TRUSTED_CA_PATH` is the CA OAP nodes trust when they call each other |
+| Receiver gRPC (`SW_RECEIVER_GRPC_PORT`) | `SW_RECEIVER_GRPC_SSL_*` | TLS; mTLS with `SW_RECEIVER_GRPC_SSL_TRUSTED_CAS_PATH` (`mtls` e2e) |
+| REST servers | `SW_*_REST_SSL_*` | HTTPS |
+| OAP → BanyanDB | `SW_STORAGE_BANYANDB_SSL_TRUST_CA_PATH` | TLS, CA reloaded on rotation (`banyandb-ca-rotation` e2e) |
+
 ## Optional Modules
 
 These modules are disabled by default. Enable them with environment variables:
@@ -99,41 +117,22 @@ These modules are disabled by default. Enable them with environment variables:
 | Kafka Fetcher | `SW_KAFKA_FETCHER=default` |
 | Cilium Fetcher | `SW_CILIUM_FETCHER=default` |
 | Exporter | `SW_EXPORTER=default` |
+| TraceQL | `SW_TRACEQL=default` (plus `SW_TRACEQL_ENABLE_DATASOURCE_OTLP=true` etc. per datasource) |
+| AI Evaluation | `SW_AI_EVALUATION=default` |
+
+The Trace Analyzer (TAL) is on by default; `SW_TRACE_ANALYZER=-` removes it, and OTLP spans are then stored without
+analysis.
 
 ## Known Limitations
 
-### No TLS/SSL Support for gRPC
-
-The native image does **not** support TLS-encrypted gRPC communication. This affects:
-
-- Agent-to-OAP gRPC connections (`SW_CORE_GRPC_SSL_ENABLED`)
-- Receiver gRPC SSL (`SW_RECEIVER_GRPC_SSL_ENABLED`)
-- Any mTLS (mutual TLS) configuration between agents and OAP
-
-**Root cause**: The Netty TLS implementation requires `netty_tcnative` platform-specific native
-libraries (`.so` files) that are not bundled in the GraalVM native image.
-
-The `restSSL*` options that 11.0.0 added to every HTTP/REST server (`SW_*_REST_SSL_ENABLED`) are
-present in `application.yml` for configuration parity, but they sit on the same Netty TLS stack and
-have not been verified in the native image; treat them as unsupported.
-
-**Workaround**: Use a service mesh (e.g., **Istio**, **Linkerd**) to handle mTLS at the
-infrastructure layer. The mesh transparently encrypts all pod-to-pod traffic, including
-agent-to-OAP gRPC connections, without requiring application-level TLS configuration.
-
-```
-Agent Pod ──(plaintext gRPC)──► Istio Sidecar ══(mTLS)══► Istio Sidecar ──► OAP Pod
-```
-
-This is the recommended approach for Kubernetes deployments and provides stronger security
-guarantees than application-level TLS (automatic certificate rotation, policy enforcement).
-
 ### DSL Rules Are Read-Only (Live Debugger Yes, Hot-Update No)
 
-All MAL / LAL / OAL rules are pre-compiled at build time. The precompiler compiles the SWIP-13
-debug probes into every rule class (the same codegen switch the upstream OAP flips at boot), so
+All MAL / LAL / OAL / TAL rules are pre-compiled at build time. The precompiler compiles the SWIP-13
+debug probes into every MAL / LAL / OAL rule class (the same codegen switch the upstream OAP flips at boot), so
 the live debugger works on the bundled rules; only runtime-rule hot-update, which generates
-bytecode at runtime, is unavailable:
+bytecode at runtime, is unavailable. TAL rules have no debug probes upstream either, and upstream has no
+runtime-rule catalog for them; to change them, edit the files under `tal/` and rebuild (see
+[Configuration](configuration.md#trace-analyzer)):
 
 | Admin API | Status |
 |-----------|--------|
@@ -159,13 +158,14 @@ distribution if you need hot-update.
 | Config | All dynamic config providers | K8s ConfigMap or none |
 | Module loading | SPI discovery at runtime | Fixed at build time |
 | DSL rules | Hot-update + live debugger | Live debugger on bundled rules; read-only catalogs; no hot-update |
-| TLS/SSL | Supported (gRPC SSL, mTLS) | Not supported (use service mesh) |
+| TLS/SSL | gRPC TLS on OpenSSL (`netty_tcnative`) | Same settings; gRPC TLS on the JDK TLS provider |
 
 ## Compatibility
 
 - **SkyWalking agents**: All official SkyWalking agents are compatible (Java, .NET, Go, Python, Node.js, PHP, Rust, Ruby, C++, Satellite)
-- **SkyWalking UI**: Fully compatible — use the standard SkyWalking Booster UI
-- **OpenTelemetry**: OTLP metrics and logs via gRPC
+- **SkyWalking UI**: Fully compatible — use the Horizon UI, the official UI since SkyWalking 11.0.0
+- **OpenTelemetry**: OTLP traces, metrics and logs via gRPC and HTTP; traces analyzed by TAL
+- **Grafana**: TraceQL (Tempo) datasource when `traceQL` is enabled
 - **Zipkin**: Zipkin v2 API (receiver + query) when enabled
 - **Prometheus**: PromQL query API for Grafana integration
 - **BanyanDB**: Requires BanyanDB as the storage backend
@@ -176,7 +176,7 @@ distribution if you need hot-update.
                     ┌──────────────────────────────────┐
                     │   SkyWalking GraalVM Native OAP  │
 Agents ──gRPC──────►│                                  │
-OTLP ──gRPC────────►│  Receivers → Analyzers → Storage │──► BanyanDB
+OTLP ──gRPC/HTTP───►│  Receivers → Analyzers → Storage │──► BanyanDB
 Zipkin ──HTTP──────►│                                  │
                     │  Query APIs (GraphQL/PromQL/...)  │◄── SkyWalking UI
                     │  Alarm → Webhooks                │

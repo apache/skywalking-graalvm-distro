@@ -53,6 +53,10 @@
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
+            <artifactId>trace-analyzer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
             <artifactId>hierarchy</artifactId>
         </dependency>
 
@@ -188,6 +192,11 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -227,6 +236,9 @@
                     <additionalClasspathElements>
                         <additionalClasspathElement>${project.basedir}/../../skywalking/oap-server/server-starter/src/main/resources</additionalClasspathElement>
                     </additionalClasspathElements>
+                    <!-- The precompiler runs once per JVM: the build-time MeterSystem and Javassist's default
+                         ClassPool are JVM-wide, so each test class compiles rules into a JVM of its own. -->
+                    <reuseForks>false</reuseForks>
                 </configuration>
             </plugin>
 

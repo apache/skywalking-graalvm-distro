@@ -32,7 +32,7 @@ import org.junit.jupiter.api.TestFactory;
  * This file exercises:
  * <ul>
  *   <li>tagEqual — filtering by command type (insert, select, delete, update)
- *       and error type (max_connection, internal)</li>
+ *       and error type (max_connections, internal)</li>
  *   <li>tagMatch — regex matching for rollback|commit</li>
  *   <li>Multi-sample subtraction — max_connections - threads_connected</li>
  *   <li>sum with aggregation labels — sum(['host_name','service_instance_id'])</li>
@@ -88,7 +88,7 @@ class MysqlInstanceTest extends MALScriptComparisonBase {
      * mysql_global_status_commands_total{command="commit",host_name="mysql-host",service_instance_id="mysql:3306"} 800.0
      *
      * # --- Connection errors (multiple samples for tagEqual) ---
-     * mysql_global_status_connection_errors_total{error="max_connection",host_name="mysql-host",service_instance_id="mysql:3306"} 5.0
+     * mysql_global_status_connection_errors_total{error="max_connections",host_name="mysql-host",service_instance_id="mysql:3306"} 5.0
      * mysql_global_status_connection_errors_total{error="internal",host_name="mysql-host",service_instance_id="mysql:3306"} 2.0
      *
      * # --- Rate metrics ---
@@ -151,7 +151,7 @@ class MysqlInstanceTest extends MALScriptComparisonBase {
             // Connection errors — multiple samples for tagEqual
             .put("mysql_global_status_connection_errors_total",
                 SampleFamilyBuilder.newBuilder(
-                    errorSample("max_connection", 5.0 * scale, scope, timestamp),
+                    errorSample("max_connections", 5.0 * scale, scope, timestamp),
                     errorSample("internal", 2.0 * scale, scope, timestamp)
                 ).build())
 

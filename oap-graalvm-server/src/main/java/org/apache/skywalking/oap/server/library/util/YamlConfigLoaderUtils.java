@@ -52,6 +52,7 @@ import org.apache.skywalking.oap.server.analyzer.provider.trace.UninstrumentedGa
 import org.apache.skywalking.oap.server.cluster.plugin.kubernetes.ClusterModuleKubernetesConfig;
 import org.apache.skywalking.oap.server.configuration.configmap.ConfigmapConfigurationSettings;
 import org.apache.skywalking.oap.server.core.CoreModuleConfig;
+import org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleConfig;
 import org.apache.skywalking.oap.server.core.config.SearchableTracesTagsWatcher;
 import org.apache.skywalking.oap.server.exporter.provider.ExporterSetting;
 import org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherConfig;
@@ -70,6 +71,7 @@ import org.apache.skywalking.oap.server.receiver.zabbix.provider.ZabbixModuleCon
 import org.apache.skywalking.oap.server.receiver.zipkin.ZipkinReceiverConfig;
 import org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig;
 import org.apache.skywalking.oap.server.telemetry.prometheus.PrometheusConfig;
+import org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleConfig;
 
 /**
  * GraalVM replacement for upstream YamlConfigLoaderUtils.
@@ -147,6 +149,8 @@ public class YamlConfigLoaderUtils {
             copyToEnvoyMetricReceiverConfig((EnvoyMetricReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof OtelMetricReceiverConfig) {
             copyToOtelMetricReceiverConfig((OtelMetricReceiverConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof TraceAnalyzerModuleConfig) {
+            copyToTraceAnalyzerModuleConfig((TraceAnalyzerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof BrowserServiceModuleConfig) {
             copyToBrowserServiceModuleConfig((BrowserServiceModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ConfigurationDiscoveryModuleConfig) {
@@ -181,6 +185,8 @@ public class YamlConfigLoaderUtils {
             copyToLogQLConfig((LogQLConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof TraceQLConfig) {
             copyToTraceQLConfig((TraceQLConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof AlarmModuleConfig) {
+            copyToAlarmModuleConfig((AlarmModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof PrometheusConfig) {
             copyToPrometheusConfig((PrometheusConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ExporterSetting) {
@@ -211,6 +217,8 @@ public class YamlConfigLoaderUtils {
             copyToTrace((BanyanDBStorageConfig.Trace) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.ZipkinTrace) {
             copyToZipkinTrace((BanyanDBStorageConfig.ZipkinTrace) dest, src, moduleName, providerName);
+        } else if (dest instanceof BanyanDBStorageConfig.OtlpTrace) {
+            copyToOtlpTrace((BanyanDBStorageConfig.OtlpTrace) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.RecordsTrace) {
             copyToRecordsTrace((BanyanDBStorageConfig.RecordsTrace) dest, src, moduleName, providerName);
         } else if (dest instanceof BanyanDBStorageConfig.RecordsZipkinTrace) {
@@ -431,6 +439,21 @@ public class YamlConfigLoaderUtils {
                 case "maxDirectMemoryUsage":
                     cfg.setMaxDirectMemoryUsage(((Number) value).longValue());
                     break;
+                case "malMetadataReadTimeout":
+                    cfg.setMalMetadataReadTimeout(((Number) value).longValue());
+                    break;
+                case "k8sMetadataReadQueueSize":
+                    cfg.setK8sMetadataReadQueueSize((Object) value);
+                    break;
+                case "k8sMetadataCacheTime":
+                    cfg.setK8sMetadataCacheTime((Object) value);
+                    break;
+                case "k8sMetadataRefreshPeriod":
+                    cfg.setK8sMetadataRefreshPeriod(((Number) value).intValue());
+                    break;
+                case "k8sMetadataNotFoundRetryPeriod":
+                    cfg.setK8sMetadataNotFoundRetryPeriod(((Number) value).intValue());
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -581,23 +604,23 @@ public class YamlConfigLoaderUtils {
             final Object value = src.get(key);
             log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
             switch (key) {
-                case "fileReadWindow":
-                    cfg.setFileReadWindow(((Number) value).intValue());
-                    break;
-                case "roundReadWindow":
-                    cfg.setRoundReadWindow(((Number) value).intValue());
-                    break;
-                case "maxResponseBytes":
-                    cfg.setMaxResponseBytes(((Number) value).intValue());
+                case "conversationListMaxLimit":
+                    cfg.setConversationListMaxLimit(((Number) value).intValue());
                     break;
                 case "viewRequestTimeout":
                     cfg.setViewRequestTimeout(((Number) value).intValue());
                     break;
-                case "maxListLimit":
-                    cfg.setMaxListLimit(((Number) value).intValue());
+                case "readWindow":
+                    cfg.setReadWindow(((Number) value).intValue());
+                    break;
+                case "maxResponseBytes":
+                    cfg.setMaxResponseBytes(((Number) value).intValue());
                     break;
                 case "maxFileBytes":
                     cfg.setMaxFileBytes(((Number) value).intValue());
+                    break;
+                case "hide":
+                    cfg.setHide((String) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -937,6 +960,54 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "enabledOtelMetricsRules":
                     cfg.setEnabledOtelMetricsRules((String) value);
+                    break;
+                case "otlpTraceStorage":
+                    cfg.setOtlpTraceStorage((String) value);
+                    break;
+                case "otlpTraceSearchableTags":
+                    cfg.setOtlpTraceSearchableTags((String) value);
+                    break;
+                case "otlpTraceSampleRate":
+                    cfg.setOtlpTraceSampleRate(((Number) value).intValue());
+                    break;
+                case "otlpTraceMaxSpansPerSecond":
+                    cfg.setOtlpTraceMaxSpansPerSecond(((Number) value).intValue());
+                    break;
+                case "otlpServiceGroupKeys":
+                    cfg.setOtlpServiceGroupKeys((String) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToTraceAnalyzerModuleConfig(
+            final TraceAnalyzerModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "talPath":
+                    cfg.setTalPath((String) value);
+                    break;
+                case "talFiles":
+                    cfg.setTalFiles((String) value);
+                    break;
+                case "dedupWindow":
+                    cfg.setDedupWindow(((Number) value).intValue());
+                    break;
+                case "dedupCapacity":
+                    cfg.setDedupCapacity(((Number) value).intValue());
+                    break;
+                case "pairingSamplePercent":
+                    cfg.setPairingSamplePercent(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1325,6 +1396,9 @@ public class YamlConfigLoaderUtils {
                 case "zipkinTrace":
                     cfg.setZipkinTrace((BanyanDBStorageConfig.ZipkinTrace) value);
                     break;
+                case "otlpTrace":
+                    cfg.setOtlpTrace((BanyanDBStorageConfig.OtlpTrace) value);
+                    break;
                 case "recordsTrace":
                     cfg.setRecordsTrace((BanyanDBStorageConfig.RecordsTrace) value);
                     break;
@@ -1568,11 +1642,17 @@ public class YamlConfigLoaderUtils {
                 case "enableDatasourceSkywalking":
                     cfg.setEnableDatasourceSkywalking((boolean) value);
                     break;
+                case "enableDatasourceOTLP":
+                    cfg.setEnableDatasourceOTLP((boolean) value);
+                    break;
                 case "restContextPathZipkin":
                     cfg.setRestContextPathZipkin((String) value);
                     break;
                 case "restContextPathSkywalking":
                     cfg.setRestContextPathSkywalking((String) value);
+                    break;
+                case "restContextPathOTLP":
+                    cfg.setRestContextPathOTLP((String) value);
                     break;
                 case "restIdleTimeOut":
                     cfg.setRestIdleTimeOut(((Number) value).longValue());
@@ -1597,6 +1677,30 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "skywalkingTracesListResultTags":
                     cfg.setSkywalkingTracesListResultTags((String) value);
+                    break;
+                case "otlpTracesListResultTags":
+                    cfg.setOtlpTracesListResultTags((String) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToAlarmModuleConfig(
+            final AlarmModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "httpTimeout":
+                    cfg.setHttpTimeout(((Number) value).longValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -2098,6 +2202,51 @@ public class YamlConfigLoaderUtils {
     @SuppressWarnings("unchecked")
     private static void copyToZipkinTrace(
             final BanyanDBStorageConfig.ZipkinTrace cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "shardNum":
+                    cfg.setShardNum(((Number) value).intValue());
+                    break;
+                case "segmentInterval":
+                    cfg.setSegmentInterval(((Number) value).intValue());
+                    break;
+                case "ttl":
+                    cfg.setTtl(((Number) value).intValue());
+                    break;
+                case "replicas":
+                    cfg.setReplicas(((Number) value).intValue());
+                    break;
+                case "enableWarmStage":
+                    cfg.setEnableWarmStage((boolean) value);
+                    break;
+                case "enableColdStage":
+                    cfg.setEnableColdStage((boolean) value);
+                    break;
+                case "defaultQueryStages":
+                    cfg.setDefaultQueryStages((List) value);
+                    break;
+                case "additionalLifecycleStages":
+                    cfg.setAdditionalLifecycleStages((List) value);
+                    break;
+                case "tracePipeline":
+                    cfg.setTracePipeline((BanyanDBStorageConfig.TracePipeline) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToOtlpTrace(
+            final BanyanDBStorageConfig.OtlpTrace cfg, final Properties src,
             final String moduleName, final String providerName) {
         final Enumeration<?> propertyNames = src.propertyNames();
         while (propertyNames.hasMoreElements()) {

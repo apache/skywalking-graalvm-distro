@@ -77,6 +77,12 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
+                <artifactId>trace-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
                 <artifactId>agent-analyzer</artifactId>
                 <version>${skywalking.version}</version>
                 <scope>provided</scope>
@@ -145,6 +151,10 @@
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>log-analyzer-for-graalvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>trace-analyzer-for-graalvm</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
@@ -245,6 +255,11 @@
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>gen-ai-analyzer</artifactId>
+        </dependency>
+        <!-- SpanListener SPI only (no module): the iOS HTTP and MetricKit span analysis upstream bundles in server-starter. -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ios-analyzer</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>

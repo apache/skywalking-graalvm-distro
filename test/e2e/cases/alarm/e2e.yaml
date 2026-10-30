@@ -46,3 +46,17 @@ verify:
   cases:
     - includes:
         - ../../../../skywalking/test/e2e-v2/cases/alarm/alarm-cases.yaml
+    # The admin status API prints the rule state through Gson, which reads the alarm-status classes' fields: the
+    # native image answers `{}` without their reflection metadata.
+    - query: |
+        curl -s http://${oap_host}:${oap_17128}/status/alarm/rules \
+          | yq -p json -o yaml '{"instances": (.oapInstances | length), "rules": ([.oapInstances[].status.ruleList[].id] | sort)}'
+      expected: expected/status-alarm-rules.yml
+    - query: |
+        curl -s http://${oap_host}:${oap_17128}/status/alarm/service_resp_time_rule \
+          | yq -p json -o yaml '.oapInstances[0].status | {"ruleId": .ruleId, "expression": .expression, "period": .period, "hooks": .hooks, "tags": ([.tags[] | .key + "=" + .value] | sort), "providerRunning": ([.runningEntities[] | select(.name == "e2e-service-provider")] | length > 0)}'
+      expected: expected/status-alarm-rule.yml
+    - query: |
+        curl -s http://${oap_host}:${oap_17128}/status/alarm/service_resp_time_rule/e2e-service-provider \
+          | yq -p json -o yaml '.oapInstances[0].status | {"ruleId": .ruleId, "entityName": .entityName, "hasWindow": (.size > 0)}'
+      expected: expected/status-alarm-context.yml

@@ -38,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.UnexpectedException;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.AcceptableValue;
+import org.apache.skywalking.oap.server.core.analysis.meter.function.LabeledValueLimits;
 import org.apache.skywalking.oap.server.core.analysis.metrics.Metrics;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.Service;
@@ -217,6 +218,16 @@ public class MeterSystem implements Service {
             log.error("Can't write " + className + " to " + OUTPUT_DIRECTORY, e);
             throw new UnexpectedException(e.getMessage(), e);
         }
+    }
+
+    /**
+     * Cap the label sets one row of a labeled metric holds, see {@link LabeledValueLimits}.
+     *
+     * @param metricsName the metric, as it was created
+     * @param maxLabels   the most label sets one row holds; 0 or less for no limit
+     */
+    public void limitLabels(final String metricsName, final int maxLabels) {
+        LabeledValueLimits.register(METER_CLASS_PACKAGE + formatName(metricsName), maxLabels);
     }
 
     public <T> AcceptableValue<T> buildMetrics(String metricsName,

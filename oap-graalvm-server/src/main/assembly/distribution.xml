@@ -133,6 +133,7 @@
                 <exclude>org.apache.skywalking:library-util</exclude>
                 <exclude>org.apache.skywalking:meter-analyzer</exclude>
                 <exclude>org.apache.skywalking:log-analyzer</exclude>
+                <exclude>org.apache.skywalking:trace-analyzer</exclude>
                 <exclude>org.apache.skywalking:agent-analyzer</exclude>
                 <exclude>org.apache.skywalking:envoy-metrics-receiver-plugin</exclude>
                 <exclude>org.apache.skywalking:otel-receiver-plugin</exclude>

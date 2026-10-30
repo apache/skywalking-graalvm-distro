@@ -53,6 +53,8 @@ import org.apache.skywalking.oap.server.analyzer.module.AnalyzerModule;
 import org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleProvider;
 import org.apache.skywalking.oap.log.analyzer.v2.module.LogAnalyzerModule;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleProvider;
+import org.apache.skywalking.oap.trace.analyzer.v2.module.TraceAnalyzerModule;
+import org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleProvider;
 import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModule;
 import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModuleProvider;
 import org.apache.skywalking.oap.analyzer.genai.module.GenAIAnalyzerModule;
@@ -229,6 +231,10 @@ public class GraalVMOAPServerStartUp {
         // Analyzers
         manager.register(new AnalyzerModule(), new AnalyzerModuleProvider());
         manager.register(new LogAnalyzerModule(), new LogAnalyzerModuleProvider());
+        // Trace analyzer (TAL): `selector: -` removes it, and the OTLP receiver then stores spans unanalyzed.
+        if (configuration.has("trace-analyzer")) {
+            manager.register(new TraceAnalyzerModule(), new TraceAnalyzerModuleProvider());
+        }
         manager.register(new EventAnalyzerModule(), new EventAnalyzerModuleProvider());
         manager.register(new GenAIAnalyzerModule(), new GenAIAnalyzerModuleProvider());
         // AI evaluation (optional, disabled by default with selector: -)
