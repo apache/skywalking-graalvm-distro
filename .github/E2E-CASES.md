@@ -62,7 +62,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | AI Agent Conversations | `ai-agent/` | `ai-agent-conversation` (AI Sessionizer files via `lal/ai-agent.yaml`, `asz.view` fold), `ai-agent/*` OTel rules |
 | BanyanDB Trace Sampling | `banyandb-trace-sampling/` | `banyandb-trace-sampling` OTel rules (plugin-capable BanyanDB running the sampler chain) |
 | BanyanDB Auth Rotation | `banyandb-auth-rotation/` | BanyanDB credential hot-reload (`secretsManagementFile`) + storage suite |
-| BanyanDB CA Rotation | `banyandb-ca-rotation/` | BanyanDB TLS trust CA hot-reload + storage suite |
+| BanyanDB CA Rotation | `banyandb-ca-rotation/` | BanyanDB TLS trust CA rotation (old+new CA, new server cert, new CA only) + storage suite, then rejection of an unrelated CA |
 | OTLP Traces Native | `otlp-traces-native/` | Native OTLP span storage (`otlpTraceStorage: otlp`), TraceQL `/otlp` datasource, `trace-analyzer` (TAL `otlp-general`: services, topology, metrics, slow statements) |
 | OTLP Traces Cluster | `otlp-traces-cluster/` | kind, two OAP replicas on the Kubernetes coordinator: TAL span pairing across nodes (each call's CLIENT and SERVER halves reach different replicas; its alias needs the `PairingFact` to cross to the trace's owner) |
 | VM OTel Hostmetrics | `vm-otel-hostmetrics/` | OTel Collector hostmetrics + replayed Windows OTLP fixtures → `vm`, `windows`, `process-hostmetrics-{linux,windows}` OTel rules |

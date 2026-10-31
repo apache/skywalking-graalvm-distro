@@ -13,10 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# BanyanDB TLS trust CA hot-reload E2E — native OAP.
-# The rotation steps are upstream's (test/e2e-v2/cases/storage/banyandb/ca-rotation/e2e.yaml):
-# rotate the trust file to an unrelated CA (the rebuilt channel must be rejected), then back, then
-# run the shared storage suite against the reconnected OAP.
+# BanyanDB TLS trust CA rotation E2E — native OAP. Rotates the way an operator does: the OAP trusts
+# the old and the new CA, BanyanDB reloads a certificate the new CA signed, the OAP trusts the new CA
+# only, and the shared storage suite runs over that channel. Rotating to an unrelated CA, which
+# proves a rebuilt channel uses the trust file, runs last: its writes fail, and a network address
+# alias whose first write is lost is only rewritten five minutes later, which held up the topology
+# assertions when it ran first. A write that picked the old channel as a rebuild replaced it can fail
+# too, so the rotation starts once the topology shows the alias was stored. Each step writes its file
+# once; the OAP's trust file is renamed into place. Mirrors upstream
+# test/e2e-v2/cases/storage/banyandb/ca-rotation and reads its certificates and expected files.
 
 setup:
   env: compose
@@ -49,21 +54,38 @@ verify:
     - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql service layer GENERAL
       expected: ../../../../skywalking/test/e2e-v2/cases/storage/expected/service.yml
 
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql dependency service --service-name=e2e-service-provider
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/expected/dependency-services-provider.yml
+
+    # Rebuilds are counted: the message is the same for every rotation, and the first is logged at boot.
     - query: |
         oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
-        docker exec $oap bash -c 'cat /tls-src-wrong/wrong-ca.crt > /tmp/bydb-ca.crt'
-        docker logs $oap 2>&1 \
-          | grep -Fq "Rebuilt the BanyanDB channel to reload the TLS trust CA from /tmp/bydb-ca.crt" \
-          && docker logs $oap 2>&1 | grep -Fq "PKIX path building failed" \
-          && echo ca-rejected
-      expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/expected/ca-rejected.yml
+        docker exec $oap bash -c '[ -e /tmp/trust-old-and-new ] || { cat /tls-src/cert.crt /tls-new/new-ca.crt > /tmp/bydb-ca.next && mv /tmp/bydb-ca.next /tmp/bydb-ca.crt && touch /tmp/trust-old-and-new; }'
+        [ "$(docker logs $oap 2>&1 | grep -Fc 'Rebuilt the BanyanDB channel')" -ge 2 ] \
+          && echo trust-old-and-new
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/expected/trust-old-and-new.yml
+
+    - query: |
+        banyandb=$(docker ps -q --filter label=com.docker.compose.service=banyandb)
+        docker exec $banyandb sh -c '[ -e /tmp/server-rotated ] || { cat /tls-new/new-server.crt > /tmp/tls/cert.crt && cat /tls-new/new-server.key > /tmp/tls/cert.key && touch /tmp/server-rotated; }'
+        docker logs $banyandb 2>&1 | grep -Fq "Successfully updated TLS certificate after content change" \
+          && echo server-rotated
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/expected/server-rotated.yml
 
     - query: |
         oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
-        docker exec $oap bash -c 'cat /tls-src/cert.crt > /tmp/bydb-ca.crt'
-        [ "$(docker logs $oap 2>&1 | grep -Fc 'Rebuilt the BanyanDB channel')" -ge 2 ] \
-          && echo ca-restored
-      expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/expected/ca-restored.yml
+        docker exec $oap bash -c '[ -e /tmp/trust-new ] || { cp /tls-new/new-ca.crt /tmp/bydb-ca.next && mv /tmp/bydb-ca.next /tmp/bydb-ca.crt && touch /tmp/trust-new; }'
+        [ "$(docker logs $oap 2>&1 | grep -Fc 'Rebuilt the BanyanDB channel')" -ge 3 ] \
+          && echo trust-new
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/expected/trust-new.yml
 
     - includes:
         - ../../../../skywalking/test/e2e-v2/cases/storage/storage-cases.yaml
+
+    - query: |
+        oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
+        docker exec $oap bash -c '[ -e /tmp/trust-wrong ] || { cp /tls-src-wrong/wrong-ca.crt /tmp/bydb-ca.next && mv /tmp/bydb-ca.next /tmp/bydb-ca.crt && touch /tmp/trust-wrong; }'
+        [ "$(docker logs $oap 2>&1 | grep -Fc 'Rebuilt the BanyanDB channel')" -ge 4 ] \
+          && docker logs $oap 2>&1 | grep -Fq "PKIX path building failed" \
+          && echo ca-rejected
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/expected/ca-rejected.yml
