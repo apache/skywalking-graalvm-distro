@@ -17,33 +17,22 @@
 
 package org.apache.skywalking.oap.server.graalvm.mal;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
-import io.fabric8.kubernetes.api.model.LoadBalancerStatus;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodStatus;
-import io.fabric8.kubernetes.api.model.Service;
-import io.fabric8.kubernetes.api.model.ServiceSpec;
-import io.fabric8.kubernetes.api.model.ServiceStatus;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Stream;
-import org.apache.skywalking.library.kubernetes.KubernetesPods;
-import org.apache.skywalking.library.kubernetes.KubernetesServices;
 import org.apache.skywalking.library.kubernetes.ObjectID;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
+import org.apache.skywalking.oap.meter.analyzer.v2.k8s.K8sInfoRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
-import org.powermock.reflect.Whitebox;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
+
+import static org.mockito.ArgumentMatchers.anyString;
 
 /**
  * Comparison test for otel-rules/k8s/k8s-instance.yaml.
@@ -65,25 +54,23 @@ class K8sInstanceTest extends MALScriptComparisonBase {
     private static final long TS2 =
         Instant.parse("2024-01-01T00:00:10Z").toEpochMilli();
 
+    private MockedStatic<K8sInfoRegistry> k8sRegistryMock;
+
     @BeforeEach
     void setupK8sMocks() {
-        Service svc = mockService("api-svc", "default",
-            ImmutableMap.of("app", "api"), "10.96.0.20");
-        Pod pod = mockPod("api-pod-1", "default",
-            ImmutableMap.of("app", "api"), "10.0.0.20");
+        // Since upstream #14135 the registry reads pods and services in the background, so the
+        // lookups are stubbed at the registry, as upstream's MAL script tests do. Every pod
+        // resolves to the one service, as the former Kubernetes cache stubs did.
+        String service = ObjectID.builder().name("api-svc").namespace("default").build().toString();
+        K8sInfoRegistry registry = Mockito.mock(K8sInfoRegistry.class);
+        Mockito.when(registry.findServiceName(anyString(), anyString())).thenReturn(service);
+        k8sRegistryMock = Mockito.mockStatic(K8sInfoRegistry.class);
+        k8sRegistryMock.when(K8sInfoRegistry::getInstance).thenReturn(registry);
+    }
 
-        Whitebox.setInternalState(KubernetesServices.INSTANCE, "services",
-            CacheBuilder.newBuilder().build(
-                CacheLoader.from(() -> ImmutableList.of(svc))));
-        Whitebox.setInternalState(KubernetesServices.INSTANCE, "serviceByID",
-            CacheBuilder.newBuilder().build(
-                CacheLoader.from((ObjectID id) -> Optional.of(svc))));
-        Whitebox.setInternalState(KubernetesPods.INSTANCE, "podByIP",
-            CacheBuilder.newBuilder().build(
-                CacheLoader.from((String ip) -> Optional.of(pod))));
-        Whitebox.setInternalState(KubernetesPods.INSTANCE, "podByObjectID",
-            CacheBuilder.newBuilder().build(
-                CacheLoader.from((ObjectID id) -> Optional.of(pod))));
+    @AfterEach
+    void closeK8sMocks() {
+        k8sRegistryMock.close();
     }
 
     @TestFactory
@@ -115,48 +102,5 @@ class K8sInstanceTest extends MALScriptComparisonBase {
                         .value(1.0).timestamp(timestamp).build()
                 ).build())
             .build();
-    }
-
-    private static Service mockService(final String name,
-                                        final String namespace,
-                                        final Map<String, String> selector,
-                                        final String ipAddress) {
-        Service service = new Service();
-        ObjectMeta meta = new ObjectMeta();
-        meta.setName(name);
-        meta.setNamespace(namespace);
-        service.setMetadata(meta);
-
-        ServiceSpec spec = new ServiceSpec();
-        spec.setSelector(selector);
-        service.setSpec(spec);
-
-        ServiceStatus status = new ServiceStatus();
-        LoadBalancerStatus lbStatus = new LoadBalancerStatus();
-        LoadBalancerIngress ingress = new LoadBalancerIngress();
-        ingress.setIp(ipAddress);
-        lbStatus.setIngress(Arrays.asList(ingress));
-        status.setLoadBalancer(lbStatus);
-        service.setStatus(status);
-
-        return service;
-    }
-
-    private static Pod mockPod(final String name,
-                                final String namespace,
-                                final Map<String, String> labels,
-                                final String ipAddress) {
-        Pod pod = new Pod();
-        ObjectMeta meta = new ObjectMeta();
-        meta.setName(name);
-        meta.setNamespace(namespace);
-        meta.setLabels(labels);
-        pod.setMetadata(meta);
-
-        PodStatus status = new PodStatus();
-        status.setPodIP(ipAddress);
-        pod.setStatus(status);
-
-        return pod;
     }
 }

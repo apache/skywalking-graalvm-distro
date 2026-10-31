@@ -43,6 +43,7 @@ import org.junit.jupiter.api.TestFactory;
  *   <li>tagNotEqual('2', 'idle') for cpu_total_percentage</li>
  *   <li>tagEqual('1', 'total'/'available') for memory</li>
  *   <li>tagEqual('2', 'free'/'total'/'pused') for swap</li>
+ *   <li>tagEqual / tagNotEqual('2', 'pused') for filesystem percentage vs size</li>
  *   <li>Multi-sample subtraction: memory_used = total - available</li>
  * </ul>
  */
@@ -85,9 +86,9 @@ class ZabbixAgentTest extends MALScriptComparisonBase {
      * system_swap_size{host="zabbix-host",2="pused"} 50.0
      *
      * # Filesystem
-     * vfs_fs_inode{host="zabbix-host",1="/",2="pused"} 15.0
      * vfs_fs_size{host="zabbix-host",1="/",2="total"} 107374182400.0
      * vfs_fs_size{host="zabbix-host",1="/",2="used"} 53687091200.0
+     * vfs_fs_size{host="zabbix-host",1="/",2="pused"} 52.0
      *
      * # Disk I/O
      * vfs_dev_read{host="zabbix-host"} 1024.0
@@ -169,16 +170,7 @@ class ZabbixAgentTest extends MALScriptComparisonBase {
                         .value(50.0 * scale).timestamp(timestamp).build()
                 ).build())
 
-            // Filesystem inode
-            .put("vfs_fs_inode",
-                SampleFamilyBuilder.newBuilder(
-                    Sample.builder().name("vfs_fs_inode")
-                        .labels(ImmutableMap.<String, String>builder()
-                            .putAll(scope).put("1", "/").put("2", "pused").build())
-                        .value(15.0 * scale).timestamp(timestamp).build()
-                ).build())
-
-            // Filesystem size
+            // Filesystem size; pused feeds filesystem_percentage, total/used feed vfs_fs_size
             .put("vfs_fs_size",
                 SampleFamilyBuilder.newBuilder(
                     Sample.builder().name("vfs_fs_size")
@@ -188,7 +180,11 @@ class ZabbixAgentTest extends MALScriptComparisonBase {
                     Sample.builder().name("vfs_fs_size")
                         .labels(ImmutableMap.<String, String>builder()
                             .putAll(scope).put("1", "/").put("2", "used").build())
-                        .value(53687091200.0 * scale).timestamp(timestamp).build()
+                        .value(53687091200.0 * scale).timestamp(timestamp).build(),
+                    Sample.builder().name("vfs_fs_size")
+                        .labels(ImmutableMap.<String, String>builder()
+                            .putAll(scope).put("1", "/").put("2", "pused").build())
+                        .value(52.0 * scale).timestamp(timestamp).build()
                 ).build())
 
             // Disk I/O

@@ -29,12 +29,19 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Comparison test for otel-rules/vm.yaml.
  *
+ * <p>The rule file reads two source families (node-exporter and native OTel Collector
+ * hostmetrics) and adds the equivalent branches with {@code +}. The input carries both
+ * families on the same host so every branch of every rule sees real samples.
+ *
  * This file exercises:
  * <ul>
- *   <li>tagNotEqual('mode','idle') — filtering CPU seconds by mode</li>
+ *   <li>tagNotEqual('mode','idle') — filtering CPU seconds / utilization by mode</li>
+ *   <li>tagEqual — memory/paging/filesystem state, disk/network direction,
+ *       TCP connection protocol + state</li>
  *   <li>Multi-sample subtraction — MemTotal - MemAvailable for memory_used</li>
  *   <li>Multi-sample addition — Buffers + Cached for memory_buff_cache</li>
- *   <li>Division with multiplication — (SwapFree * 100) / SwapTotal for swap percentage</li>
+ *   <li>Division with multiplication — (SwapFree * 100) / SwapTotal for swap percentage,
+ *       busy utilization / logical CPU count for cpu_norm_percentage</li>
  *   <li>sum with aggregation labels — sum(['node_identifier_host_name']),
  *       sum(['node_identifier_host_name','mode']),
  *       sum(['node_identifier_host_name','mountpoint'])</li>
@@ -106,6 +113,43 @@ class VmTest extends MALScriptComparisonBase {
      *
      * # --- File descriptor metrics ---
      * node_filefd_allocated{node_identifier_host_name="vm-node-1"} 3200.0
+     *
+     * # --- hostmetrics: CPU (utilization is a 0..1 ratio gauge) ---
+     * system_cpu_logical_count{node_identifier_host_name="vm-node-1"} 4.0
+     * system_cpu_utilization{node_identifier_host_name="vm-node-1",mode="user"} 0.30
+     * system_cpu_utilization{node_identifier_host_name="vm-node-1",mode="system"} 0.10
+     * system_cpu_utilization{node_identifier_host_name="vm-node-1",mode="wait"} 0.05
+     * system_cpu_utilization{node_identifier_host_name="vm-node-1",mode="idle"} 0.55
+     * system_cpu_load_average_1m{node_identifier_host_name="vm-node-1"} 1.5
+     * system_cpu_load_average_5m{node_identifier_host_name="vm-node-1"} 2.0
+     * system_cpu_load_average_15m{node_identifier_host_name="vm-node-1"} 1.8
+     *
+     * # --- hostmetrics: memory / paging ---
+     * system_memory_limit{node_identifier_host_name="vm-node-1"} 17179869184.0
+     * system_linux_memory_available{node_identifier_host_name="vm-node-1"} 8589934592.0
+     * system_memory_usage{node_identifier_host_name="vm-node-1",state="buffered"} 268435456.0
+     * system_memory_usage{node_identifier_host_name="vm-node-1",state="cached"} 2147483648.0
+     * system_memory_usage{node_identifier_host_name="vm-node-1",state="slab_reclaimable"} 134217728.0
+     * system_memory_usage{node_identifier_host_name="vm-node-1",state="used"} 6442450944.0
+     * system_paging_usage{node_identifier_host_name="vm-node-1",device="/dev/sda2",state="used"} 1073741824.0
+     * system_paging_usage{node_identifier_host_name="vm-node-1",device="/dev/sda2",state="free"} 3221225472.0
+     *
+     * # --- hostmetrics: filesystem (free + reserved + used is the capacity) ---
+     * system_filesystem_usage{node_identifier_host_name="vm-node-1",mountpoint="/",state="free"} 48318382080.0
+     * system_filesystem_usage{node_identifier_host_name="vm-node-1",mountpoint="/",state="reserved"} 5368709120.0
+     * system_filesystem_usage{node_identifier_host_name="vm-node-1",mountpoint="/",state="used"} 53687091200.0
+     *
+     * # --- hostmetrics: disk / network ---
+     * system_disk_io{node_identifier_host_name="vm-node-1",device="sda",direction="read"} 1073741824.0
+     * system_disk_io{node_identifier_host_name="vm-node-1",device="sda",direction="write"} 2147483648.0
+     * system_network_io{node_identifier_host_name="vm-node-1",device="eth0",direction="receive"} 5368709120.0
+     * system_network_io{node_identifier_host_name="vm-node-1",device="eth0",direction="transmit"} 2684354560.0
+     *
+     * # --- hostmetrics: TCP connections (states normalized to lowercase) ---
+     * system_network_connections{node_identifier_host_name="vm-node-1",protocol="tcp",state="established"} 110.0
+     * system_network_connections{node_identifier_host_name="vm-node-1",protocol="tcp",state="close_wait"} 10.0
+     * system_network_connections{node_identifier_host_name="vm-node-1",protocol="tcp",state="time_wait"} 35.0
+     * system_network_connections{node_identifier_host_name="vm-node-1",protocol="tcp",state="listen"} 8.0
      * </pre>
      */
     private static ImmutableMap<String, SampleFamily> buildInput(
@@ -203,6 +247,73 @@ class VmTest extends MALScriptComparisonBase {
                 single("node_filefd_allocated",
                     scope, 3200.0 * scale, timestamp))
 
+            // hostmetrics CPU
+            .put("system_cpu_logical_count",
+                single("system_cpu_logical_count", scope, 4.0, timestamp))
+            .put("system_cpu_utilization",
+                SampleFamilyBuilder.newBuilder(
+                    tagged("system_cpu_utilization", scope, "mode", "user", 0.30 * scale, timestamp),
+                    tagged("system_cpu_utilization", scope, "mode", "system", 0.10 * scale, timestamp),
+                    tagged("system_cpu_utilization", scope, "mode", "wait", 0.05 * scale, timestamp),
+                    tagged("system_cpu_utilization", scope, "mode", "idle", 0.55 / scale, timestamp)
+                ).build())
+            .put("system_cpu_load_average_1m",
+                single("system_cpu_load_average_1m", scope, 1.5 * scale, timestamp))
+            .put("system_cpu_load_average_5m",
+                single("system_cpu_load_average_5m", scope, 2.0 * scale, timestamp))
+            .put("system_cpu_load_average_15m",
+                single("system_cpu_load_average_15m", scope, 1.8 * scale, timestamp))
+
+            // hostmetrics memory and paging
+            .put("system_memory_limit",
+                single("system_memory_limit", scope, 17179869184.0, timestamp))
+            .put("system_linux_memory_available",
+                single("system_linux_memory_available", scope, 8589934592.0 / scale, timestamp))
+            .put("system_memory_usage",
+                SampleFamilyBuilder.newBuilder(
+                    tagged("system_memory_usage", scope, "state", "buffered", 268435456.0 * scale, timestamp),
+                    tagged("system_memory_usage", scope, "state", "cached", 2147483648.0 * scale, timestamp),
+                    tagged("system_memory_usage", scope, "state", "slab_reclaimable",
+                        134217728.0 * scale, timestamp),
+                    tagged("system_memory_usage", scope, "state", "used", 6442450944.0 * scale, timestamp)
+                ).build())
+            .put("system_paging_usage",
+                SampleFamilyBuilder.newBuilder(
+                    pagingSample(scope, "used", 1073741824.0 * scale, timestamp),
+                    pagingSample(scope, "free", 3221225472.0, timestamp)
+                ).build())
+
+            // hostmetrics filesystem — free + reserved + used is the capacity
+            .put("system_filesystem_usage",
+                SampleFamilyBuilder.newBuilder(
+                    mountState(scope, "free", 48318382080.0 / scale, timestamp),
+                    mountState(scope, "reserved", 5368709120.0, timestamp),
+                    mountState(scope, "used", 53687091200.0 * scale, timestamp)
+                ).build())
+
+            // hostmetrics disk / network — per device, filtered by direction
+            .put("system_disk_io",
+                SampleFamilyBuilder.newBuilder(
+                    deviceDirection("system_disk_io", scope, "sda", "read", 1073741824.0 * scale, timestamp),
+                    deviceDirection("system_disk_io", scope, "sda", "write", 2147483648.0 * scale, timestamp)
+                ).build())
+            .put("system_network_io",
+                SampleFamilyBuilder.newBuilder(
+                    deviceDirection("system_network_io", scope, "eth0", "receive",
+                        5368709120.0 * scale, timestamp),
+                    deviceDirection("system_network_io", scope, "eth0", "transmit",
+                        2684354560.0 * scale, timestamp)
+                ).build())
+
+            // hostmetrics TCP connections — protocol + state
+            .put("system_network_connections",
+                SampleFamilyBuilder.newBuilder(
+                    tcpConnections(scope, "established", 110.0 * scale, timestamp),
+                    tcpConnections(scope, "close_wait", 10.0 * scale, timestamp),
+                    tcpConnections(scope, "time_wait", 35.0 * scale, timestamp),
+                    tcpConnections(scope, "listen", 8.0, timestamp)
+                ).build())
+
             .build();
     }
 
@@ -229,6 +340,89 @@ class VmTest extends MALScriptComparisonBase {
             .labels(ImmutableMap.<String, String>builder()
                 .putAll(scope)
                 .put("mode", mode)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    private static Sample tagged(final String name,
+                                 final ImmutableMap<String, String> scope,
+                                 final String key,
+                                 final String value,
+                                 final double sampleValue,
+                                 final long timestamp) {
+        return Sample.builder()
+            .name(name)
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put(key, value)
+                .build())
+            .value(sampleValue)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    private static Sample pagingSample(final ImmutableMap<String, String> scope,
+                                       final String state,
+                                       final double value,
+                                       final long timestamp) {
+        return Sample.builder()
+            .name("system_paging_usage")
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("device", "/dev/sda2")
+                .put("state", state)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    private static Sample mountState(final ImmutableMap<String, String> scope,
+                                     final String state,
+                                     final double value,
+                                     final long timestamp) {
+        return Sample.builder()
+            .name("system_filesystem_usage")
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("mountpoint", "/")
+                .put("state", state)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    private static Sample deviceDirection(final String name,
+                                          final ImmutableMap<String, String> scope,
+                                          final String device,
+                                          final String direction,
+                                          final double value,
+                                          final long timestamp) {
+        return Sample.builder()
+            .name(name)
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("device", device)
+                .put("direction", direction)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    private static Sample tcpConnections(final ImmutableMap<String, String> scope,
+                                         final String state,
+                                         final double value,
+                                         final long timestamp) {
+        return Sample.builder()
+            .name("system_network_connections")
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("protocol", "tcp")
+                .put("state", state)
                 .build())
             .value(value)
             .timestamp(timestamp)

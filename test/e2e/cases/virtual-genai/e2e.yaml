@@ -43,3 +43,4 @@ verify:
   cases:
     - includes:
         - ../../../../skywalking/test/e2e-v2/cases/virtual-genai/virtual-genai.yaml
+        - ../../../../skywalking/test/e2e-v2/cases/virtual-genai/evaluation-storage.yaml

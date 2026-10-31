@@ -20,6 +20,7 @@ org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleConfig
 org.apache.skywalking.oap.server.cluster.plugin.kubernetes.ClusterModuleKubernetesConfig
 org.apache.skywalking.oap.server.configuration.configmap.ConfigmapConfigurationSettings
 org.apache.skywalking.oap.server.core.CoreModuleConfig
+org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleConfig
 org.apache.skywalking.oap.server.exporter.provider.ExporterSetting
 org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherConfig
 org.apache.skywalking.oap.server.health.checker.provider.HealthCheckerConfig
@@ -42,6 +43,7 @@ org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$M
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsDay
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsHour
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$MetricsMin
+org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$OtlpTrace
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Property
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsAIAgent
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$RecordsBrowserErrorLog
@@ -56,3 +58,4 @@ org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$T
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$TracePipeline
 org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$ZipkinTrace
 org.apache.skywalking.oap.server.telemetry.prometheus.PrometheusConfig
+org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleConfig

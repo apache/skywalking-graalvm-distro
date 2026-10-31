@@ -38,9 +38,13 @@ corresponding environment variable:
 | `cilium-fetcher` | `SW_CILIUM_FETCHER=default` | disabled |
 | `exporter` | `SW_EXPORTER=default` | disabled |
 | `ai-evaluation` | `SW_AI_EVALUATION=default` | disabled |
+| `traceQL` | `SW_TRACEQL=default` | disabled |
 
 `ai-agent-conversation` is on by default and cannot be removed with `-` (the GraphQL query module
 requires it); `SW_AI_AGENT_CONVERSATION=none` turns it off.
+
+`trace-analyzer` (TAL) is on by default; `SW_TRACE_ANALYZER=-` removes it, and the OTLP trace
+receiver then stores spans without analysis.
 
 ## Module Configuration Reference
 
@@ -121,6 +125,11 @@ Available providers: `standalone`, `kubernetes`
 | enableHierarchy | `SW_CORE_ENABLE_HIERARCHY` | `true` |
 | maxHeapMemoryUsagePercent | `SW_CORE_MAX_HEAP_MEMORY_USAGE_PERCENT` | `96` |
 | maxDirectMemoryUsage | `SW_CORE_MAX_DIRECT_MEMORY_USAGE` | `-1` |
+| malMetadataReadTimeout | `SW_CORE_MAL_METADATA_READ_TIMEOUT` | `2000` |
+| k8sMetadataCacheTime | `SW_CORE_K8S_METADATA_CACHE_TIME` | `als=21,mal=21` |
+| k8sMetadataRefreshPeriod | `SW_CORE_K8S_METADATA_REFRESH_PERIOD` | `3` |
+| k8sMetadataNotFoundRetryPeriod | `SW_CORE_K8S_METADATA_NOT_FOUND_RETRY_PERIOD` | `1` |
+| k8sMetadataReadQueueSize | `SW_CORE_K8S_METADATA_READ_QUEUE_SIZE` | *(empty, no limit)* |
 
 ---
 
@@ -163,6 +172,40 @@ for details on those files.
 
 ---
 
+### trace-analyzer
+
+**Selector**: `SW_TRACE_ANALYZER` (default: `default`; `-` removes the module)
+
+TAL (Trace Analysis Language) rules over OTLP spans. A span is analyzed only by the rules of the layer its
+resource declares in `service.layer`; the bundled `tal/otlp-general.yaml` rules serve `OTLP_GENERAL`, so a
+service must send `service.layer=OTLP_GENERAL` to get its metrics, topology and slow statements, and a span
+without a registered layer is stored but not analyzed. The rules are compiled at build time; `talFiles`
+selects among pre-compiled files only, and an empty value keeps the module but analyzes nothing.
+
+Upstream reads the rule files from `config/tal/` at boot. This distro has no `config/tal/`: to change what is
+measured, edit or add files under `skywalking/oap-server/server-starter/src/main/resources/tal/` and rebuild. The
+precompiler compiles every file there, whatever it contains, as long as the [TAL grammar](https://skywalking.apache.org/docs/main/next/en/concepts-and-designs/tal/)
+accepts it, and fails the build on a rule upstream would refuse at boot (an unknown layer, input or output type, or
+conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practices page (nginx as a
+one-span proxy, gateway peers, canaries) are compiled and run by the distro's own pipeline in `TALDocScriptsTest`.
+
+- Every file is compiled, not only those `talFiles` selects, so alternative files must agree on the shapes of the
+  metrics they share, and each must compile on its own.
+- Any file name works, as upstream takes any file whose name without extension `talFiles` lists; two files with the
+  same name and different extensions (`team.yaml`, `team.yml`) fail the build, since `talFiles` could not tell them
+  apart. A rule's source is stamped as upstream stamps it, `tal/<file>` with `.yaml` appended when the name ends in
+  neither `.yaml` nor `.yml`.
+- `talPath` is not read: the compiled rules come from `tal/` at build time.
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| talFiles | `SW_TRACE_TAL_FILES` | `otlp-general` |
+| dedupWindow | `SW_TRACE_TAL_DEDUP_WINDOW` | `0` |
+| dedupCapacity | `SW_TRACE_TAL_DEDUP_CAPACITY` | `1000000` |
+| pairingSamplePercent | `SW_TRACE_TAL_PAIRING_SAMPLE_PERCENT` | `25` |
+
+---
+
 ### event-analyzer
 
 **Selector**: `SW_EVENT_ANALYZER` (default: `default`)
@@ -197,12 +240,12 @@ AI agent conversations landed by the AI Sessionizer as OTLP logs under the `AI_A
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
-| fileReadWindow | `SW_AI_AGENT_CONVERSATION_FILE_READ_WINDOW` | `16` |
-| roundReadWindow | `SW_AI_AGENT_CONVERSATION_ROUND_READ_WINDOW` | `16` |
-| maxListLimit | `SW_AI_AGENT_CONVERSATION_MAX_LIST_LIMIT` | `10000` |
+| conversationListMaxLimit | `SW_AI_AGENT_CONVERSATION_LIST_MAX_LIMIT` | `10000` |
 | viewRequestTimeout | `SW_AI_AGENT_CONVERSATION_VIEW_REQUEST_TIMEOUT` | `120` |
-| maxFileBytes | `SW_AI_AGENT_CONVERSATION_MAX_FILE_BYTES` | `15728640` |
+| readWindow | `SW_AI_AGENT_CONVERSATION_READ_WINDOW` | `16` |
 | maxResponseBytes | `SW_AI_AGENT_CONVERSATION_MAX_RESPONSE_BYTES` | `104857600` |
+| maxFileBytes | `SW_AI_AGENT_CONVERSATION_MAX_FILE_BYTES` | `15728640` |
+| hide | `SW_AI_AGENT_CONVERSATION_HIDE` | *(empty)* |
 
 ---
 
@@ -396,8 +439,13 @@ No additional settings.
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
-| enabledHandlers | `SW_OTEL_RECEIVER_ENABLED_HANDLERS` | `otlp-metrics,otlp-logs` |
-| enabledOtelMetricsRules | `SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES` | `apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*` |
+| enabledHandlers | `SW_OTEL_RECEIVER_ENABLED_HANDLERS` | `otlp-traces,otlp-metrics,otlp-logs` |
+| otlpTraceStorage | `SW_OTEL_TRACE_STORAGE` | `otlp` (native `otlp_span`, served by the TraceQL `/otlp` datasource); `zipkin` converts spans for `receiver-zipkin` |
+| otlpServiceGroupKeys | `SW_OTEL_RECEIVER_OTLP_SERVICE_GROUP` | *(empty)* |
+| otlpTraceSearchableTags | `SW_OTEL_TRACE_SEARCHABLE_TAG_KEYS` | `resource.deployment.environment.name,...,span.peer.service` (see `application.yml`) |
+| otlpTraceSampleRate | `SW_OTEL_TRACE_SAMPLE_RATE` | `10000` |
+| otlpTraceMaxSpansPerSecond | `SW_OTEL_TRACE_MAX_SPANS_PER_SECOND` | `0` |
+| enabledOtelMetricsRules | `SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES` | `apisix,nginx/*,k8s/*,istio-controlplane,vm,process-hostmetrics-linux,mysql/*,postgresql/*,oap,aws-eks/*,windows,process-hostmetrics-windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*,ai-agent/*` |
 
 ---
 
@@ -509,6 +557,27 @@ Set `SW_QUERY_ZIPKIN=default` to enable.
 
 ---
 
+### traceQL (disabled by default)
+
+**Selector**: `SW_TRACEQL` (default: `-`)
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| restHost | `SW_TRACEQL_REST_HOST` | `0.0.0.0` |
+| restPort | `SW_TRACEQL_REST_PORT` | `3200` |
+| enableDatasourceZipkin | `SW_TRACEQL_ENABLE_DATASOURCE_ZIPKIN` | `false` |
+| enableDatasourceSkywalking | `SW_TRACEQL_ENABLE_DATASOURCE_SKYWALKING` | `false` |
+| enableDatasourceOTLP | `SW_TRACEQL_ENABLE_DATASOURCE_OTLP` | `false` |
+| restContextPathZipkin | `SW_TRACEQL_REST_CONTEXT_PATH_ZIPKIN` | `/zipkin` |
+| restContextPathSkywalking | `SW_TRACEQL_REST_CONTEXT_PATH_SKYWALKING` | `/skywalking` |
+| restContextPathOTLP | `SW_TRACEQL_REST_CONTEXT_PATH_OTLP` | `/otlp` |
+| lookback | `SW_TRACEQL_LOOKBACK` | `86400000` |
+| zipkinTracesListResultTags | `SW_TRACEQL_ZIPKIN_TRACES_LIST_RESULT_TAGS` | `http.method,error` |
+| skywalkingTracesListResultTags | `SW_TRACEQL_SKYWALKING_TRACES_LIST_RESULT_TAGS` | `http.method,http.status_code,rpc.status_code,db.type,db.instance,mq.queue,mq.topic,mq.broker` |
+| otlpTracesListResultTags | `SW_TRACEQL_OTLP_TRACES_LIST_RESULT_TAGS` | `http.request.method,http.response.status_code` |
+
+---
+
 ### logql
 
 **Selector**: `SW_LOGQL` (default: `default`)
@@ -530,7 +599,11 @@ Set `SW_QUERY_ZIPKIN=default` to enable.
 
 **Selector**: `SW_ALARM` (default: `default`)
 
-No additional settings in `application.yml`. Alarm rules are configured via `alarm-settings.yml`.
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| httpTimeout | `SW_ALARM_HTTP_TIMEOUT` | `12` (seconds per HTTP hook request; `<= 0` falls back to 12) |
+
+Alarm rules are configured via `alarm-settings.yml`.
 
 ---
 

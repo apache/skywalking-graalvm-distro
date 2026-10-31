@@ -26,10 +26,12 @@ services:
     expose:
       - 11800
       - 12800
+      - 17128
     networks:
       - e2e
     ports:
       - 12800
+      - 17128
     environment:
       SW_HEALTH_CHECKER: default
       SW_STORAGE_BANYANDB_TARGETS: banyandb:17912

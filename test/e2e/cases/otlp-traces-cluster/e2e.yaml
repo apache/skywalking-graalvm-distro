@@ -1,0 +1,86 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# TAL span pairing across OAP nodes: two native replicas in one Kubernetes cluster, every call's halves sent to
+# different replicas (see send-spans.sh), so each alias is learned only if a PairingFact crossed to the trace's owner.
+
+setup:
+  env: kind
+  file: kind.yaml
+  init-system-environment: ../../script/env
+  kind:
+    expose-ports:
+      - namespace: skywalking
+        resource: service/skywalking-oap
+        port: 12800
+  steps:
+    - name: set PATH
+      command: export PATH=/tmp/skywalking-infra-e2e/bin:$PATH
+    - name: install yq
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh yq
+    - name: install swctl
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
+    - name: install kubectl
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh kubectl
+    - name: install helm
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh helm
+    - name: load images into kind
+      command: |
+        pull_or_cache() { docker pull "$1" || docker image inspect "$1" > /dev/null 2>&1; }
+        pull_or_cache ghcr.io/apache/skywalking-banyandb:$SW_BANYANDB_COMMIT
+        # The chart's wait-for-banyandb init container runs curlimages/curl:latest; so does send-spans.sh.
+        pull_or_cache curlimages/curl:latest
+        kind load docker-image skywalking-oap-native:latest
+        kind load docker-image ghcr.io/apache/skywalking-banyandb:$SW_BANYANDB_COMMIT
+        kind load docker-image curlimages/curl:latest
+    - name: Install SkyWalking
+      command: |
+        helm -n skywalking install skywalking \
+          oci://ghcr.io/apache/skywalking-helm/skywalking-helm \
+          --version "0.0.0-${SW_KUBERNETES_COMMIT_SHA}" \
+          --create-namespace \
+          --set fullnameOverride=skywalking \
+          --set oap.image.repository=skywalking-oap-native \
+          --set oap.image.tag=latest \
+          --set oap.image.pullPolicy=IfNotPresent \
+          --set oap.replicas=2 \
+          --set oap.env.SW_TRACE_TAL_PAIRING_SAMPLE_PERCENT=100 \
+          --set oap.storageType=banyandb \
+          --set ui.enabled=false \
+          --set elasticsearch.enabled=false \
+          --set banyandb.enabled=true \
+          --set banyandb.image.repository=ghcr.io/apache/skywalking-banyandb \
+          --set banyandb.image.tag=$SW_BANYANDB_COMMIT \
+          --set banyandb.image.pullPolicy=IfNotPresent \
+          --set banyandb.standalone.enabled=true \
+          --set banyandb.cluster.enabled=false \
+          --set banyandb.etcd.enabled=false
+      wait:
+        - namespace: skywalking
+          resource: deployments/skywalking-oap
+          for: condition=available
+    - name: Send calls split across the replicas
+      command: bash test/e2e/cases/otlp-traces-cluster/send-spans.sh
+  timeout: 25m
+
+verify:
+  retry:
+    count: 20
+    interval: 15s
+  cases:
+    - query: bash test/e2e/cases/otlp-traces-cluster/verify.sh cluster
+      expected: expected/cluster.yml
+    - query: bash test/e2e/cases/otlp-traces-cluster/verify.sh aliases ${service_skywalking_oap_host} ${service_skywalking_oap_12800}
+      expected: expected/aliases.yml

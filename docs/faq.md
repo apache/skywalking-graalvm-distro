@@ -33,18 +33,10 @@ gRPC/HTTP protocols. OpenTelemetry agents sending OTLP data also work.
 
 ### Can I enable TLS/SSL for gRPC?
 
-No. The native image does not support TLS-encrypted gRPC (`SW_CORE_GRPC_SSL_ENABLED`,
-`SW_RECEIVER_GRPC_SSL_ENABLED`, mTLS), and the REST TLS options added in 11.0.0
-(`SW_*_REST_SSL_ENABLED`) are unverified for the same reason. The underlying Netty TLS implementation requires
-`netty_tcnative` native libraries that are not bundled in the native image.
-
-**Recommended alternative**: Deploy with a service mesh such as **Istio** or **Linkerd**.
-The mesh handles mTLS transparently at the infrastructure layer — all agent-to-OAP traffic
-is encrypted without any application-level TLS configuration. This also provides automatic
-certificate rotation and policy enforcement.
-
-If you require application-level TLS without a service mesh, use the standard upstream
-SkyWalking JVM distribution.
+Yes, with the upstream settings: `SW_CORE_GRPC_SSL_*` for the agent port, `SW_RECEIVER_GRPC_SSL_*` for a
+separate receiver port (mTLS when `SW_RECEIVER_GRPC_SSL_TRUSTED_CAS_PATH` is set), and `SW_*_REST_SSL_*` for the
+HTTP servers. The native image runs gRPC TLS on the JDK TLS provider instead of OpenSSL (`netty_tcnative`); see
+[Supported Features](supported-features.md#tls).
 
 ---
 

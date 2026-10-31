@@ -41,6 +41,8 @@ import org.junit.jupiter.api.TestFactory;
  *       sum(['cluster','broker','gc']),
  *       sum(['cluster','broker','request']),
  *       sum(['cluster','broker','topic'])</li>
+ *   <li>tagEqual/tagNotEqual('topic','') — all-topics total vs per-topic series</li>
+ *   <li>tagEqual('quantile','0.50') — p50 of the request latency summaries</li>
  *   <li>rate('PT1M') — on counters and totals</li>
  *   <li>Tag closure in expSuffix — tags.cluster = 'kafka::' + tags.cluster</li>
  *   <li>Scope: instance(['cluster'], ['broker'], Layer.KAFKA)</li>
@@ -79,15 +81,16 @@ class KafkaBrokerTest extends MALScriptComparisonBase {
      * jvm_memory_bytes_max{cluster="kafka-cluster",broker="broker-0",area="heap"} 1073741824.0
      *
      * # --- Broker Topic Metrics (counters) ---
-     * kafka_server_brokertopicmetrics_messagesin_total{cluster="kafka-cluster",broker="broker-0",topic="orders"} 50000.0
-     * kafka_server_brokertopicmetrics_bytesin_total{cluster="kafka-cluster",broker="broker-0",topic="orders"} 25000000.0
-     * kafka_server_brokertopicmetrics_bytesout_total{cluster="kafka-cluster",broker="broker-0",topic="orders"} 30000000.0
-     * kafka_server_brokertopicmetrics_replicationbytesin_total{cluster="kafka-cluster",broker="broker-0"} 12000000.0
-     * kafka_server_brokertopicmetrics_replicationbytesout_total{cluster="kafka-cluster",broker="broker-0"} 15000000.0
-     * kafka_server_brokertopicmetrics_totalfetchrequests_total{cluster="kafka-cluster",broker="broker-0",topic="orders"} 8000.0
-     * kafka_server_brokertopicmetrics_totalproducerequests_total{cluster="kafka-cluster",broker="broker-0",topic="orders"} 6000.0
-     *
-     * # --- Replica Manager ---
+ * # Message/byte/request meters come as the all-topics total (no topic label) beside the per-topic
+ * # series; broker rules read tagEqual('topic','') and topic rules tagNotEqual('topic','').
+ * kafka_server_brokertopicmetrics_messagesin_total{cluster="kafka-cluster",broker="broker-0"} 50000.0
+ * kafka_server_brokertopicmetrics_messagesin_total{cluster="kafka-cluster",broker="broker-0",topic="orders"} 35000.0
+ * kafka_server_brokertopicmetrics_messagesin_total{cluster="kafka-cluster",broker="broker-0",topic="payments"} 15000.0
+ * (bytesin_total, bytesout_total, totalfetchrequests_total, totalproducerequests_total: same shape)
+ * kafka_server_brokertopicmetrics_replicationbytesin_total{cluster="kafka-cluster",broker="broker-0"} 12000000.0
+ * kafka_server_brokertopicmetrics_replicationbytesout_total{cluster="kafka-cluster",broker="broker-0"} 15000000.0
+ *
+ * # --- Replica Manager ---
      * kafka_server_replicamanager_underreplicatedpartitions{cluster="kafka-cluster",broker="broker-0"} 2.0
      * kafka_server_replicamanager_underminisrpartitioncount{cluster="kafka-cluster",broker="broker-0"} 1.0
      * kafka_server_replicamanager_partitioncount{cluster="kafka-cluster",broker="broker-0"} 120.0
@@ -110,20 +113,12 @@ class KafkaBrokerTest extends MALScriptComparisonBase {
      * kafka_network_requestmetrics_requests_total{cluster="kafka-cluster",broker="broker-0",request="FetchConsumer"} 3000.0
      * kafka_network_requestmetrics_requests_total{cluster="kafka-cluster",broker="broker-0",request="Produce"} 4000.0
      * kafka_network_requestmetrics_requests_total{cluster="kafka-cluster",broker="broker-0",request="Fetch"} 2000.0
-     * kafka_network_requestmetrics_requestqueuetimems_count{cluster="kafka-cluster",broker="broker-0",request="Produce"} 1500.0
-     * kafka_network_requestmetrics_requestqueuetimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchConsumer"} 1200.0
-     * kafka_network_requestmetrics_requestqueuetimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchFollower"} 800.0
-     * kafka_network_requestmetrics_remotetimems_count{cluster="kafka-cluster",broker="broker-0",request="Produce"} 2500.0
-     * kafka_network_requestmetrics_remotetimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchConsumer"} 1800.0
-     * kafka_network_requestmetrics_remotetimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchFollower"} 1000.0
-     * kafka_network_requestmetrics_responsequeuetimems_count{cluster="kafka-cluster",broker="broker-0",request="Produce"} 600.0
-     * kafka_network_requestmetrics_responsequeuetimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchConsumer"} 500.0
-     * kafka_network_requestmetrics_responsequeuetimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchFollower"} 300.0
-     * kafka_network_requestmetrics_responsesendtimems_count{cluster="kafka-cluster",broker="broker-0",request="Produce"} 200.0
-     * kafka_network_requestmetrics_responsesendtimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchConsumer"} 150.0
-     * kafka_network_requestmetrics_responsesendtimems_count{cluster="kafka-cluster",broker="broker-0",request="FetchFollower"} 100.0
-     *
-     * # --- Network Socket Server ---
+     * # Latency summaries (tagEqual 'quantile','0.50'); the 0.99 series must not leak into the p50 rules.
+ * kafka_network_requestmetrics_requestqueuetimems{cluster="kafka-cluster",broker="broker-0",request="Produce",quantile="0.50"} 15.0
+ * kafka_network_requestmetrics_requestqueuetimems{cluster="kafka-cluster",broker="broker-0",request="Produce",quantile="0.99"} 150.0
+ * (FetchConsumer, FetchFollower likewise; remotetimems, responsequeuetimems, responsesendtimems: same shape)
+ *
+ * # --- Network Socket Server ---
      * kafka_network_socketserver_networkprocessoravgidlepercent{cluster="kafka-cluster",broker="broker-0"} 0.85
      * </pre>
      */
@@ -135,12 +130,6 @@ class KafkaBrokerTest extends MALScriptComparisonBase {
         ImmutableMap<String, String> scope = ImmutableMap.of(
             "cluster", "kafka-cluster",
             "broker", "broker-0");
-
-        // Scope + topic label for topic-level metrics
-        ImmutableMap<String, String> scopeWithTopic = ImmutableMap.of(
-            "cluster", "kafka-cluster",
-            "broker", "broker-0",
-            "topic", "orders");
 
         return ImmutableMap.<String, SampleFamily>builder()
 
@@ -163,14 +152,14 @@ class KafkaBrokerTest extends MALScriptComparisonBase {
 
             // --- Broker Topic Metrics (counters with rate) ---
             .put("kafka_server_brokertopicmetrics_messagesin_total",
-                single("kafka_server_brokertopicmetrics_messagesin_total",
-                    scopeWithTopic, 50000.0 * scale, timestamp))
+                topicTotals("kafka_server_brokertopicmetrics_messagesin_total",
+                    50000.0 * scale, scope, timestamp))
             .put("kafka_server_brokertopicmetrics_bytesin_total",
-                single("kafka_server_brokertopicmetrics_bytesin_total",
-                    scopeWithTopic, 25000000.0 * scale, timestamp))
+                topicTotals("kafka_server_brokertopicmetrics_bytesin_total",
+                    25000000.0 * scale, scope, timestamp))
             .put("kafka_server_brokertopicmetrics_bytesout_total",
-                single("kafka_server_brokertopicmetrics_bytesout_total",
-                    scopeWithTopic, 30000000.0 * scale, timestamp))
+                topicTotals("kafka_server_brokertopicmetrics_bytesout_total",
+                    30000000.0 * scale, scope, timestamp))
             .put("kafka_server_brokertopicmetrics_replicationbytesin_total",
                 single("kafka_server_brokertopicmetrics_replicationbytesin_total",
                     scope, 12000000.0 * scale, timestamp))
@@ -178,11 +167,11 @@ class KafkaBrokerTest extends MALScriptComparisonBase {
                 single("kafka_server_brokertopicmetrics_replicationbytesout_total",
                     scope, 15000000.0 * scale, timestamp))
             .put("kafka_server_brokertopicmetrics_totalfetchrequests_total",
-                single("kafka_server_brokertopicmetrics_totalfetchrequests_total",
-                    scopeWithTopic, 8000.0 * scale, timestamp))
+                topicTotals("kafka_server_brokertopicmetrics_totalfetchrequests_total",
+                    8000.0 * scale, scope, timestamp))
             .put("kafka_server_brokertopicmetrics_totalproducerequests_total",
-                single("kafka_server_brokertopicmetrics_totalproducerequests_total",
-                    scopeWithTopic, 6000.0 * scale, timestamp))
+                topicTotals("kafka_server_brokertopicmetrics_totalproducerequests_total",
+                    6000.0 * scale, scope, timestamp))
 
             // --- Replica Manager ---
             .put("kafka_server_replicamanager_underreplicatedpartitions",
@@ -234,46 +223,19 @@ class KafkaBrokerTest extends MALScriptComparisonBase {
                     requestSample("kafka_network_requestmetrics_requests_total",
                         "Fetch", 2000.0 * scale, scope, timestamp)
                 ).build())
-            // requestqueuetimems_count: Produce|FetchConsumer|FetchFollower
-            .put("kafka_network_requestmetrics_requestqueuetimems_count",
-                SampleFamilyBuilder.newBuilder(
-                    requestSample("kafka_network_requestmetrics_requestqueuetimems_count",
-                        "Produce", 1500.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_requestqueuetimems_count",
-                        "FetchConsumer", 1200.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_requestqueuetimems_count",
-                        "FetchFollower", 800.0 * scale, scope, timestamp)
-                ).build())
-            // remotetimems_count: Produce|FetchConsumer|FetchFollower
-            .put("kafka_network_requestmetrics_remotetimems_count",
-                SampleFamilyBuilder.newBuilder(
-                    requestSample("kafka_network_requestmetrics_remotetimems_count",
-                        "Produce", 2500.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_remotetimems_count",
-                        "FetchConsumer", 1800.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_remotetimems_count",
-                        "FetchFollower", 1000.0 * scale, scope, timestamp)
-                ).build())
-            // responsequeuetimems_count: Produce|FetchConsumer|FetchFollower
-            .put("kafka_network_requestmetrics_responsequeuetimems_count",
-                SampleFamilyBuilder.newBuilder(
-                    requestSample("kafka_network_requestmetrics_responsequeuetimems_count",
-                        "Produce", 600.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_responsequeuetimems_count",
-                        "FetchConsumer", 500.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_responsequeuetimems_count",
-                        "FetchFollower", 300.0 * scale, scope, timestamp)
-                ).build())
-            // responsesendtimems_count: Produce|FetchConsumer|FetchFollower
-            .put("kafka_network_requestmetrics_responsesendtimems_count",
-                SampleFamilyBuilder.newBuilder(
-                    requestSample("kafka_network_requestmetrics_responsesendtimems_count",
-                        "Produce", 200.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_responsesendtimems_count",
-                        "FetchConsumer", 150.0 * scale, scope, timestamp),
-                    requestSample("kafka_network_requestmetrics_responsesendtimems_count",
-                        "FetchFollower", 100.0 * scale, scope, timestamp)
-                ).build())
+            // Latency p50: Produce|FetchConsumer|FetchFollower, tagEqual('quantile','0.50')
+            .put("kafka_network_requestmetrics_requestqueuetimems",
+                latencySummary("kafka_network_requestmetrics_requestqueuetimems",
+                    15.0 * scale, scope, timestamp))
+            .put("kafka_network_requestmetrics_remotetimems",
+                latencySummary("kafka_network_requestmetrics_remotetimems",
+                    25.0 * scale, scope, timestamp))
+            .put("kafka_network_requestmetrics_responsequeuetimems",
+                latencySummary("kafka_network_requestmetrics_responsequeuetimems",
+                    6.0 * scale, scope, timestamp))
+            .put("kafka_network_requestmetrics_responsesendtimems",
+                latencySummary("kafka_network_requestmetrics_responsesendtimems",
+                    2.0 * scale, scope, timestamp))
 
             // --- Network Socket Server ---
             .put("kafka_network_socketserver_networkprocessoravgidlepercent",
@@ -299,6 +261,79 @@ class KafkaBrokerTest extends MALScriptComparisonBase {
                 .timestamp(timestamp)
                 .build()
         ).build();
+    }
+
+    // ---------------------------------------------------------------
+    // Helper: all-topics total (no topic label) plus two per-topic series
+    // ---------------------------------------------------------------
+
+    private static SampleFamily topicTotals(final String name,
+                                            final double total,
+                                            final ImmutableMap<String, String> scope,
+                                            final long timestamp) {
+        return SampleFamilyBuilder.newBuilder(
+            Sample.builder()
+                .name(name)
+                .labels(scope)
+                .value(total)
+                .timestamp(timestamp)
+                .build(),
+            topicSample(name, "orders", total * 0.7, scope, timestamp),
+            topicSample(name, "payments", total * 0.3, scope, timestamp)
+        ).build();
+    }
+
+    private static Sample topicSample(final String name,
+                                      final String topic,
+                                      final double value,
+                                      final ImmutableMap<String, String> scope,
+                                      final long timestamp) {
+        return Sample.builder()
+            .name(name)
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("topic", topic)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    // ---------------------------------------------------------------
+    // Helper: request latency summary, p50 and p99 per request type
+    // ---------------------------------------------------------------
+
+    private static SampleFamily latencySummary(final String name,
+                                               final double p50,
+                                               final ImmutableMap<String, String> scope,
+                                               final long timestamp) {
+        String[] requests = {"Produce", "FetchConsumer", "FetchFollower"};
+        Sample[] samples = new Sample[requests.length * 2];
+        for (int i = 0; i < requests.length; i++) {
+            samples[i * 2] = quantileSample(name, requests[i], "0.50",
+                p50 * (i + 1), scope, timestamp);
+            samples[i * 2 + 1] = quantileSample(name, requests[i], "0.99",
+                p50 * (i + 1) * 10, scope, timestamp);
+        }
+        return SampleFamilyBuilder.newBuilder(samples).build();
+    }
+
+    private static Sample quantileSample(final String name,
+                                         final String request,
+                                         final String quantile,
+                                         final double value,
+                                         final ImmutableMap<String, String> scope,
+                                         final long timestamp) {
+        return Sample.builder()
+            .name(name)
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("request", request)
+                .put("quantile", quantile)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
     }
 
     // ---------------------------------------------------------------

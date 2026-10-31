@@ -1,0 +1,51 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Operator-written TAL rules, not the shipped ones: every metric shape, an FQCN input and output type, and a layer
+# another file declares.
+metricPrefix: fleet
+rules:
+  - name: fleet-calls
+    layer: FIXTURE_FLEET
+    inputType: otlp
+    dsl: |
+      filter {
+        extractor {
+          def svc = service(meta.service, meta.layer)
+          metrics { name "calls"; scope svc; function cpm; value 1 }
+          metrics { name "latency"; scope svc; function avg; value meta.latency }
+          metrics { name "sla"; scope svc; function percent; match meta.statusCode != "ERROR" }
+          metrics { name "apdex"; scope svc; function apdex; value meta.latency; status meta.statusCode != "ERROR" }
+          metrics { name "latency_percentile"; scope svc; function percentile; value meta.latency; buckets [10, 25, 50]; ranks [50, 99] }
+          metrics { name "calls_by_status"; scope svc; function sumLabeled; value 1; labels status: attr("http.response.status_code"); labelLimit 7 }
+        }
+      }
+  - name: fleet-slow
+    layer: FIXTURE_FLEET
+    inputType: io.opentelemetry.proto.trace.v1.Span
+    outputType: org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder
+    dsl: |
+      filter {
+        if (meta.kind != "CLIENT") {
+          abort {}
+        }
+        extractor {
+          service meta.service
+          id meta.traceId + "-" + meta.spanId
+          statement span.name
+          latency meta.latency
+        }
+        sink {}
+      }

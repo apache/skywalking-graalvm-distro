@@ -36,10 +36,12 @@ cd skywalking && git log --oneline <old-commit>..<new-commit>
 | **OAL engine** (`oal-rt/`) | API changes to `OALEngineV2` |
 | **MAL engine** (`meter-analyzer/`) | API changes to `MALClassGenerator`, new grammar tokens |
 | **LAL engine** (`log-analyzer/`) | API changes to `LALClassGenerator` |
+| **TAL engine** (`trace-analyzer/`) | API changes to `TALClassGenerator`, `TalDSL.of`, `TALConfigs.load`, metric declaration fields |
 | **New modules** | New `ModuleDefine`/`ModuleProvider` classes |
 | **New OAL files** | `oal/*.oal` |
 | **New MAL rules** | `otel-rules/`, `meter-analyzer-config/`, `log-mal-rules/`, `envoy-metrics-rules/`, `telegraf-rules/`, `zabbix-rules/` |
 | **New LAL rules** | `lal/*.yaml` |
+| **New TAL rules** | `tal/*.yaml` |
 | **Same-FQCN files changed** | Upstream versions of files we replace in `oap-libs-for-graalvm/` |
 | **New config fields** | Changes to `ModuleConfig` subclasses |
 | **application.yml** | New module sections, new config properties |
@@ -73,15 +75,15 @@ cd skywalking && git log --oneline <old-commit>..<new-commit>
 - [ ] Add generated metrics + builder classes to `reachability-metadata.json` in `oap-graalvm-native`
 - [ ] Verify with: `jar tf build-tools/precompiler/target/precompiler-*-generated.jar | grep "oal/rt"`
 
-### Rule adoption policy (OAL / MAL / LAL)
+### Rule adoption policy (OAL / MAL / LAL / TAL)
 
 **Every rule file upstream adds or changes is adopted, without exception.** The distro must
 never trail upstream on bundled rules. Concretely, for each new or changed file:
 
 - [ ] It is pre-compiled: `otel-rules/**`, `meter-analyzer-config/*`, `log-mal-rules/*`,
-      `envoy-metrics-rules/*`, `telegraf-rules/*`, `zabbix-rules/*`, `lal/*`, `oal/*.oal` are all
+      `envoy-metrics-rules/*`, `telegraf-rules/*`, `zabbix-rules/*`, `lal/*`, `tal/*`, `oal/*.oal` are all
       auto-discovered by the precompiler; verify the counts in its log (`MAL: compiled N rules from <dir>`,
-      `LAL pre-compilation`, `Precompiler: N metrics`).
+      `LAL pre-compilation`, `TAL pre-compilation`, `Precompiler: N metrics`).
 - [ ] It is enabled by default exactly as upstream: mirror upstream `application.yml`
       (`enabledOtelMetricsRules`, `meterAnalyzerActiveFiles`, `lalFiles`, `malFiles`, ...).
 - [ ] `rule-file-inventory.properties` (+ section counts) and `precompiled-yaml-sha256.properties` cover it.
@@ -216,6 +218,18 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   `scanQueryEntityClasses` covers `org.apache.skywalking.oap.query.*.entity.*` and
   `org.apache.skywalking.oap.server.admin.*.response.*` (the latter added in 11.1 after the storage
   suite's `admin inspect` cases exposed it); a POJO outside those packages must be registered by hand.
+  The same holds for request bodies (`@ConsumesJson`) and for Gson-printed answers, which silently come out as
+  `{}` instead of failing. 11.1 found three that no e2e case reached: `/status/cluster/nodes` (core `Address`,
+  HTTP 500), `/status/alarm/*` (`core.alarm.provider.status`, `{}`) and the AWS Firehose receiver (`FirehoseReq`,
+  HTTP 400 on every post). Audit with `git grep -n "@ProducesJson\|@ConsumesJson\|ofJson(\|GSON.toJson"` over
+  the handlers (and `@RequestObject` parameters) and boot the native image against each route.
+- **Stale upstream build output hides missing metadata**: `make init-skywalking` does not clean, so a resource
+  upstream deleted survives in `skywalking/**/target/classes` and the installed jars, and the precompiler still
+  scans it. 11.0.0 deleted `query-protocol/ui-configuration.graphqls`; a local tree kept it, so the GraphQL type
+  scan kept registering `DashboardSetting` and `ui-management` passed locally while CI's clean build failed it.
+  Compare the precompiler's `Scanned GraphQL types: N matched from M schema types` and `Generated reflect-config.json
+  with N entries` lines with CI's, and clean-install any upstream module whose `target/classes` holds files its
+  `src/main/resources` no longer has.
 - **Native OAP boots faster than upstream assumes**: a case whose BanyanDB has no healthcheck
   (`service_started` only, e.g. the distroless `-plugins` image) lets the native OAP connect before
   BanyanDB listens, and it exits on `UNAVAILABLE`. Wrap the OAP entrypoint in `until nc -z ...`.
@@ -223,6 +237,36 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   is published as `ghcr.io/apache/skywalking/<module>:${SW_E2E_SERVICE_COMMIT}` with the jar at
   `/app.jar` — run the image directly, or copy the jar out through an init container when an agent
   image must run it (`virtual-genai` spring-ai-service, `banyandb-trace-sampling` trace-mocker).
+
+- **A DSL that creates metrics needs both `MeterSystem` replacements to track upstream's API**: the
+  precompiler's build-time `MeterSystem` (`build-tools/precompiler/...`) and the runtime one
+  (`server-core-for-graalvm`). 11.1 TAL calls `createMetrics` → `MeterSystem#limitLabels`, which
+  neither replacement had; the build-time call fails the precompiler, the runtime one fails boot. TAL
+  creates its metrics through the shared build-time `MeterSystem`, so its meter classes land in
+  `tal-meter-classes.txt`, and the runtime `TalDSL` replays `create` + `limitLabels` from the manifest.
+- **Retire a replacement when upstream removes the reason for it**: 11.1 `HttpAlarmCallback` moved its
+  `HttpClient` from a static field to a constructor argument; keeping the old lazy-static replacement
+  would have dropped the constructor every hook subclass calls. Diff each changed replacement's upstream
+  source against the *reason* in its header, not only its API.
+- **Stream data registered by hand needs constructor metadata**: `IWorkerInstanceSetter.put(..., Class)`
+  of a non-`@Stream` class (11.1: TAL `PairingFact`) is rebuilt by `RemoteHandleWorker` with
+  `newInstance()` on the receiving OAP node. The StorageBuilders scan misses it, and only a cluster
+  shows the failure. Add a constructor entry in `Precompiler.generateReflectConfig`.
+- **Jackson YAML/JSON DTOs outside `*.entity.*` / `*.response.*`**: the status module's `/debugging/*`
+  bodies (`Debugging*Rsp`) are serialized by Jackson; the entity scan covers them since 11.1. A new
+  handler that returns POJOs from another package must be added to `scanQueryEntityClasses`.
+- **Upstream default switches can silently empty an e2e case**: 11.1 made native OTLP span storage the
+  default, so `otlp-traces` (Zipkin API assertions) needs `SW_OTEL_TRACE_STORAGE: zipkin`.
+
+- **Diff upstream `server-starter`'s dependencies against the distro poms on every sync**: a module that
+  ships only SPI implementations, no `ModuleDefine`, is invisible to `ImmigrationScopeTest`. `ios-analyzer`
+  (iOS `SpanListener`s, 11.0.0) was never bundled, and the iOS MAL/LAL rules kept the gap hidden until the
+  `ios` e2e case was adopted in 11.1. Anything missing must be policy-excluded (cluster/configuration/storage
+  plugins, `runtime-rule`) or added.
+- **TAL rules are user-editable**: keep the precompiler pass and the `TalDSL` / `TALConfigs` replacements free of
+  shipped-rule assumptions. `TALPrecompileTest` (fixtures) and `TALDocScriptsTest` (upstream's documented scripts,
+  extracted from the docs and spliced where the practices page says) guard that; when upstream's docs move a
+  snippet or the shipped rule loses an anchor line, the test names it.
 
 - **Reflection errors at native image runtime**: New classes instantiated via `Class.forName().newInstance()` need entries in `reflect-config.json` or `reachability-metadata.json`
 - **Config loading failures**: New `ModuleConfig` subclasses need config-generator regeneration AND may need `@Setter` same-FQCN replacement

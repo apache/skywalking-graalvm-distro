@@ -146,7 +146,7 @@ class LalInputTypeReflectionTest {
         Properties props = new Properties();
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(LAL_RULES)) {
             assertNotNull(is, LAL_RULES + " not found on the test classpath");
-            props.load(is);
+            props.load(new InputStreamReader(is, StandardCharsets.UTF_8));
         }
         Set<String> types = new TreeSet<>();
         for (String key : props.stringPropertyNames()) {

@@ -157,9 +157,11 @@ class PrecompiledRegistrationTest {
 
         // Verify well-known meter functions exist
         String[] expectedFunctions = {
+            "apdex",
             "avg", "avgLabeled", "avgHistogram", "avgHistogramPercentile",
             "latest", "latestLabeled",
             "max", "maxLabeled", "min", "minLabeled",
+            "percent",
             "sum", "sumLabeled", "sumHistogram", "sumHistogramPercentile",
             "sumPerMin", "sumPerMinLabeled"
         };

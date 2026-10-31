@@ -1,0 +1,109 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Upstream mounts otel-rules/vm.yaml and otel-rules/process-hostmetrics-linux.yaml into the OAP; both are
+# byte-identical to the bundled rules, which this distro compiles at build time, so they are not mounted.
+services:
+  banyandb:
+    extends:
+      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
+      service: banyandb
+    ports:
+      - 17912
+
+  oap:
+    image: skywalking-oap-native:latest
+    expose:
+      - 11800
+      - 12800
+    networks:
+      - e2e
+    ports:
+      - 12800
+    environment:
+      SW_HEALTH_CHECKER: default
+      SW_STORAGE_BANYANDB_TARGETS: banyandb:17912
+      SW_CONFIGURATION: none
+      SW_OTEL_RECEIVER: default
+    depends_on:
+      banyandb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -nz 127.0.0.1 11800 || exit 1"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+
+  # The OTel Collector contrib binary on alpine, with three `sleep` children for the process scraper to count.
+  # Named vm-service: assert-collector-output.sh finds the container by this compose service name.
+  vm-service:
+    hostname: vm-service
+    build:
+      context: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics
+      dockerfile: Dockerfile.otelcol
+      args:
+        OTEL_COLLECTOR_CONTRIB_VERSION: ${OTEL_COLLECTOR_CONTRIB_VERSION}
+    networks:
+      - e2e
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+      - ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/fixtures:/fixtures:ro
+    depends_on:
+      oap:
+        condition: service_healthy
+
+  windows-fixture-replay:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      - vm-service
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/fixtures:/fixtures:ro
+    networks:
+      - e2e
+    # Same replay loop as upstream: windows-host.json carries cumulative system.cpu.time placeholders
+    # (900000001.0 user, 900000002.0 system, 900000003.0 interrupt, 900000004.0 idle), set from the clock on
+    # every round so OAP's rate() yields 80% busy and 20% normalized CPU on 4 logical CPUs.
+    command:
+      - sh
+      - -c
+      - |
+        while true; do
+          NOW="$$(date +%s)"
+          TS="$${NOW}000000000"
+          CPU="$$(awk -v t="$${NOW}" 'BEGIN { printf "s/900000001[.]0/%.1f/g;s/900000002[.]0/%.1f/g;s/900000003[.]0/%.2f/g;s/900000004[.]0/%.1f/g", t*0.5, t*0.3, t*0.05, t*3.2 }')"
+          echo "Replaying Windows OTLP fixtures timestamp=$${TS}"
+          sed -e "s/1788474000000000000/$${TS}/g" -e "$${CPU}" \
+            /fixtures/windows-host.json \
+            | curl -sS \
+                -o /dev/null \
+                -w "windows-host HTTP %{http_code}\n" \
+                -X POST \
+                -H 'Content-Type: application/json' \
+                --data-binary @- \
+                http://vm-service:4318/v1/metrics || true
+          sed "s/1788474000000000000/$${TS}/g" \
+            /fixtures/windows-process.json \
+            | curl -sS \
+                -o /dev/null \
+                -w "windows-process HTTP %{http_code}\n" \
+                -X POST \
+                -H 'Content-Type: application/json' \
+                --data-binary @- \
+                http://vm-service:4318/v1/metrics || true
+          sleep 10
+        done
+
+networks:
+  e2e:

@@ -19,6 +19,8 @@ package org.apache.skywalking.oap.log.analyzer.v2.dsl;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -184,7 +186,8 @@ public class DSL {
                     log.warn("LAL v2 rules manifest not found: {}", RULES_MANIFEST);
                 } else {
                     final Properties props = new Properties();
-                    props.load(is);
+                    // The precompiler writes it with Properties#store's escapes, in UTF-8.
+                    props.load(new InputStreamReader(is, StandardCharsets.UTF_8));
                     for (int i = 0; ; i++) {
                         final String className = props.getProperty("rule." + i + ".class");
                         if (className == null) {

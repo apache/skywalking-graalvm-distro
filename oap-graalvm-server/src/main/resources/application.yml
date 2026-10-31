@@ -84,6 +84,11 @@ core:
     enableHierarchy: ${SW_CORE_ENABLE_HIERARCHY:true}
     maxHeapMemoryUsagePercent: ${SW_CORE_MAX_HEAP_MEMORY_USAGE_PERCENT:96}
     maxDirectMemoryUsage: ${SW_CORE_MAX_DIRECT_MEMORY_USAGE:-1}
+    malMetadataReadTimeout: ${SW_CORE_MAL_METADATA_READ_TIMEOUT:2000}
+    k8sMetadataCacheTime: ${SW_CORE_K8S_METADATA_CACHE_TIME:"als=21,mal=21"}
+    k8sMetadataRefreshPeriod: ${SW_CORE_K8S_METADATA_REFRESH_PERIOD:3}
+    k8sMetadataNotFoundRetryPeriod: ${SW_CORE_K8S_METADATA_NOT_FOUND_RETRY_PERIOD:1}
+    k8sMetadataReadQueueSize: ${SW_CORE_K8S_METADATA_READ_QUEUE_SIZE:""}
 
 storage:
   selector: ${SW_STORAGE:banyandb}
@@ -107,6 +112,15 @@ log-analyzer:
     lalFiles: ${SW_LOG_LAL_FILES:envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,envoy-ai-gateway,miniprogram,ai-agent,default}
     malFiles: ${SW_LOG_MAL_FILES:"nginx,miniprogram-wechat,miniprogram-alipay"}
 
+trace-analyzer:
+  # `-` removes the module; the OTLP trace receiver then stores the spans without analysis.
+  selector: ${SW_TRACE_ANALYZER:default}
+  default:
+    talFiles: ${SW_TRACE_TAL_FILES:otlp-general}
+    dedupWindow: ${SW_TRACE_TAL_DEDUP_WINDOW:0}
+    dedupCapacity: ${SW_TRACE_TAL_DEDUP_CAPACITY:1000000}
+    pairingSamplePercent: ${SW_TRACE_TAL_PAIRING_SAMPLE_PERCENT:25}
+
 event-analyzer:
   selector: ${SW_EVENT_ANALYZER:default}
   default:
@@ -128,12 +142,12 @@ ai-agent-conversation:
   # The GraphQL query module requires this module, so `-` can't remove it; `none` turns it off.
   none:
   default:
-    fileReadWindow: ${SW_AI_AGENT_CONVERSATION_FILE_READ_WINDOW:16}
-    roundReadWindow: ${SW_AI_AGENT_CONVERSATION_ROUND_READ_WINDOW:16}
-    maxListLimit: ${SW_AI_AGENT_CONVERSATION_MAX_LIST_LIMIT:10000}
+    conversationListMaxLimit: ${SW_AI_AGENT_CONVERSATION_LIST_MAX_LIMIT:10000}
     viewRequestTimeout: ${SW_AI_AGENT_CONVERSATION_VIEW_REQUEST_TIMEOUT:120}
-    maxFileBytes: ${SW_AI_AGENT_CONVERSATION_MAX_FILE_BYTES:15728640}
+    readWindow: ${SW_AI_AGENT_CONVERSATION_READ_WINDOW:16}
     maxResponseBytes: ${SW_AI_AGENT_CONVERSATION_MAX_RESPONSE_BYTES:104857600}
+    maxFileBytes: ${SW_AI_AGENT_CONVERSATION_MAX_FILE_BYTES:15728640}
+    hide: ${SW_AI_AGENT_CONVERSATION_HIDE:}
 
 receiver-sharing-server:
   selector: ${SW_RECEIVER_SHARING_SERVER:default}
@@ -254,7 +268,14 @@ receiver-otel:
   selector: ${SW_OTEL_RECEIVER:default}
   default:
     enabledHandlers: ${SW_OTEL_RECEIVER_ENABLED_HANDLERS:"otlp-traces,otlp-metrics,otlp-logs"}
-    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,mysql/*,postgresql/*,oap,aws-eks/*,windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*,ai-agent/*"}
+    # otlp: store native OTLP spans in `otlp_span`, served by the TraceQL `/otlp` datasource;
+    # zipkin: convert to Zipkin v2 and hand them to receiver-zipkin (needs receiver-zipkin and query-zipkin).
+    otlpTraceStorage: ${SW_OTEL_TRACE_STORAGE:otlp}
+    otlpServiceGroupKeys: ${SW_OTEL_RECEIVER_OTLP_SERVICE_GROUP:""}
+    otlpTraceSearchableTags: ${SW_OTEL_TRACE_SEARCHABLE_TAG_KEYS:resource.deployment.environment.name,resource.deployment.environment,resource.service.namespace,resource.service.version,resource.k8s.namespace.name,resource.k8s.cluster.name,span.http.request.method,span.http.response.status_code,span.url.path,span.rpc.method,span.rpc.grpc.status_code,span.db.system.name,span.db.namespace,span.messaging.system,span.messaging.destination.name,span.peer.service}
+    otlpTraceSampleRate: ${SW_OTEL_TRACE_SAMPLE_RATE:10000}
+    otlpTraceMaxSpansPerSecond: ${SW_OTEL_TRACE_MAX_SPANS_PER_SECOND:0}
+    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,process-hostmetrics-linux,mysql/*,postgresql/*,oap,aws-eks/*,windows,process-hostmetrics-windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*,ai-agent/*"}
 
 receiver-zipkin:
   selector: ${SW_RECEIVER_ZIPKIN:-}
@@ -349,8 +370,10 @@ traceQL:
     restPort: ${SW_TRACEQL_REST_PORT:3200}
     enableDatasourceZipkin: ${SW_TRACEQL_ENABLE_DATASOURCE_ZIPKIN:false}
     enableDatasourceSkywalking: ${SW_TRACEQL_ENABLE_DATASOURCE_SKYWALKING:false}
+    enableDatasourceOTLP: ${SW_TRACEQL_ENABLE_DATASOURCE_OTLP:false}
     restContextPathZipkin: ${SW_TRACEQL_REST_CONTEXT_PATH_ZIPKIN:/zipkin}
     restContextPathSkywalking: ${SW_TRACEQL_REST_CONTEXT_PATH_SKYWALKING:/skywalking}
+    restContextPathOTLP: ${SW_TRACEQL_REST_CONTEXT_PATH_OTLP:/otlp}
     restIdleTimeOut: ${SW_TRACEQL_REST_IDLE_TIMEOUT:30000}
     restAcceptQueueSize: ${SW_TRACEQL_REST_QUEUE_SIZE:0}
     restSSLEnabled: ${SW_TRACEQL_REST_SSL_ENABLED:false}
@@ -359,10 +382,12 @@ traceQL:
     lookback: ${SW_TRACEQL_LOOKBACK:86400000}
     zipkinTracesListResultTags: ${SW_TRACEQL_ZIPKIN_TRACES_LIST_RESULT_TAGS:http.method,error}
     skywalkingTracesListResultTags: ${SW_TRACEQL_SKYWALKING_TRACES_LIST_RESULT_TAGS:http.method,http.status_code,rpc.status_code,db.type,db.instance,mq.queue,mq.topic,mq.broker}
+    otlpTracesListResultTags: ${SW_TRACEQL_OTLP_TRACES_LIST_RESULT_TAGS:http.request.method,http.response.status_code}
 
 alarm:
   selector: ${SW_ALARM:default}
   default:
+    httpTimeout: ${SW_ALARM_HTTP_TIMEOUT:12}
 
 telemetry:
   selector: ${SW_TELEMETRY:prometheus}

@@ -18,6 +18,8 @@
 package org.apache.skywalking.oap.server.graalvm.lal;
 
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -105,7 +107,7 @@ abstract class LALScriptComparisonBase {
                         "Manifest META-INF/lal-v2-rules.txt not found");
                 }
                 final Properties props = new Properties();
-                props.load(is);
+                props.load(new InputStreamReader(is, StandardCharsets.UTF_8));
                 for (int i = 0; ; i++) {
                     final String className = props.getProperty("rule." + i + ".class");
                     if (className == null) {

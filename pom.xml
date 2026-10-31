@@ -151,6 +151,11 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
+                <artifactId>trace-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
                 <artifactId>hierarchy</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
@@ -162,6 +167,11 @@
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>gen-ai-analyzer</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>ios-analyzer</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
             <dependency>
@@ -441,6 +451,11 @@
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>log-analyzer-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>trace-analyzer-for-graalvm</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

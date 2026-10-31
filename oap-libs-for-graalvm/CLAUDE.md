@@ -41,7 +41,7 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 
 ## Complete Replacement Inventory
 
-### server-core-for-graalvm (8 classes)
+### server-core-for-graalvm (7 classes)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
@@ -52,7 +52,6 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 | `CoreModuleConfig` | `server-core/.../CoreModuleConfig.java` | Added `@Setter` at class level | No |
 | `HierarchyDefinitionService` | `server-core/.../config/HierarchyDefinitionService.java` | Java-backed closures instead of GroovyShell | No |
 | `HierarchyService` | `server-core/.../hierarchy/HierarchyService.java` | Support for Java-backed closures | No |
-| `HttpAlarmCallback` | `server-core/.../alarm/HttpAlarmCallback.java` | Lazy HttpClient init (static final breaks in native image) | No |
 
 ### library-server-for-graalvm (1 class)
 
@@ -72,6 +71,13 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
 | `DSL` | `log-analyzer/.../v2/dsl/DSL.java` | Load pre-compiled `LalExpression` from v2 manifest | No |
+
+### trace-analyzer-for-graalvm (2 classes)
+
+| Replacement Class | Upstream Source | Change | Staleness Tracked |
+|---|---|---|---|
+| `TalDSL` | `trace-analyzer/.../v2/dsl/TalDSL.java` | Load pre-compiled `TalExpression` from `tal-v2-rules.txt`; claim + create the manifest's metric declarations | **Yes** |
+| `TALConfigs` | `trace-analyzer/.../v2/provider/TALConfigs.java` | Load from `config-data/tal.json` instead of `tal/*.yaml` + `RuleSetMerger` | **Yes** |
 
 ### agent-analyzer-for-graalvm (2 classes)
 
@@ -122,6 +128,7 @@ The v2 upstream migration removed many v1 files; remaining replacements cover:
 - server-core-for-graalvm: 7 files (OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem, CoreModuleConfig, HierarchyDefinitionService, HierarchyService)
 - meter-analyzer-for-graalvm: 3 files (DSL v2, FilterExpression v2, Rules v2)
 - log-analyzer-for-graalvm: 3 files (DSL v2, LogAnalyzerModuleConfig v2, LALConfigs v2)
+- trace-analyzer-for-graalvm: 2 files (TalDSL, TALConfigs)
 - agent-analyzer-for-graalvm: 2 files (AnalyzerModuleConfig, MeterConfigs)
 - library-module-for-graalvm: 1 file (ModuleDefine)
 - library-util-for-graalvm: 2 files (YamlConfigLoaderUtils, VirtualThreads)

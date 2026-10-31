@@ -1,0 +1,110 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Upstream vm/otel-hostmetrics: OTel Collector hostmetrics (Linux) and replayed native-Windows OTLP fixtures
+# into the vm, process-hostmetrics-linux, windows and process-hostmetrics-windows rules, which this distro
+# ships pre-compiled. Inlined rather than included: the collector-contract case runs a script by a path
+# relative to the repository root, which here is the distro root.
+
+setup:
+  env: compose
+  file: docker-compose.yml
+  timeout: 20m
+  init-system-environment: ../../script/env
+  steps:
+    - name: set PATH
+      command: export PATH=/tmp/skywalking-infra-e2e/bin:$PATH
+
+    - name: install yq
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh yq
+
+    - name: install swctl
+      command: bash skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install.sh swctl
+
+verify:
+  retry:
+    count: 30
+    interval: 3s
+
+  cases:
+    # Existing shared VM assertions:
+    # service exists and canonical memory metrics have values.
+    - includes:
+        - ../../../../skywalking/test/e2e-v2/cases/vm/vm-cases.yaml
+
+    # Canonical metrics produced from native OTel hostmetrics.
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_vm_cpu_total_percentage --service-name=vm-service
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_vm_cpu_cores_num --service-name=vm-service
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_vm_cpu_norm_percentage --service-name=vm-service
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    # The normalized process name must be usable as a SkyWalking instance.
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=mp_process_linux_num_procs --service-name=vm-service --instance-name=sleep
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/process-count-3.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=mp_process_linux_num_threads --service-name=vm-service --instance-name=sleep
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=mp_process_linux_memory_resident_bytes --service-name=vm-service --instance-name=sleep
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=mp_process_linux_open_handles --service-name=vm-service --instance-name=sleep
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=mp_process_linux_oldest_process_uptime_seconds --service-name=vm-service --instance-name=sleep
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    # Raw post-processor Collector contract. This distinguishes true
+    # Collector-side aggregation from a value that only becomes 3 in MAL.
+    - query: bash skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/assert-collector-output.sh
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/collector-contract.yml
+
+    # Synthetic native-Windows OTLP fixtures are normalized by Collector 0.158
+    # and then consumed by the production Windows MAL rules.
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_cpu_cores_num --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-cpu-cores-4.yml
+
+    # CPU from system.cpu.time on 4 logical CPUs. The replay grows user by 0.5,
+    # system by 0.3 and interrupt by 0.05 CPU-seconds per second; `system`
+    # already includes interrupt time, so busy CPU is 80% and normalized 20%.
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_cpu_total_percentage --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-cpu-total-80.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_cpu_norm_percentage --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-cpu-norm-20.yml
+
+    # Memory, commit, pagefile, filesystem, handles and load: exact values the
+    # fixture's fixed gauges produce.
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_memory_used --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-memory-used-5368709120.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_memory_virtual_memory_percentage --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-commit-percentage-50.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_memory_pagefile_percentage --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-pagefile-percentage-25.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="aggregate_labels(meter_win_filesystem_percentage,avg)" --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-filesystem-percentage-60.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_filehandles_allocated --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-filehandles-45000.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_win_cpu_load1 --service-name=win-fixture
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/otel-hostmetrics/expected/win-cpu-load1-50.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=mp_process_windows_num_procs --service-name=win-fixture --instance-name=svchost.exe
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml
+
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=mp_process_windows_open_handles --service-name=win-fixture --instance-name=svchost.exe
+      expected: ../../../../skywalking/test/e2e-v2/cases/vm/expected/metrics-has-value.yml

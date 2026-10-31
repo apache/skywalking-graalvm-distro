@@ -29,16 +29,21 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Comparison test for otel-rules/windows.yaml.
  *
+ * <p>The rule file reads two source families (windows_exporter 0.31.0+ and native OTel
+ * Collector hostmetrics) and adds the equivalent branches with {@code +}. The input carries
+ * both families on the same host so every branch of every rule sees real samples.
+ *
  * This file exercises:
  * <ul>
- *   <li>tagNotEqual('mode','idle') — filtering CPU time by mode</li>
- *   <li>Multi-sample subtraction — cs_physical_memory_bytes -
- *       os_physical_memory_free_bytes for memory_used</li>
- *   <li>Division with multiplication — (virtual_memory_free * 100) /
- *       virtual_memory_bytes for virtual memory percentage</li>
+ *   <li>tagMatch('mode','^(user|privileged)$') / ('^(user|system)$') — busy CPU modes</li>
+ *   <li>tagEqual — memory state, disk/network direction, filesystem/pagefile state</li>
+ *   <li>Multi-sample subtraction — total - free (memory_used), commit limit - committed</li>
+ *   <li>Division with multiplication — committed * 100 / commit limit, pagefile and
+ *       filesystem percentages, cpu_norm_percentage</li>
  *   <li>sum with aggregation labels — sum(['node_identifier_host_name']),
- *       sum(['node_identifier_host_name','mode'])</li>
- *   <li>rate('PT1M') — on cpu_time_total, disk read/write</li>
+ *       sum(['node_identifier_host_name','mode']),
+ *       sum(['node_identifier_host_name','mountpoint'])</li>
+ *   <li>rate('PT1M') — on cpu time, disk read/write</li>
  *   <li>irate() — on network receive/transmit</li>
  *   <li>Scope: service(['node_identifier_host_name'], Layer.OS_WINDOWS)</li>
  * </ul>
@@ -66,27 +71,55 @@ class WindowsTest extends MALScriptComparisonBase {
      * # Scope label (required by expSuffix for all samples):
      * #   node_identifier_host_name="win-server-1"
      *
-     * # --- CPU metrics (multiple modes for tagNotEqual/sum) ---
+     * # --- windows_exporter: CPU (privileged already includes interrupt and dpc) ---
      * windows_cpu_time_total{node_identifier_host_name="win-server-1",mode="user"} 3000.0
      * windows_cpu_time_total{node_identifier_host_name="win-server-1",mode="privileged"} 1500.0
      * windows_cpu_time_total{node_identifier_host_name="win-server-1",mode="idle"} 60000.0
      * windows_cpu_time_total{node_identifier_host_name="win-server-1",mode="interrupt"} 200.0
+     * windows_cpu_time_total{node_identifier_host_name="win-server-1",mode="dpc"} 100.0
      *
-     * # --- Physical memory metrics ---
-     * windows_cs_physical_memory_bytes{node_identifier_host_name="win-server-1"} 17179869184.0
-     * windows_os_physical_memory_free_bytes{node_identifier_host_name="win-server-1"} 8589934592.0
+     * # --- windows_exporter: memory collector (0.29.0+) ---
+     * windows_memory_physical_total_bytes{node_identifier_host_name="win-server-1"} 17179869184.0
+     * windows_memory_physical_free_bytes{node_identifier_host_name="win-server-1"} 8589934592.0
+     * windows_memory_commit_limit{node_identifier_host_name="win-server-1"} 21474836480.0
+     * windows_memory_committed_bytes{node_identifier_host_name="win-server-1"} 8589934592.0
      *
-     * # --- Virtual memory metrics ---
-     * windows_os_virtual_memory_free_bytes{node_identifier_host_name="win-server-1"} 12884901888.0
-     * windows_os_virtual_memory_bytes{node_identifier_host_name="win-server-1"} 21474836480.0
-     *
-     * # --- Disk metrics ---
+     * # --- windows_exporter: disk / network ---
      * windows_logical_disk_read_bytes_total{node_identifier_host_name="win-server-1"} 1073741824.0
      * windows_logical_disk_write_bytes_total{node_identifier_host_name="win-server-1"} 2147483648.0
-     *
-     * # --- Network metrics ---
      * windows_net_bytes_received_total{node_identifier_host_name="win-server-1"} 5368709120.0
      * windows_net_bytes_sent_total{node_identifier_host_name="win-server-1"} 2684354560.0
+     *
+     * # --- hostmetrics: CPU (system already includes interrupt) ---
+     * system_cpu_logical_count{node_identifier_host_name="win-server-1"} 8.0
+     * system_cpu_time{node_identifier_host_name="win-server-1",mode="user"} 2000.0
+     * system_cpu_time{node_identifier_host_name="win-server-1",mode="system"} 1200.0
+     * system_cpu_time{node_identifier_host_name="win-server-1",mode="interrupt"} 80.0
+     * system_cpu_time{node_identifier_host_name="win-server-1",mode="idle"} 6000.0
+     * system_cpu_load_average_1m{node_identifier_host_name="win-server-1"} 1.25
+     * system_cpu_load_average_5m{node_identifier_host_name="win-server-1"} 0.75
+     * system_cpu_load_average_15m{node_identifier_host_name="win-server-1"} 0.5
+     *
+     * # --- hostmetrics: memory / virtual memory (Memory\Commit Limit, Memory\Committed Bytes) ---
+     * system_memory_limit{node_identifier_host_name="win-server-1"} 17179869184.0
+     * system_memory_usage{node_identifier_host_name="win-server-1",state="used"} 10737418240.0
+     * system_memory_usage{node_identifier_host_name="win-server-1",state="free"} 6442450944.0
+     * system_virtual_memory_commit_limit{node_identifier_host_name="win-server-1"} 21474836480.0
+     * system_virtual_memory_committed{node_identifier_host_name="win-server-1"} 12884901888.0
+     *
+     * # --- hostmetrics: disk / network ---
+     * system_disk_io{node_identifier_host_name="win-server-1",device="C:",direction="read"} 1073741824.0
+     * system_disk_io{node_identifier_host_name="win-server-1",device="C:",direction="write"} 2147483648.0
+     * system_network_io{node_identifier_host_name="win-server-1",device="Ethernet",direction="receive"} 5368709120.0
+     * system_network_io{node_identifier_host_name="win-server-1",device="Ethernet",direction="transmit"} 2684354560.0
+     *
+     * # --- hostmetrics: filesystem / file handles / pagefile ---
+     * system_filesystem_usage{node_identifier_host_name="win-server-1",mountpoint="C:",state="free"} 64424509440.0
+     * system_filesystem_usage{node_identifier_host_name="win-server-1",mountpoint="C:",state="reserved"} 1073741824.0
+     * system_filesystem_usage{node_identifier_host_name="win-server-1",mountpoint="C:",state="used"} 42949672960.0
+     * system_filehandles_allocated{node_identifier_host_name="win-server-1"} 32000.0
+     * system_paging_usage{node_identifier_host_name="win-server-1",device="C:\\pagefile.sys",state="used"} 1073741824.0
+     * system_paging_usage{node_identifier_host_name="win-server-1",device="C:\\pagefile.sys",state="free"} 3221225472.0
      * </pre>
      */
     private static ImmutableMap<String, SampleFamily> buildInput(
@@ -97,32 +130,31 @@ class WindowsTest extends MALScriptComparisonBase {
             "node_identifier_host_name", "win-server-1");
 
         return ImmutableMap.<String, SampleFamily>builder()
-            // CPU time — multiple mode values for tagNotEqual and sum
+            // windows_exporter CPU time — busy modes are user + privileged
             .put("windows_cpu_time_total",
                 SampleFamilyBuilder.newBuilder(
-                    cpuSample("user", 3000.0 * scale, scope, timestamp),
-                    cpuSample("privileged", 1500.0 * scale, scope, timestamp),
-                    cpuSample("idle", 60000.0 * scale, scope, timestamp),
-                    cpuSample("interrupt", 200.0 * scale, scope, timestamp)
+                    tagged("windows_cpu_time_total", scope, "mode", "user", 3000.0 * scale, timestamp),
+                    tagged("windows_cpu_time_total", scope, "mode", "privileged", 1500.0 * scale, timestamp),
+                    tagged("windows_cpu_time_total", scope, "mode", "idle", 60000.0 * scale, timestamp),
+                    tagged("windows_cpu_time_total", scope, "mode", "interrupt", 200.0 * scale, timestamp),
+                    tagged("windows_cpu_time_total", scope, "mode", "dpc", 100.0 * scale, timestamp)
                 ).build())
 
-            // Physical memory — multi-sample subtraction
-            .put("windows_cs_physical_memory_bytes",
-                single("windows_cs_physical_memory_bytes",
-                    scope, 17179869184.0 * scale, timestamp))
-            .put("windows_os_physical_memory_free_bytes",
-                single("windows_os_physical_memory_free_bytes",
+            // windows_exporter memory collector — physical and commit
+            .put("windows_memory_physical_total_bytes",
+                single("windows_memory_physical_total_bytes",
+                    scope, 17179869184.0, timestamp))
+            .put("windows_memory_physical_free_bytes",
+                single("windows_memory_physical_free_bytes",
+                    scope, 8589934592.0 * scale / 2, timestamp))
+            .put("windows_memory_commit_limit",
+                single("windows_memory_commit_limit",
+                    scope, 21474836480.0, timestamp))
+            .put("windows_memory_committed_bytes",
+                single("windows_memory_committed_bytes",
                     scope, 8589934592.0 * scale, timestamp))
 
-            // Virtual memory — division with multiplication
-            .put("windows_os_virtual_memory_free_bytes",
-                single("windows_os_virtual_memory_free_bytes",
-                    scope, 12884901888.0 * scale, timestamp))
-            .put("windows_os_virtual_memory_bytes",
-                single("windows_os_virtual_memory_bytes",
-                    scope, 21474836480.0 * scale, timestamp))
-
-            // Disk — rate metrics
+            // windows_exporter disk — rate metrics
             .put("windows_logical_disk_read_bytes_total",
                 single("windows_logical_disk_read_bytes_total",
                     scope, 1073741824.0 * scale, timestamp))
@@ -130,13 +162,86 @@ class WindowsTest extends MALScriptComparisonBase {
                 single("windows_logical_disk_write_bytes_total",
                     scope, 2147483648.0 * scale, timestamp))
 
-            // Network — irate metrics
+            // windows_exporter network — irate metrics
             .put("windows_net_bytes_received_total",
                 single("windows_net_bytes_received_total",
                     scope, 5368709120.0 * scale, timestamp))
             .put("windows_net_bytes_sent_total",
                 single("windows_net_bytes_sent_total",
                     scope, 2684354560.0 * scale, timestamp))
+
+            // hostmetrics CPU — busy modes are user + system
+            .put("system_cpu_logical_count",
+                single("system_cpu_logical_count", scope, 8.0, timestamp))
+            .put("system_cpu_time",
+                SampleFamilyBuilder.newBuilder(
+                    tagged("system_cpu_time", scope, "mode", "user", 2000.0 * scale, timestamp),
+                    tagged("system_cpu_time", scope, "mode", "system", 1200.0 * scale, timestamp),
+                    tagged("system_cpu_time", scope, "mode", "interrupt", 80.0 * scale, timestamp),
+                    tagged("system_cpu_time", scope, "mode", "idle", 6000.0 * scale, timestamp)
+                ).build())
+            .put("system_cpu_load_average_1m",
+                single("system_cpu_load_average_1m", scope, 1.25 * scale, timestamp))
+            .put("system_cpu_load_average_5m",
+                single("system_cpu_load_average_5m", scope, 0.75 * scale, timestamp))
+            .put("system_cpu_load_average_15m",
+                single("system_cpu_load_average_15m", scope, 0.5 * scale, timestamp))
+
+            // hostmetrics memory and virtual memory
+            .put("system_memory_limit",
+                single("system_memory_limit", scope, 17179869184.0, timestamp))
+            .put("system_memory_usage",
+                SampleFamilyBuilder.newBuilder(
+                    tagged("system_memory_usage", scope, "state", "used", 10737418240.0, timestamp),
+                    tagged("system_memory_usage", scope, "state", "free", 6442450944.0, timestamp)
+                ).build())
+            .put("system_virtual_memory_commit_limit",
+                single("system_virtual_memory_commit_limit", scope, 21474836480.0, timestamp))
+            .put("system_virtual_memory_committed",
+                single("system_virtual_memory_committed", scope, 12884901888.0 * scale / 2, timestamp))
+
+            // hostmetrics disk / network — per device, filtered by direction
+            .put("system_disk_io",
+                SampleFamilyBuilder.newBuilder(
+                    deviceDirection("system_disk_io", scope, "C:", "read", 1073741824.0 * scale, timestamp),
+                    deviceDirection("system_disk_io", scope, "C:", "write", 2147483648.0 * scale, timestamp)
+                ).build())
+            .put("system_network_io",
+                SampleFamilyBuilder.newBuilder(
+                    deviceDirection("system_network_io", scope, "Ethernet", "receive",
+                        5368709120.0 * scale, timestamp),
+                    deviceDirection("system_network_io", scope, "Ethernet", "transmit",
+                        2684354560.0 * scale, timestamp)
+                ).build())
+
+            // hostmetrics filesystem (free + reserved + used is the capacity)
+            .put("system_filesystem_usage",
+                SampleFamilyBuilder.newBuilder(
+                    mountState(scope, "free", 64424509440.0, timestamp),
+                    mountState(scope, "reserved", 1073741824.0, timestamp),
+                    mountState(scope, "used", 42949672960.0, timestamp)
+                ).build())
+            .put("system_filehandles_allocated",
+                single("system_filehandles_allocated", scope, 32000.0 * scale, timestamp))
+
+            // hostmetrics pagefile
+            .put("system_paging_usage",
+                SampleFamilyBuilder.newBuilder(
+                    Sample.builder()
+                        .name("system_paging_usage")
+                        .labels(ImmutableMap.<String, String>builder()
+                            .putAll(scope).put("device", "C:\\pagefile.sys").put("state", "used").build())
+                        .value(1073741824.0 * scale)
+                        .timestamp(timestamp)
+                        .build(),
+                    Sample.builder()
+                        .name("system_paging_usage")
+                        .labels(ImmutableMap.<String, String>builder()
+                            .putAll(scope).put("device", "C:\\pagefile.sys").put("state", "free").build())
+                        .value(3221225472.0)
+                        .timestamp(timestamp)
+                        .build()
+                ).build())
 
             .build();
     }
@@ -155,15 +260,51 @@ class WindowsTest extends MALScriptComparisonBase {
         ).build();
     }
 
-    private static Sample cpuSample(final String mode,
-                                     final double value,
-                                     final ImmutableMap<String, String> scope,
-                                     final long timestamp) {
+    private static Sample tagged(final String name,
+                                 final ImmutableMap<String, String> scope,
+                                 final String key,
+                                 final String value,
+                                 final double sampleValue,
+                                 final long timestamp) {
         return Sample.builder()
-            .name("windows_cpu_time_total")
+            .name(name)
             .labels(ImmutableMap.<String, String>builder()
                 .putAll(scope)
-                .put("mode", mode)
+                .put(key, value)
+                .build())
+            .value(sampleValue)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    private static Sample deviceDirection(final String name,
+                                          final ImmutableMap<String, String> scope,
+                                          final String device,
+                                          final String direction,
+                                          final double value,
+                                          final long timestamp) {
+        return Sample.builder()
+            .name(name)
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("device", device)
+                .put("direction", direction)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
+    }
+
+    private static Sample mountState(final ImmutableMap<String, String> scope,
+                                     final String state,
+                                     final double value,
+                                     final long timestamp) {
+        return Sample.builder()
+            .name("system_filesystem_usage")
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("mountpoint", "C:")
+                .put("state", state)
                 .build())
             .value(value)
             .timestamp(timestamp)
