@@ -36,7 +36,7 @@
 ## Test Suites
 - **MAL**: Verify pre-compiled `MalExpression` classes from build-time JAR produce identical results to fresh v2 compilation. Covers all 96 MAL YAML rule files.
 - **LAL**: Verify pre-compiled `LalExpression` classes produce identical results. Covers all 12 LAL YAML files.
-- **TAL**: `TALRecordedTraceComparisonTest` runs the shipped rules over upstream's recorded OTel Demo trace through a fresh compile and the pre-compiled classes (identical metrics, traffic, aliases, slow-statement records); `TALPrecompiledRuleTest` checks coordinates and created metrics. Both iterate every file under `tal/`; `TALPrecompileTest` (precompiler) compiles operator-style fixtures and `TALDocScriptsTest` the scripts of upstream's TAL docs and practices page. Keep the TAL code free of shipped-rule assumptions: TAL files are user-editable.
+- **TAL**: `TALRecordedTraceComparisonTest` runs the shipped rules over upstream's recorded OTel Demo trace, plus added messaging / database / cache calls under test server clusters, through a fresh compile and the pre-compiled classes (identical metrics, traffic, aliases, slow-statement records); `TALPrecompiledRuleTest` checks coordinates and created metrics. Both iterate every file under `tal/`; `TALPrecompileTest` (precompiler) compiles operator-style fixtures and `TALDocScriptsTest` the scripts of upstream's TAL docs and practice pages. Keep the TAL code free of shipped-rule assumptions: TAL files are user-editable.
 - **Hierarchy**: Verify pre-compiled hierarchy rule classes match fresh v2 compilation.
 
 See [docs/internals/dsl-immigration.md](docs/internals/dsl-immigration.md) for details.

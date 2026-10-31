@@ -93,6 +93,8 @@
                 <include>endpoint-name-grouping.yml</include>
                 <!-- Gateway definitions (loaded by UninstrumentedGatewaysConfig) -->
                 <include>gateways.yml</include>
+                <!-- Server clusters (loaded by ServerClusterConfig) -->
+                <include>server-clusters.yml</include>
                 <!-- Hierarchy definitions (loaded by HierarchyDefinitionService) -->
                 <include>hierarchy-definition.yml</include>
                 <!-- Metadata service mapping -->

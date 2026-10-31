@@ -35,6 +35,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | Auth | `auth/` | gRPC token authentication |
 | OTLP Traces | `otlp-traces/` | OTLP traces / metrics / logs |
 | Virtual MQ | `virtual-mq/` | Virtual MQ layer (Kafka-instrumented) |
+| Server Clusters | `server-clusters/` | `server-clusters.yml` on the native trace analysis: two Java-agent Kafka producers reporting the broker by different `;`-joined lists, and the consumer's broker, drawn as one `VIRTUAL_MQ` service |
 | Kafka Exporter | `exporter/` | Kafka exporter |
 | SSL | `ssl/` | gRPC TLS (JDK SSL provider) |
 | mTLS | `mtls/` | gRPC mutual TLS |
@@ -64,6 +65,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | BanyanDB Auth Rotation | `banyandb-auth-rotation/` | BanyanDB credential hot-reload (`secretsManagementFile`) + storage suite |
 | BanyanDB CA Rotation | `banyandb-ca-rotation/` | BanyanDB TLS trust CA rotation (old+new CA, new server cert, new CA only) + storage suite, then rejection of an unrelated CA |
 | OTLP Traces Native | `otlp-traces-native/` | Native OTLP span storage (`otlpTraceStorage: otlp`), TraceQL `/otlp` datasource, `trace-analyzer` (TAL `otlp-general`: services, topology, metrics, slow statements) |
+| Server Clusters OTLP | `server-clusters-otlp/` | `server-clusters.yml` through TAL `findServerClusterName` in the pre-compiled `otlp-general` rule: an OTel Python confluent-kafka producer (`kafka:9092`) and consumer (`kafka-node:9092`) meet at one `OTLP_VIRTUAL_MQ` broker |
 | OTLP Traces Cluster | `otlp-traces-cluster/` | kind, two OAP replicas on the Kubernetes coordinator: TAL span pairing across nodes (each call's CLIENT and SERVER halves reach different replicas; its alias needs the `PairingFact` to cross to the trace's owner) |
 | VM OTel Hostmetrics | `vm-otel-hostmetrics/` | OTel Collector hostmetrics + replayed Windows OTLP fixtures → `vm`, `windows`, `process-hostmetrics-{linux,windows}` OTel rules |
 | OTLP Virtual GenAI | `otlp-virtual-genai/` | GenAI metrics + LLM-as-judge evaluation from OTLP spans converted to Zipkin (`otlpTraceStorage: zipkin`) |
@@ -145,6 +147,8 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | Kafka SO11Y | `kafka/simple-so11y/` | Standalone | Kafka, Zookeeper | Self-observability via Kafka |
 | Kafka exporter | `exporter/kafka/` | Standalone | Kafka, Zookeeper | Export traces/logs to Kafka |
 | Virtual MQ | `virtual-mq/` | Standalone | Kafka, Zookeeper | Virtual message queue tracing |
+| Server Clusters | `server-clusters/native/` | Standalone | Kafka, Zookeeper | One broker reached at two addresses, named as one cluster |
+| Server Clusters OTLP | `server-clusters/otlp/` | Standalone | Kafka, Zookeeper, OTel Python | The same through TAL `findServerClusterName` |
 
 ## Tier 6 — Kubernetes-based (OAP + BanyanDB via Helm on Kind)
 

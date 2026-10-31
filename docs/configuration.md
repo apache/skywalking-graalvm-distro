@@ -186,8 +186,9 @@ Upstream reads the rule files from `config/tal/` at boot. This distro has no `co
 measured, edit or add files under `skywalking/oap-server/server-starter/src/main/resources/tal/` and rebuild. The
 precompiler compiles every file there, whatever it contains, as long as the [TAL grammar](https://skywalking.apache.org/docs/main/next/en/concepts-and-designs/tal/)
 accepts it, and fails the build on a rule upstream would refuse at boot (an unknown layer, input or output type, or
-conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practices page (nginx as a
-one-span proxy, gateway peers, canaries) are compiled and run by the distro's own pipeline in `TALDocScriptsTest`.
+conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practice pages (nginx as a
+one-span proxy, gateway peers, canaries, server clusters by kind) are compiled and run by the distro's own pipeline in
+`TALDocScriptsTest`.
 
 - Every file is compiled, not only those `talFiles` selects, so alternative files must agree on the shapes of the
   metrics they share, and each must compile on its own.

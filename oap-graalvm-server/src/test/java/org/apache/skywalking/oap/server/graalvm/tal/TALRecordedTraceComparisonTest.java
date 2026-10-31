@@ -34,6 +34,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.skywalking.oap.server.configuration.api.ConfigChangeWatcher.ConfigChangeEvent;
+import org.apache.skywalking.oap.server.configuration.api.ConfigChangeWatcher.EventType;
 import org.apache.skywalking.oap.server.core.CoreModule;
 import org.apache.skywalking.oap.server.core.analysis.Layer;
 import org.apache.skywalking.oap.server.core.analysis.manual.networkalias.NetworkAddressAlias;
@@ -44,11 +46,13 @@ import org.apache.skywalking.oap.server.core.analysis.metrics.Metrics;
 import org.apache.skywalking.oap.server.core.analysis.worker.MetricsStreamProcessor;
 import org.apache.skywalking.oap.server.core.cache.NetworkAddressAliasCache;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
+import org.apache.skywalking.oap.server.core.config.ServerClusterConfig;
 import org.apache.skywalking.oap.server.core.source.ISource;
 import org.apache.skywalking.oap.server.core.source.NetworkAddressAliasSetup;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
 import org.apache.skywalking.oap.server.core.trace.SpanMetadata;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
+import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.apache.skywalking.oap.server.receiver.otel.otlp.OTLPValues;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.ExecutionContext;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalDSL;
@@ -64,6 +68,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -72,7 +77,9 @@ import static org.mockito.Mockito.spy;
 
 /**
  * Every TAL rule under {@code tal/} over the trace upstream recorded from the OpenTelemetry Demo (one
- * {@code GET /api/cart} through frontend-web, frontend-proxy, frontend and cart), plus one slow MySQL call, run twice:
+ * {@code GET /api/cart} through frontend-web, frontend-proxy, frontend and cart), plus calls the recording lacks: a
+ * slow MySQL call, a Kafka message sent and consumed, an SQS send, a RabbitMQ settle and a Redis call. They run with
+ * server clusters listing the MySQL, Kafka and Redis addresses, twice:
  * through a fresh {@code TALClassGenerator} compile of the submodule's YAML, as the JVM OAP boots, and through the
  * classes the precompiler emitted, loaded by the same-FQCN {@code TalDSL}. Every metric value, traffic row, alias
  * row, output record and span vote must be identical.
@@ -84,6 +91,14 @@ class TALRecordedTraceComparisonTest {
     private static final Path FIXTURE = Path.of(System.getProperty("user.dir")).getParent().resolve(
         "skywalking/oap-server/server-receiver-plugin/otel-receiver-plugin/src/test/resources/tal/"
             + "otlp-trace-get-api-cart.json");
+    private static final String SERVER_CLUSTERS = String.join("\n",
+        "clusters:",
+        "  - name: shop-db",
+        "    aliases: [mysql:3306]",
+        "  - name: orders-kafka",
+        "    members: [kafka-0:9092, kafka-1:9092]",
+        "  - name: session-cache",
+        "    members: [redis-0:6379, redis-1:6379]");
 
     private MockedStatic<MetricsStreamProcessor> mockedProcessor;
     private final List<Metrics> traffic = new ArrayList<>();
@@ -107,13 +122,21 @@ class TALRecordedTraceComparisonTest {
 
     @Test
     void precompiledRulesEmitWhatAFreshCompileEmits() throws Exception {
-        assertEquals(9, loadSpans("GENERAL").size(), "the eight recorded spans and the slow MySQL call");
+        assertEquals(14, loadSpans("GENERAL").size(), "the eight recorded spans and the six added calls");
 
         final List<String> fresh = run(Run::fresh);
         final List<String> precompiled = run(Run::precompiled);
 
         assertTrue(fresh.stream().anyMatch(line -> line.startsWith("rule ")),
             "no rule ran over the recorded trace, so the comparison would prove nothing:\n" + String.join("\n", fresh));
+        final String all = String.join("\n", fresh);
+        for (final String cluster : List.of("shop-db", "orders-kafka", "session-cache")) {
+            assertTrue(all.contains(cluster), cluster + " was never named, so the cluster lookup ran on neither path:\n"
+                + all);
+        }
+        for (final String address : List.of("mysql:3306", "kafka-0:9092", "kafka-1:9092", "redis-0:6379")) {
+            assertFalse(all.contains(address), address + " is listed under a cluster yet was named:\n" + all);
+        }
         assertEquals(fresh, precompiled);
     }
 
@@ -142,6 +165,10 @@ class TALRecordedTraceComparisonTest {
                 return null;
             }).when(sourceReceiver).receive(any());
             moduleManager = TALTestSupport.moduleManager(meterSystem, sourceReceiver, namingControl);
+            final ServerClusterConfig serverClusters = new ServerClusterConfig(mock(ModuleProvider.class), 70);
+            serverClusters.notify(new ConfigChangeEvent(SERVER_CLUSTERS, EventType.MODIFY));
+            Mockito.when(moduleManager.find(CoreModule.NAME).provider().getService(ServerClusterConfig.class))
+                   .thenReturn(serverClusters);
             meterSystem[0] = spy(new MeterSystem(moduleManager));
             doAnswer(invocation -> {
                 final Object value = invocation.getArgument(0);
@@ -319,8 +346,9 @@ class TALRecordedTraceComparisonTest {
 
     /**
      * The fixture's spans in start order, each with the metadata and attribute maps the receiver hands the
-     * analyzer, then frontend's CLIENT span turned into a 350 ms MySQL call; every resource sends
-     * {@code service.layer=<layer>}.
+     * analyzer, then frontend's CLIENT span turned into a 350 ms MySQL call, a Kafka send, its consumption in cart by
+     * the older {@code messaging.system} key, an SQS send spelled {@code aws_sqs}, and cart's RabbitMQ settle and
+     * Redis call, the latter to a node list; every resource sends {@code service.layer=<layer>}.
      */
     private static List<AnalyzedSpan> loadSpans(final String layer) throws Exception {
         final TracesData.Builder builder = TracesData.newBuilder();
@@ -328,6 +356,7 @@ class TALRecordedTraceComparisonTest {
             OTLPValues.hexIdsToBase64(new String(Files.readAllBytes(FIXTURE), StandardCharsets.UTF_8)), builder);
         final List<AnalyzedSpan> out = new ArrayList<>();
         AnalyzedSpan frontendClient = null;
+        AnalyzedSpan cartServer = null;
         for (final ResourceSpans rs : builder.getResourceSpansList()) {
             final Map<String, String> resourceTags =
                 new LinkedHashMap<>(OTLPValues.toStringMap(rs.getResource().getAttributesList()));
@@ -339,6 +368,9 @@ class TALRecordedTraceComparisonTest {
                     if (frontendClient == null && "frontend".equals(a.meta.getService())
                         && "CLIENT".equals(a.meta.getKind())) {
                         frontendClient = a;
+                    }
+                    if (cartServer == null && "cart".equals(a.meta.getService()) && "SERVER".equals(a.meta.getKind())) {
+                        cartServer = a;
                     }
                 }
             }
@@ -357,7 +389,54 @@ class TALRecordedTraceComparisonTest {
             .build();
         final ScopeSpans scope = ScopeSpans.newBuilder().build();
         out.add(analyzed(sql, frontendClient.resourceTags, scope));
+
+        final Span send = added(frontendClient.span, 0x51, Span.SpanKind.SPAN_KIND_PRODUCER, "orders send", 4)
+            .addAttributes(attr("messaging.system.name", "kafka"))
+            .addAttributes(attr("messaging.operation.type", "send"))
+            .addAttributes(attr("messaging.destination.name", "orders"))
+            .addAttributes(attr("server.address", "kafka-0"))
+            .addAttributes(attr("server.port", "9092"))
+            .build();
+        out.add(analyzed(send, frontendClient.resourceTags, scope));
+        out.add(analyzed(added(cartServer.span, 0x52, Span.SpanKind.SPAN_KIND_CONSUMER, "orders process", 6)
+            .setParentSpanId(send.getSpanId())
+            .addAttributes(attr("messaging.system", "kafka"))
+            .addAttributes(attr("messaging.operation.type", "process"))
+            .addAttributes(attr("messaging.destination.name", "orders"))
+            .addAttributes(attr("server.address", "kafka-1"))
+            .addAttributes(attr("server.port", "9092"))
+            .build(), cartServer.resourceTags, scope));
+        out.add(analyzed(added(frontendClient.span, 0x53, Span.SpanKind.SPAN_KIND_PRODUCER, "orders-queue send", 9)
+            .addAttributes(attr("messaging.system.name", "aws_sqs"))
+            .addAttributes(attr("messaging.operation.type", "send"))
+            .addAttributes(attr("messaging.destination.name", "orders-queue"))
+            .build(), frontendClient.resourceTags, scope));
+        out.add(analyzed(added(cartServer.span, 0x54, Span.SpanKind.SPAN_KIND_CLIENT, "orders ack", 1)
+            .addAttributes(attr("messaging.system.name", "rabbitmq"))
+            .addAttributes(attr("messaging.operation.type", "settle"))
+            .addAttributes(attr("server.address", "rabbitmq"))
+            .addAttributes(attr("server.port", "5672"))
+            .build(), cartServer.resourceTags, scope));
+        out.add(analyzed(added(cartServer.span, 0x55, Span.SpanKind.SPAN_KIND_CLIENT, "HGET", 2)
+            .addAttributes(attr("db.system.name", "redis"))
+            .addAttributes(attr("db.operation.name", "HGET"))
+            .addAttributes(attr("server.address", "redis-1:6379,redis-0:6379"))
+            .build(), cartServer.resourceTags, scope));
         return out;
+    }
+
+    /**
+     * A call the recording lacks, under the span it starts with: a new id, kind, name and duration, no attributes.
+     */
+    private static Span.Builder added(final Span parent, final int id, final Span.SpanKind kind, final String name,
+                                      final long millis) {
+        return parent.toBuilder()
+                     .setSpanId(ByteString.copyFrom(new byte[] {0x5d, 0x1c, 0x0f, 0x3a, 0x77, 0x02, 0x41, (byte) id}))
+                     .setParentSpanId(parent.getSpanId())
+                     .setKind(kind)
+                     .setName(name)
+                     .setEndTimeUnixNano(parent.getStartTimeUnixNano() + TimeUnit.MILLISECONDS.toNanos(millis))
+                     .clearAttributes();
     }
 
     private static KeyValue attr(final String key, final String value) {

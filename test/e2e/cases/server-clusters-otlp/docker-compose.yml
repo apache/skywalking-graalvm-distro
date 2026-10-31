@@ -1,0 +1,116 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Mirrors upstream test/e2e-v2/cases/server-clusters/otlp: an OpenTelemetry-instrumented confluent-kafka producer
+# reports the broker as `kafka:9092` and its consumer as `kafka-node:9092`, and upstream's server-clusters.yml lists
+# both under kafka-prod, so the pre-compiled otlp-general rule draws one broker between them.
+
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://oap:11800
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
+  OTEL_BSP_SCHEDULE_DELAY: "1000"
+  OTEL_RESOURCE_ATTRIBUTES: service.layer=OTLP_GENERAL
+
+services:
+  banyandb:
+    extends:
+      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
+      service: banyandb
+    ports:
+      - 17912
+
+  oap:
+    image: skywalking-oap-native:latest
+    expose:
+      - 11800
+      - 12800
+    networks:
+      - e2e
+    ports:
+      - 12800
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/server-clusters/otlp/server-clusters.yml:/skywalking/config/server-clusters.yml
+    environment:
+      SW_HEALTH_CHECKER: default
+      SW_STORAGE_BANYANDB_TARGETS: banyandb:17912
+      SW_CONFIGURATION: none
+    depends_on:
+      banyandb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -nz 127.0.0.1 11800 || exit 1"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+
+  producer:
+    build:
+      context: ../../../../skywalking/test/e2e-v2/cases/server-clusters/otlp/kafka
+    command: ["opentelemetry-instrument", "python", "/producer.py"]
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: orders-producer
+      BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      oap:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - e2e
+
+  consumer:
+    build:
+      context: ../../../../skywalking/test/e2e-v2/cases/server-clusters/otlp/kafka
+    command: ["opentelemetry-instrument", "python", "/consumer.py"]
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: orders-consumer
+      BOOTSTRAP_SERVERS: kafka-node:9092
+    depends_on:
+      oap:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - e2e
+
+  zookeeper:
+    image: zookeeper:3.9.3
+    networks:
+      - e2e
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    image: bitnamilegacy/kafka:2.4.1
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+    networks:
+      e2e:
+        aliases:
+          - kafka-node
+
+networks:
+  e2e:

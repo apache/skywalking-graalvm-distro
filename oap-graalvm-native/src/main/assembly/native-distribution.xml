@@ -76,6 +76,7 @@
                 <include>component-libraries.yml</include>
                 <include>endpoint-name-grouping.yml</include>
                 <include>gateways.yml</include>
+                <include>server-clusters.yml</include>
                 <include>hierarchy-definition.yml</include>
                 <include>metadata-service-mapping.yaml</include>
                 <include>service-apdex-threshold.yml</include>

@@ -1,0 +1,205 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Mirrors upstream test/e2e-v2/cases/server-clusters/native: two producers report the broker as
+# `kafka:9092;kafka-node:9092` and `kafka-node:9092;kafka:9092`, and upstream's server-clusters.yml lists both
+# names under kafka-prod, so both producers and the consumer draw one broker.
+
+services:
+  banyandb:
+    extends:
+      file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
+      service: banyandb
+    ports:
+      - 17912
+
+  oap:
+    image: skywalking-oap-native:latest
+    expose:
+      - 11800
+      - 12800
+    networks:
+      - e2e
+    ports:
+      - 12800
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/server-clusters/native/server-clusters.yml:/skywalking/config/server-clusters.yml
+    environment:
+      SW_HEALTH_CHECKER: default
+      SW_STORAGE_BANYANDB_TARGETS: banyandb:17912
+      SW_CONFIGURATION: none
+    depends_on:
+      banyandb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -nz 127.0.0.1 11800 || exit 1"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+
+  provider-jar:
+    image: "ghcr.io/apache/skywalking/e2e-service-provider:${SW_E2E_SERVICE_COMMIT}"
+    entrypoint: ["cp", "/app.jar", "/jars/services_provider.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+
+  consumer-jar:
+    image: "ghcr.io/apache/skywalking/e2e-service-consumer:${SW_E2E_SERVICE_COMMIT}"
+    entrypoint: ["cp", "/app.jar", "/jars/services_consumer.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+
+  producer1:
+    image: "ghcr.io/apache/skywalking-java/skywalking-java:${SW_AGENT_JAVA_COMMIT}-java${SW_AGENT_JDK_VERSION}"
+    command: ["java", "-jar", "/jars/services_provider.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+    expose:
+      - 9090
+    ports:
+      - 9090
+    environment:
+      SW_AGENT_COLLECTOR_BACKEND_SERVICES: oap:11800
+      SW_LOGGING_OUTPUT: CONSOLE
+      SW_AGENT_NAME: e2e-producer-a
+      SW_AGENT_INSTANCE_NAME: producer-a
+      SW_AGENT_COLLECTOR_GET_PROFILE_TASK_INTERVAL: 1
+      SW_AGENT_COLLECTOR_GET_AGENT_DYNAMIC_CONFIG_INTERVAL: 1
+      SW_METER_ACTIVE: 'false'
+      kafka_enable: "true"
+      kafka_topic: orders
+      kafka_server: kafka:9092,kafka-node:9092
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/9090"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+    depends_on:
+      oap:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      provider-jar:
+        condition: service_completed_successfully
+
+  producer2:
+    image: "ghcr.io/apache/skywalking-java/skywalking-java:${SW_AGENT_JAVA_COMMIT}-java${SW_AGENT_JDK_VERSION}"
+    command: ["java", "-jar", "/jars/services_provider.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+    expose:
+      - 9090
+    environment:
+      SW_AGENT_COLLECTOR_BACKEND_SERVICES: oap:11800
+      SW_LOGGING_OUTPUT: CONSOLE
+      SW_AGENT_NAME: e2e-producer-b
+      SW_AGENT_INSTANCE_NAME: producer-b
+      SW_AGENT_COLLECTOR_GET_PROFILE_TASK_INTERVAL: 1
+      SW_AGENT_COLLECTOR_GET_AGENT_DYNAMIC_CONFIG_INTERVAL: 1
+      SW_METER_ACTIVE: 'false'
+      kafka_enable: "true"
+      kafka_topic: orders
+      kafka_server: kafka-node:9092,kafka:9092
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/9090"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+    depends_on:
+      oap:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      provider-jar:
+        condition: service_completed_successfully
+
+  # The e2e trigger calls producer1; this calls producer2.
+  producer2-trigger:
+    image: busybox:1.36
+    command: ["sh", "-c", "while true; do wget -q -O /dev/null http://producer2:9090/kafka/send; sleep 3; done"]
+    networks:
+      - e2e
+    depends_on:
+      producer2:
+        condition: service_healthy
+
+  consumer:
+    image: "ghcr.io/apache/skywalking-java/skywalking-java:${SW_AGENT_JAVA_COMMIT}-java${SW_AGENT_JDK_VERSION}"
+    command: ["java", "-jar", "/jars/services_consumer.jar"]
+    volumes:
+      - service-jars:/jars
+    networks:
+      - e2e
+    expose:
+      - 9092
+    environment:
+      SW_AGENT_COLLECTOR_BACKEND_SERVICES: oap:11800
+      SW_LOGGING_OUTPUT: CONSOLE
+      SW_AGENT_NAME: e2e-service-consumer
+      SW_AGENT_INSTANCE_NAME: consumer1
+      SW_AGENT_COLLECTOR_GET_PROFILE_TASK_INTERVAL: 1
+      SW_AGENT_COLLECTOR_GET_AGENT_DYNAMIC_CONFIG_INTERVAL: 1
+      SW_METER_ACTIVE: 'false'
+      kafka_enable: "true"
+      kafka_topic: orders
+      kafka_server: kafka:9092
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/9092"]
+      interval: 5s
+      timeout: 60s
+      retries: 120
+    depends_on:
+      oap:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      consumer-jar:
+        condition: service_completed_successfully
+
+  zookeeper:
+    image: zookeeper:3.9.3
+    networks:
+      - e2e
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    image: bitnamilegacy/kafka:2.4.1
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+    networks:
+      e2e:
+        aliases:
+          - kafka-node
+
+volumes:
+  service-jars:
+
+networks:
+  e2e:
