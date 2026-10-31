@@ -8,7 +8,7 @@ Otherwise, it is shown as `{commit-id}-SNAPSHOT` indicating a development build 
 <!-- DOC-CHECK: version-mapping-table -->
 | Distro Version | Apache SkyWalking Version |
 |---|---|
-| 0.5.0-SNAPSHOT (dev) | `456199a1f87a`-SNAPSHOT |
+| 0.5.0-SNAPSHOT (dev) | `5484b9693ebb`-SNAPSHOT |
 | 0.4.0 | 11.0.0 |
 | 0.3.0 | 10.4.0 |
 | 0.2.1 | `64a1795d8a58`-SNAPSHOT |

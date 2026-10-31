@@ -20,9 +20,20 @@ services:
     extends:
       file: ../../../../skywalking/test/e2e-v2/script/docker-compose/base-compose.yml
       service: banyandb
+    # Starts with the upstream TLS case's certificate and rotates to the upstream case's
+    # new-server.crt, which its new-ca.crt signed. BanyanDB reloads its certificate when the files
+    # change, so they are copied into /tmp first: the rotation must not write through a bind mount
+    # into the repository.
     volumes:
-      - ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/tls/tls:/tls
-    command: standalone --tls=true --key-file=/tls/cert.key --cert-file=/tls/cert.crt --http-grpc-cert-file=/tls/ca.crt
+      - ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/tls/tls:/tls-src:ro
+      - ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/new-server.crt:/tls-new/new-server.crt:ro
+      - ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/new-server.key:/tls-new/new-server.key:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "mkdir -p /tmp/tls && cp /tls-src/* /tmp/tls/ && exec /banyand \"$$@\""
+      - --
+    command: standalone --tls=true --key-file=/tmp/tls/cert.key --cert-file=/tmp/tls/cert.crt --http-grpc-cert-file=/tmp/tls/ca.crt
     networks:
       - e2e
 
@@ -39,6 +50,7 @@ services:
       - 17128
     volumes:
       - ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/tls/tls:/tls-src:ro
+      - ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/new-ca.crt:/tls-new/new-ca.crt:ro
       - ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/wrong-ca.crt:/tls-src-wrong/wrong-ca.crt:ro
     # TLS is only enabled when the trust file exists at boot, and the test rewrites it, so it is
     # seeded into /tmp before the image's normal command line takes over.

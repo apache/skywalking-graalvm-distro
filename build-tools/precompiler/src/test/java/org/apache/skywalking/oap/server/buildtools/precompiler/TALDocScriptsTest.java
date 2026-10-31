@@ -74,8 +74,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * The TAL scripts upstream's documentation gives operators, read from the docs as they are: the rule in
- * {@code tal.md} and the edits {@code trace-analyzer-practices.md} tells you to make to your copy of
- * {@code otlp-general.yaml}, spliced where the page says. Each variant is compiled by the distro's own TAL pass, and
+ * {@code tal.md} and the edits the gateway pages under {@code otlp-trace-practices/} tell you to make to your copy
+ * of {@code otlp-general.yaml}, spliced where the page says. Each variant is compiled by the distro's own TAL pass, and
  * the class the manifest names is run against spans the practice is about, so a documented script that the
  * native distro cannot build, or that no longer does what its page says, fails here.
  */
@@ -83,7 +83,10 @@ class TALDocScriptsTest {
     private static final Path SUBMODULE = Path.of(System.getProperty("user.dir")).getParent().getParent()
         .resolve("skywalking");
     private static final Path TAL_MD = SUBMODULE.resolve("docs/en/concepts-and-designs/tal.md");
-    private static final Path PRACTICES_MD = SUBMODULE.resolve("docs/en/setup/backend/trace-analyzer-practices.md");
+    private static final Path PRACTICES = SUBMODULE.resolve("docs/en/setup/backend/otlp-trace-practices");
+    private static final Path GATEWAY_MD = PRACTICES.resolve("gateway-overview.md");
+    private static final Path CANARY_MD = PRACTICES.resolve("gateway-canary.md");
+    private static final Path NGINX_MD = PRACTICES.resolve("gateway-nginx.md");
     private static final Path SHIPPED = SUBMODULE.resolve("oap-server/server-starter/src/main/resources/tal/otlp-general.yaml");
     private static final String DOCS = "tal-docs";
 
@@ -136,17 +139,17 @@ class TALDocScriptsTest {
             "    dsl: |",
             indent(block(TAL_MD, "prepareNetworkAlias peer"), "      ")));
 
-        final List<String> gatewayPeer = block(PRACTICES_MD, "hasAttr(\"<attribute>\")");
+        final List<String> gatewayPeer = block(GATEWAY_MD, "hasAttr(\"<attribute>\")");
         write(docsDir, "practice-gateway-peer.yaml", spliceBefore(shipped,
             "if (peer && isGateway(peer + \":80\")) {", fill(gatewayPeer, "<attribute>", "gateway.upstream")));
         write(docsDir, "practice-canary-gateway.yaml", spliceBefore(shipped,
-            CLIENT_ANCHOR, fill(block(PRACTICES_MD, "meta.service == \"<gateway>\""), "<gateway>", "gateway")));
+            CLIENT_ANCHOR, fill(block(CANARY_MD, "meta.service == \"<gateway>\""), "<gateway>", "gateway")));
         write(docsDir, "practice-canary-router.yaml", spliceBefore(shipped,
-            CLIENT_ANCHOR, block(PRACTICES_MD, "!isGateway(peer) && attr(\"http.request.header.x-canary\")")));
-        final List<String> nginx = block(PRACTICES_MD, "nginx's SERVER span");
+            CLIENT_ANCHOR, block(CANARY_MD, "!isGateway(peer) && attr(\"http.request.header.x-canary\")")));
+        final List<String> nginx = block(NGINX_MD, "nginx's SERVER span");
         write(docsDir, "practice-nginx.yaml", spliceAfter(shipped, SERVER_ANCHOR, nginx));
         // The page's alternative picks nginx by a resource tag instead of its service name.
-        final String byTag = block(PRACTICES_MD, "resource(\"proxy.type\") == \"nginx\"").get(0).trim();
+        final String byTag = block(NGINX_MD, "resource(\"proxy.type\") == \"nginx\"").get(0).trim();
         final List<String> nginxByTag = new ArrayList<>(nginx);
         boolean replaced = false;
         for (int i = 0; i < nginxByTag.size(); i++) {
