@@ -222,7 +222,14 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   `{}` instead of failing. 11.1 found three that no e2e case reached: `/status/cluster/nodes` (core `Address`,
   HTTP 500), `/status/alarm/*` (`core.alarm.provider.status`, `{}`) and the AWS Firehose receiver (`FirehoseReq`,
   HTTP 400 on every post). Audit with `git grep -n "@ProducesJson\|@ConsumesJson\|ofJson(\|GSON.toJson"` over
-  the handlers and boot the native image against each route.
+  the handlers (and `@RequestObject` parameters) and boot the native image against each route.
+- **Stale upstream build output hides missing metadata**: `make init-skywalking` does not clean, so a resource
+  upstream deleted survives in `skywalking/**/target/classes` and the installed jars, and the precompiler still
+  scans it. 11.0.0 deleted `query-protocol/ui-configuration.graphqls`; a local tree kept it, so the GraphQL type
+  scan kept registering `DashboardSetting` and `ui-management` passed locally while CI's clean build failed it.
+  Compare the precompiler's `Scanned GraphQL types: N matched from M schema types` and `Generated reflect-config.json
+  with N entries` lines with CI's, and clean-install any upstream module whose `target/classes` holds files its
+  `src/main/resources` no longer has.
 - **Native OAP boots faster than upstream assumes**: a case whose BanyanDB has no healthcheck
   (`service_started` only, e.g. the distroless `-plugins` image) lets the native OAP connect before
   BanyanDB listens, and it exits on `UNAVAILABLE`. Wrap the OAP entrypoint in `until nc -z ...`.

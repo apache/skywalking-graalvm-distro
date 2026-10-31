@@ -1761,7 +1761,12 @@ public class Precompiler {
             // AWS Firehose receiver: Jackson reads the request body and writes the response
             "org.apache.skywalking.oap.server.receiver.aws.firehose.FirehoseReq",
             "org.apache.skywalking.oap.server.receiver.aws.firehose.RequestData",
-            "org.apache.skywalking.oap.server.receiver.aws.firehose.FirehoseRes"
+            "org.apache.skywalking.oap.server.receiver.aws.firehose.FirehoseRes",
+            // UI template REST (/ui-management/templates): Jackson reads the request body and writes the answers.
+            // No longer GraphQL types, since upstream removed ui-configuration.graphqls in 11.0.0
+            "org.apache.skywalking.oap.server.core.query.input.DashboardSetting",
+            "org.apache.skywalking.oap.server.core.query.type.DashboardConfiguration",
+            "org.apache.skywalking.oap.server.core.query.type.TemplateChangeStatus"
         };
         for (String className : configPojos) {
             entries.add(fullAccessEntry(className));

@@ -29,6 +29,7 @@
 - Register the status module's `Debugging*Rsp` DTOs (trace, OTLP, Zipkin, log, MQE, topology): `/debugging/*` serializes them to YAML through Jackson, and none were covered — a pre-existing gap since the 11.0.0 relocation, plus the new OTLP debug-trace endpoints.
 - Bundle `ios-analyzer`: the distro never shipped it, so the iOS HTTP and MetricKit span listeners (SWIP-11, since 11.0.0) did not run and an iOS app's `service_cpm`, endpoint and instance traffic stayed empty; the iOS MAL and LAL rules worked, which hid the gap. Every other upstream `server-starter` dependency the distro leaves out is excluded by policy (other cluster, configuration and storage plugins, `runtime-rule`).
 - Reflection metadata for three JSON paths no e2e case reached: the admin `/status/cluster/nodes` answer (core `Address`, HTTP 500 without it), the `/status/alarm/*` answers (the `core.alarm.provider.status` classes Gson prints and parses, `{}` without them) and the AWS Firehose receiver's request and answer (`FirehoseReq`, `RequestData`, `FirehoseRes`; every post answered 400 without them).
+- Register the UI template REST bodies (`DashboardSetting`, `DashboardConfiguration`, `TemplateChangeStatus`) for reflection: they lost their metadata when upstream removed `ui-configuration.graphqls` in 11.0.0, so on 0.4.0 `POST` / `PUT /ui-management/templates` failed natively (`MissingReflectionRegistrationError` on the `DashboardSetting` constructor).
 
 ### Documentation
 
