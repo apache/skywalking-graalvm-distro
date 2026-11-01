@@ -19864,6 +19864,9 @@
       "glob": "query-protocol/*.graphqls"
     },
     {
+      "glob": "server-clusters.yml"
+    },
+    {
       "glob": "service-apdex-threshold.yml"
     },
     {

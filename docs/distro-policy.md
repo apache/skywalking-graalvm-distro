@@ -223,6 +223,7 @@ YAML parsing. No reflection involved — safe for GraalVM native image as-is.
 | `component-libraries.yml` | 1 | `ComponentLibraryCatalogService` via `ResourceUtils.read()` | Component ID mapping |
 | `endpoint-name-grouping.yml` | 1 | `EndpointNameGroupingRuleWatcher` via `ResourceUtils.read()` | Endpoint grouping rules |
 | `gateways.yml` | 1 | `UninstrumentedGatewaysConfig` via `ResourceUtils.read()` | Gateway definitions |
+| `server-clusters.yml` | 1 | `ServerClusterConfig` via `ResourceUtils.read()` | Brokers, databases and caches named as one cluster by the trace analyses (empty by default) |
 | `hierarchy-definition.yml` | 1 | `HierarchyDefinitionService` via `ResourceUtils.read()` | Layer hierarchy |
 | `metadata-service-mapping.yaml` | 1 | `ResourceUtils.read()` | Metadata service mapping |
 | `service-apdex-threshold.yml` | 1 | `ApdexThresholdConfig` via `ResourceUtils.read()` | APDEX thresholds |
@@ -232,7 +233,7 @@ YAML parsing. No reflection involved — safe for GraalVM native image as-is.
 | `cilium-rules/**` | 2 | `CiliumFetcherProvider` via `ResourceUtils.getPathFiles()` | Cilium flow rules |
 | `openapi-definitions/**` | 1 | `EndpointNameGrouping` via `ResourceUtils.getPathFiles()` | OpenAPI grouping definitions |
 
-**Total: 17 files** included in the distro `config/` directory. (Upstream 11.0.0 removed the
+**Total: 18 files** included in the distro `config/` directory. (Upstream 11.0.0 removed the
 bundled `ui-initialized-templates/` + `UITemplateInitializer`; dashboard templates are now managed
 via the `ui-management` REST surface.)
 

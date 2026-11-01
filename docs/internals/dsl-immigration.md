@@ -142,8 +142,8 @@ class compiled from exactly the inputs it is given. The files are installed in u
 `HashMap` `RuleSetMerger.merge` returns), which decides which rule runs first on a span. `TALPrecompileTest` compiles operator-style fixtures (every metric function, labeled metrics with a label
 limit, percentile buckets and ranks, alias and FQCN input/output types, a `.yml` file, a rules-less file declaring a
 layer another file uses) and the build failures; `TALDocScriptsTest` extracts the scripts of upstream's
-`tal.md` and of the gateway practice pages (`otlp-trace-practices/gateway-{overview,canary,nginx}.md`), splices
-each practice into a copy of the shipped file where the page says, compiles them through the same pass and runs the classes the manifest names against spans each practice is
+`tal.md` and of the practice pages (`otlp-trace-practices/gateway-{overview,canary,nginx}.md`, `database-and-cache.md`,
+`message-queue.md`), splices or substitutes each practice into a copy of the shipped file where the page says, compiles them through the same pass and runs the classes the manifest names against spans each practice is
 about.
 
 Generated class package: `org.apache.skywalking.oap.trace.analyzer.v2.compiler.rt.*`

@@ -43,13 +43,18 @@ import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.AcceptableValue;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.apdex.ApdexFunction;
 import org.apache.skywalking.oap.server.core.cache.NetworkAddressAliasCache;
+import org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder;
+import org.apache.skywalking.oap.server.configuration.api.ConfigChangeWatcher.ConfigChangeEvent;
+import org.apache.skywalking.oap.server.configuration.api.ConfigChangeWatcher.EventType;
 import org.apache.skywalking.oap.server.core.config.IComponentLibraryCatalogService;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
+import org.apache.skywalking.oap.server.core.config.ServerClusterConfig;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
 import org.apache.skywalking.oap.server.core.source.NetworkAddressAliasSetup;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
 import org.apache.skywalking.oap.server.core.trace.SpanMetadata;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
+import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.apache.skywalking.oap.server.library.module.ModuleProviderHolder;
 import org.apache.skywalking.oap.server.library.module.ModuleServiceHolder;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.ExecutionContext;
@@ -74,8 +79,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * The TAL scripts upstream's documentation gives operators, read from the docs as they are: the rule in
- * {@code tal.md} and the edits the gateway pages under {@code otlp-trace-practices/} tell you to make to your copy
- * of {@code otlp-general.yaml}, spliced where the page says. Each variant is compiled by the distro's own TAL pass, and
+ * {@code tal.md} and the edits the gateway, database and message queue pages under {@code otlp-trace-practices/}
+ * tell you to make to your copy of {@code otlp-general.yaml}, spliced or substituted where the page says. Each variant is compiled by the distro's own TAL pass, and
  * the class the manifest names is run against spans the practice is about, so a documented script that the
  * native distro cannot build, or that no longer does what its page says, fails here.
  */
@@ -87,11 +92,14 @@ class TALDocScriptsTest {
     private static final Path GATEWAY_MD = PRACTICES.resolve("gateway-overview.md");
     private static final Path CANARY_MD = PRACTICES.resolve("gateway-canary.md");
     private static final Path NGINX_MD = PRACTICES.resolve("gateway-nginx.md");
+    private static final Path DATABASE_MD = PRACTICES.resolve("database-and-cache.md");
+    private static final Path MQ_MD = PRACTICES.resolve("message-queue.md");
     private static final Path SHIPPED = SUBMODULE.resolve("oap-server/server-starter/src/main/resources/tal/otlp-general.yaml");
     private static final String DOCS = "tal-docs";
 
     private static final String CLIENT_ANCHOR = "if (peer && meta.kind == \"CLIENT\" && !isGateway(peer)";
     private static final String SERVER_ANCHOR = "if (meta.kind == \"SERVER\" || meta.kind == \"CONSUMER\") {";
+    private static final String KINDS_MARKER = "findServerClusterName(peer, system)";
 
     private static Path OUT;
     private static Properties MANIFEST;
@@ -102,6 +110,7 @@ class TALDocScriptsTest {
     private static List<String> SHIPPED_RULES;
     private static String CLIENT_RULE;
     private static String SERVER_RULE;
+    private static String SLOW_SQL_RULE;
 
     @BeforeAll
     static void compileTheDocumentedScripts() throws Exception {
@@ -128,6 +137,9 @@ class TALDocScriptsTest {
                 if (SERVER_RULE == null && dsl.contains(SERVER_ANCHOR)) {
                     SERVER_RULE = name;
                 }
+                if (SLOW_SQL_RULE == null && "SlowSQL".equals(rule.get("outputType"))) {
+                    SLOW_SQL_RULE = name;
+                }
             }
         }
 
@@ -141,7 +153,7 @@ class TALDocScriptsTest {
 
         final List<String> gatewayPeer = block(GATEWAY_MD, "hasAttr(\"<attribute>\")");
         write(docsDir, "practice-gateway-peer.yaml", spliceBefore(shipped,
-            "if (peer && isGateway(peer + \":80\")) {", fill(gatewayPeer, "<attribute>", "gateway.upstream")));
+            "if (peer && !renamed && isGateway(peer + \":80\")) {", fill(gatewayPeer, "<attribute>", "gateway.upstream")));
         write(docsDir, "practice-canary-gateway.yaml", spliceBefore(shipped,
             CLIENT_ANCHOR, fill(block(CANARY_MD, "meta.service == \"<gateway>\""), "<gateway>", "gateway")));
         write(docsDir, "practice-canary-router.yaml", spliceBefore(shipped,
@@ -160,6 +172,12 @@ class TALDocScriptsTest {
         }
         assertTrue(replaced, "the nginx practice no longer picks nginx by its service name");
         write(docsDir, "practice-nginx-by-tag.yaml", spliceAfter(shipped, SERVER_ANCHOR, nginxByTag));
+        // Both pages give the same three calls, to be changed together.
+        final List<String> kinds = block(DATABASE_MD, KINDS_MARKER);
+        assertEquals(kinds, block(MQ_MD, KINDS_MARKER), "the database and message queue pages edit the calls alike");
+        write(docsDir, "practice-cluster-kinds.yaml", substituteCalls(shipped, kinds));
+        // The file as shipped, the rule the pages' "without a kind" means.
+        write(docsDir, "otlp-general.yaml", shipped);
 
         OUT = Files.createTempDirectory("tal-docs-out");
         Files.createDirectories(OUT.resolve("META-INF"));
@@ -188,8 +206,9 @@ class TALDocScriptsTest {
         }
         // Every practice is an edit of your copy of the shipped file, so each variant carries all its rules.
         final List<String> expected = new ArrayList<>(List.of("tal/address-named-peers.yaml#address-named-peers"));
-        for (final String variant : List.of("practice-canary-gateway.yaml", "practice-canary-router.yaml",
-            "practice-gateway-peer.yaml", "practice-nginx-by-tag.yaml", "practice-nginx.yaml")) {
+        for (final String variant : List.of("otlp-general.yaml", "practice-canary-gateway.yaml",
+            "practice-canary-router.yaml", "practice-cluster-kinds.yaml", "practice-gateway-peer.yaml",
+            "practice-nginx-by-tag.yaml", "practice-nginx.yaml")) {
             SHIPPED_RULES.forEach(rule -> expected.add("tal/" + variant + "#" + rule));
         }
         expected.sort(null);
@@ -291,6 +310,100 @@ class TALDocScriptsTest {
             span("nginx", "SERVER", Map.of(), upstream)).getNetworkAliasPeer(), "picked by the tag, not the name");
     }
 
+    @Test
+    void kindsRenameADatabaseOrCacheClusterOnlyForItsOwnSystem() throws Exception {
+        final String clusters = String.join("\n", block(DATABASE_MD, "kinds: [postgresql]"));
+        final Map<String, String> postgres = Map.of("db.system.name", "postgresql",
+            "server.address", "pg-0.pg.db.svc.cluster.local", "server.port", "5432");
+        final Map<String, String> mysql = Map.of("db.system.name", "mysql",
+            "server.address", "pg-0.pg.db.svc.cluster.local", "server.port", "5432");
+        final Map<String, String> redis = Map.of("db.system.name", "redis",
+            "server.address", "redis-1.redis.cache.svc.cluster.local", "server.port", "6379");
+        final Map<String, String> postgresAtRedis = Map.of("db.system.name", "postgresql",
+            "server.address", "redis-1.redis.cache.svc.cluster.local", "server.port", "6379");
+
+        assertEquals("orders-db", clientDest("practice-cluster-kinds.yaml", clusters, postgres));
+        assertEquals("pg-0.pg.db.svc.cluster.local:5432", clientDest("practice-cluster-kinds.yaml", clusters, mysql),
+            "a postgresql cluster is not a mysql client's");
+        assertEquals("session-cache", clientDest("practice-cluster-kinds.yaml", clusters, redis));
+        assertEquals("redis-1.redis.cache.svc.cluster.local:6379",
+            clientDest("practice-cluster-kinds.yaml", clusters, postgresAtRedis));
+        assertEquals("orders-db", clientDest("otlp-general.yaml", clusters, mysql),
+            "the shipped rule asks without a kind, so any system's client is renamed");
+
+        final Map<String, String> slow = new HashMap<>(postgres);
+        slow.put("db.query.text", "SELECT * FROM orders");
+        assertEquals("orders-db", slowStatementService("practice-cluster-kinds.yaml", clusters, slow),
+            "the slow statement is filed under the node the topology draws");
+        final Map<String, String> slowMysql = new HashMap<>(mysql);
+        slowMysql.put("db.query.text", "SELECT * FROM orders");
+        assertEquals("pg-0.pg.db.svc.cluster.local:5432",
+            slowStatementService("practice-cluster-kinds.yaml", clusters, slowMysql));
+    }
+
+    @Test
+    void kindsRenameABrokerClusterOnlyForItsOwnSystem() throws Exception {
+        final String clusters = String.join("\n", block(MQ_MD, "kinds: [kafka]"));
+        final Map<String, String> kafka = Map.of("messaging.system.name", "kafka",
+            "server.address", "kafka.prod.svc.cluster.local", "server.port", "9092");
+        final Map<String, String> rabbit = Map.of("messaging.system", "rabbitmq",
+            "server.address", "kafka.prod.svc.cluster.local", "server.port", "9092");
+
+        assertEquals("kafka-prod", consumerBroker("practice-cluster-kinds.yaml", clusters, kafka));
+        assertEquals("kafka.prod.svc.cluster.local:9092", consumerBroker("practice-cluster-kinds.yaml", clusters, rabbit),
+            "a kafka cluster is not a rabbitmq consumer's");
+        assertEquals("kafka-prod", consumerBroker("otlp-general.yaml", clusters, rabbit));
+
+        final Harness producer = new Harness(clusters);
+        producer.run("practice-cluster-kinds.yaml", CLIENT_RULE, span("orders", "PRODUCER", Map.of(), kafka));
+        assertTrue(producer.accepted.contains("otlp_service_relation_client_cpm SERVICE_RELATION src=orders "
+            + "dest=kafka-prod value=1"), "the producer's side meets the consumer's at the cluster: " + producer.accepted);
+    }
+
+    /**
+     * @return the peer the rule draws a CLIENT span's call to
+     */
+    private static String clientDest(final String file, final String clusters,
+                                     final Map<String, String> attributes) throws Exception {
+        final Harness h = new Harness(clusters);
+        h.run(file, CLIENT_RULE, span("checkout", "CLIENT", Map.of(), attributes));
+        return relationEnd(h, "otlp_service_relation_client_cpm SERVICE_RELATION src=checkout dest=", true);
+    }
+
+    /**
+     * @return the broker the rule draws a CONSUMER span's message from
+     */
+    private static String consumerBroker(final String file, final String clusters,
+                                         final Map<String, String> attributes) throws Exception {
+        final Harness h = new Harness(clusters);
+        h.run(file, SERVER_RULE, span("shipping", "CONSUMER", Map.of(), attributes));
+        return relationEnd(h, "otlp_service_relation_server_cpm SERVICE_RELATION src=", false);
+    }
+
+    private static String relationEnd(final Harness h, final String prefix, final boolean dest) {
+        for (final String a : h.accepted) {
+            if (a.startsWith(prefix)) {
+                final String rest = a.substring(prefix.length());
+                return dest ? rest.substring(0, rest.indexOf(' ')) : rest.substring(0, rest.indexOf(" dest="));
+            }
+        }
+        throw new AssertionError("no " + prefix + " in " + h.accepted);
+    }
+
+    private static String slowStatementService(final String file, final String clusters,
+                                               final Map<String, String> attributes) throws Exception {
+        final Harness h = new Harness(clusters);
+        final AnalyzedSpan statement = span("checkout", "CLIENT", Map.of(), attributes, "b7ad6b7169203331",
+            "00f067aa0ba902b7", 350);
+        final ExecutionContext ctx = h.run(file, SLOW_SQL_RULE, statement);
+        assertFalse(ctx.isAborted(), "a 350 ms statement is slow");
+        assertTrue(ctx.isSinkKept(), "the rule's sink keeps the record");
+        // TraceAnalyzerServiceImpl#writeRecord fills the record from the metadata the rule's `service` set.
+        final DatabaseSlowStatementBuilder record = (DatabaseSlowStatementBuilder) ctx.outputAsBuilder();
+        record.init(ctx.getMeta(), statement.span, h.filterSpec.getModuleManager());
+        return record.getServiceName();
+    }
+
     private static final class AnalyzedSpan {
         private final SpanMetadata meta;
         private final Span span;
@@ -305,7 +418,7 @@ class TALDocScriptsTest {
 
     /**
      * One OAP's view: the classes the manifest names, run as {@code TraceAnalyzerServiceImpl} runs them, with the
-     * pairing, the gateways list, every value a metric accepts and every alias row written.
+     * pairing, the gateways list, the server clusters, every value a metric accepts and every alias row written.
      */
     private static final class Harness {
         private final List<String> accepted = new ArrayList<>();
@@ -315,6 +428,13 @@ class TALDocScriptsTest {
         private final FilterSpec filterSpec;
 
         private Harness() {
+            this("");
+        }
+
+        /**
+         * @param clusters the content of {@code server-clusters.yml}, as the dynamic configuration delivers it
+         */
+        private Harness(final String clusters) {
             final MeterSystem meterSystem = mock(MeterSystem.class);
             when(meterSystem.buildMetrics(anyString(), any())).thenAnswer(invocation -> {
                 final String metric = invocation.getArgument(0);
@@ -340,8 +460,10 @@ class TALDocScriptsTest {
                 }
                 return null;
             }).when(sourceReceiver).receive(any());
-            filterSpec = new FilterSpec(moduleManager(), new TraceAnalyzerModuleConfig(), meterSystem, namingControl,
-                sourceReceiver);
+            final ServerClusterConfig serverClusters = new ServerClusterConfig(mock(ModuleProvider.class), 70);
+            serverClusters.notify(new ConfigChangeEvent(clusters, EventType.MODIFY));
+            filterSpec = new FilterSpec(moduleManager(serverClusters, namingControl), new TraceAnalyzerModuleConfig(),
+                meterSystem, namingControl, sourceReceiver);
             filterSpec.getSpanPairing().getAliasRegistrar().setGateways(gateways::contains);
         }
 
@@ -385,12 +507,15 @@ class TALDocScriptsTest {
         throw new AssertionError("no " + rule + " compiled from " + file);
     }
 
-    private static ModuleManager moduleManager() {
+    private static ModuleManager moduleManager(final ServerClusterConfig serverClusters,
+                                               final NamingControl namingControl) {
         final IComponentLibraryCatalogService catalog = mock(IComponentLibraryCatalogService.class);
         when(catalog.getComponentIdIgnoreCase(anyString())).thenReturn(49);
         final ModuleServiceHolder core = mock(ModuleServiceHolder.class);
         when(core.getService(IComponentLibraryCatalogService.class)).thenReturn(catalog);
         when(core.getService(NetworkAddressAliasCache.class)).thenReturn(mock(NetworkAddressAliasCache.class));
+        when(core.getService(ServerClusterConfig.class)).thenReturn(serverClusters);
+        when(core.getService(NamingControl.class)).thenReturn(namingControl);
         final ModuleProviderHolder coreModule = mock(ModuleProviderHolder.class);
         when(coreModule.provider()).thenReturn(core);
         final ModuleManager moduleManager = mock(ModuleManager.class);
@@ -406,8 +531,14 @@ class TALDocScriptsTest {
     private static AnalyzedSpan span(final String service, final String kind, final Map<String, String> resource,
                                      final Map<String, String> attributes, final String spanId,
                                      final String parentSpanId) {
+        return span(service, kind, resource, attributes, spanId, parentSpanId, 50);
+    }
+
+    private static AnalyzedSpan span(final String service, final String kind, final Map<String, String> resource,
+                                     final Map<String, String> attributes, final String spanId,
+                                     final String parentSpanId, final int latencyMillis) {
         final Span.Builder span = Span.newBuilder().setName("GET /").setStartTimeUnixNano(1_700_000_000_000_000_000L)
-                                      .setEndTimeUnixNano(1_700_000_000_050_000_000L);
+                                      .setEndTimeUnixNano(1_700_000_000_000_000_000L + latencyMillis * 1_000_000L);
         attributes.forEach((k, v) -> span.addAttributes(
             KeyValue.newBuilder().setKey(k).setValue(AnyValue.newBuilder().setStringValue(v))));
         final Map<String, String> resourceTags = new HashMap<>(resource);
@@ -416,7 +547,7 @@ class TALDocScriptsTest {
         final SpanMetadata meta = SpanMetadata.builder()
             .service(service).serviceInstance("").endpoint("GET /").layer("OTLP_GENERAL")
             .kind(kind).statusCode("UNSET").statusMessage("")
-            .startTime(1_700_000_000_000L).timestamp(1_700_000_000_050L).latency(50)
+            .startTime(1_700_000_000_000L).timestamp(1_700_000_000_000L + latencyMillis).latency(latencyMillis)
             .traceId("0af7651916cd43dd8448eb211c80319c").spanId(spanId)
             .parentSpanId(parentSpanId).root(parentSpanId.isEmpty())
             .parentLocation(parentSpanId.isEmpty() ? SpanMetadata.PARENT_UNKNOWN : SpanMetadata.PARENT_REMOTE)
@@ -495,6 +626,34 @@ class TALDocScriptsTest {
         final List<String> result = new ArrayList<>(file.subList(0, at + 1));
         result.add(indent(snippet, prefix));
         result.addAll(file.subList(at + 1, file.size()));
+        return result;
+    }
+
+    /**
+     * The edit the database and message queue pages give: each {@code def cluster = findServerClusterName(x, ...)}
+     * line replaces the shipped file's next {@code def cluster = findServerClusterName(x)}, in the order the page
+     * lists them, and none of the shipped calls is left without a kind.
+     */
+    private static List<String> substituteCalls(final List<String> file, final List<String> calls) {
+        final Pattern call = Pattern.compile("def cluster = findServerClusterName\\((\\w+), .+\\)");
+        final List<String> result = new ArrayList<>(file);
+        int from = 0;
+        int substituted = 0;
+        for (final String line : calls) {
+            final Matcher m = call.matcher(line.trim());
+            if (!m.matches()) {
+                continue;
+            }
+            final String shippedCall = "def cluster = findServerClusterName(" + m.group(1) + ")";
+            final int at = indexOf(result.subList(from, result.size()), shippedCall) + from;
+            final String prefix = result.get(at).substring(0, result.get(at).length() - result.get(at).stripLeading().length());
+            result.set(at, prefix + line.trim());
+            from = at + 1;
+            substituted++;
+        }
+        assertEquals(3, substituted, "the pages give the three calls of the shipped file");
+        assertTrue(result.stream().noneMatch(l -> l.trim().matches("def cluster = findServerClusterName\\(\\w+\\)")),
+            "every shipped call takes the kind: " + result);
         return result;
     }
 
