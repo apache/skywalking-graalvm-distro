@@ -76,11 +76,20 @@ verify:
         oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
         docker exec $oap bash -c '[ -e /tmp/trust-new ] || { cp /tls-new/new-ca.crt /tmp/bydb-ca.next && mv /tmp/bydb-ca.next /tmp/bydb-ca.crt && touch /tmp/trust-new; }'
         [ "$(docker logs $oap 2>&1 | grep -Fc 'Rebuilt the BanyanDB channel')" -ge 3 ] \
+          && docker exec $oap bash -c '[ -e /tmp/trust-new-at ] || date +%s > /tmp/trust-new-at' \
           && echo trust-new
       expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/ca-rotation/expected/trust-new.yml
 
     - includes:
         - ../../../../skywalking/test/e2e-v2/cases/storage/storage-cases.yaml
+
+    # Only minutes after the new-CA-only rebuild's, which hold no row written before it: proves the
+    # writes went over that channel.
+    - query: |
+        oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
+        start=$(docker exec $oap bash -c 'date -d @$(( $(cat /tmp/trust-new-at) + 60 )) "+%Y-%m-%d %H%M"') \
+          && swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql dependency service --service-name=e2e-service-provider --start "$start"
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/expected/dependency-services-provider.yml
 
     - query: |
         oap=$(docker ps -q --filter label=com.docker.compose.service=oap)

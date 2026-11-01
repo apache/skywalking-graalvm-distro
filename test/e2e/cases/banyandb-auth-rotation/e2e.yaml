@@ -49,6 +49,9 @@ verify:
     - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql service layer GENERAL
       expected: ../../../../skywalking/test/e2e-v2/cases/storage/expected/service.yml
 
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql dependency service --service-name=e2e-service-provider
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/expected/dependency-services-provider.yml
+
     - query: |
         oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
         docker exec $oap bash -c 'printf "user=test\npassword=test\n" > /tmp/bydb-secrets.properties'
@@ -70,8 +73,16 @@ verify:
         docker exec $oap bash -c 'printf "user=admin\npassword=admin\n" > /tmp/bydb-secrets.properties'
         docker logs $oap 2>&1 \
           | grep -Fq "Applied the BanyanDB credentials reloaded from /tmp/bydb-secrets.properties, user=admin" \
+          && docker exec $oap bash -c '[ -e /tmp/restored-at ] || date +%s > /tmp/restored-at' \
           && echo credentials-restored
       expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/auth-rotation/expected/credentials-restored.yml
 
     - includes:
         - ../../../../skywalking/test/e2e-v2/cases/storage/storage-cases.yaml
+
+    # Only minutes after the restore's, which hold no row written before it: proves the writes resumed.
+    - query: |
+        oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
+        start=$(docker exec $oap bash -c 'date -d @$(( $(cat /tmp/restored-at) + 60 )) "+%Y-%m-%d %H%M"') \
+          && swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql dependency service --service-name=e2e-service-provider --start "$start"
+      expected: ../../../../skywalking/test/e2e-v2/cases/storage/expected/dependency-services-provider.yml
