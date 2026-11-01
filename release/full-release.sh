@@ -21,7 +21,7 @@
 # Flow:
 #   1. Validate prerequisites (tools, GPG, branch, working tree)
 #   2. Run pre-release.sh (bump version, tag, bump to next SNAPSHOT)
-#   3. Move snapshot commit to a PR branch, push tag + PR
+#   3. Push the tag and the release branch, open its PR to main
 #   4. Poll CI until tag build is green
 #   5. Run release.sh (macOS build, sign, SVN upload, vote email)
 
