@@ -38,7 +38,7 @@ Prerequisites:
 
 What this script does:
   1. Creates a clean source tarball from git tag (not local working tree)
-  2. Builds macOS arm64 (Apple Silicon) native binary locally
+  2. Builds macOS arm64 (Apple Silicon) native binary from a copy of that tag clone
   3. Uploads darwin-arm64 tarball to GitHub Release page
   4. Downloads Linux binary tarballs from GitHub Release
   5. Signs all tarballs with GPG and generates SHA-512 checksums
@@ -48,6 +48,7 @@ Directory structure:
   ${RELEASE_DIR}/
     tmp/                    Temporary work (cleaned at end)
       src-clone/            Git clone from tag (deleted after source tarball)
+      build-clone/          Copy of the clone the macOS binary is built in (deleted after the build)
       download/             Downloaded CI artifacts
     dist/                   Final release artifacts
       ${ARTIFACT_PREFIX}-<version>-src.tar.gz{,.asc,.sha512}
@@ -68,6 +69,18 @@ sign_and_checksum() {
     gpg --armor --detach-sign "${file}"
     log "Generating SHA-512 checksum for ${file}..."
     (cd "$(dirname "${file}")" && shasum -a 512 "$(basename "${file}")" > "$(basename "${file}").sha512")
+}
+
+# Whether an SVN URL exists. Only SVN's "non-existent" answer means no; any other failure
+# (credentials, network) aborts instead of being read as a missing path.
+svn_exists() {
+    local out
+    if out=$(svn info "$1" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive 2>&1); then
+        return 0
+    fi
+    grep -q "W170000" <<<"${out}" && return 1
+    error "svn info $1 failed:
+${out}"
 }
 
 # ─── Validate arguments ─────────────────────────────────────────────────────
@@ -124,23 +137,24 @@ log "GPG signing verified"
 echo ""
 
 # Verify tag exists locally
-git rev-parse "${TAG}" >/dev/null 2>&1 \
+git -C "${REPO_ROOT}" rev-parse "${TAG}" >/dev/null 2>&1 \
     || error "Tag ${TAG} not found locally. Run: git fetch --tags"
+TAG_COMMIT=$(git -C "${REPO_ROOT}" rev-parse "${TAG}^{commit}")
 
 # Verify GitHub Release exists
 gh release view "${TAG}" --repo "${REPO}" >/dev/null 2>&1 \
     || error "GitHub Release for ${TAG} not found. Run the CI release workflow first."
 
-# Verify changes/changes.md contains a section for this version
-CHANGES_FILE="${REPO_ROOT}/changes/changes.md"
-[[ -f "${CHANGES_FILE}" ]] || error "changes/changes.md not found"
-if ! grep -q "^## ${VERSION}$" "${CHANGES_FILE}"; then
-    error "changes/changes.md does not contain a '## ${VERSION}' section. Add release notes before releasing."
+# Verify the tag's changes/changes.md contains a section for this version
+CHANGES=$(git -C "${REPO_ROOT}" show "${TAG}:changes/changes.md" 2>/dev/null) \
+    || error "changes/changes.md not found at ${TAG}"
+if ! grep -q "^## ${VERSION}$" <<<"${CHANGES}"; then
+    error "changes/changes.md at ${TAG} does not contain a '## ${VERSION}' section. Add release notes before releasing."
 fi
 # Verify the section has content (at least one non-empty line before next ## or EOF)
-SECTION_CONTENT=$(sed -n "/^## ${VERSION}$/,/^## /p" "${CHANGES_FILE}" | sed '1d;/^## /d' | grep -v '^$' | head -1)
+SECTION_CONTENT=$(sed -n "/^## ${VERSION}$/,/^## /p" <<<"${CHANGES}" | sed '1d;/^## /d' | grep -v '^$' | head -1)
 [[ -n "${SECTION_CONTENT}" ]] \
-    || error "changes/changes.md has a '## ${VERSION}' section but it is empty. Add release notes."
+    || error "changes/changes.md at ${TAG} has a '## ${VERSION}' section but it is empty. Add release notes."
 log "changes/changes.md: found release notes for ${VERSION}"
 
 # ─── Step 1: Prepare release directory ────────────────────────────────────────
@@ -161,6 +175,16 @@ SRC_CLONE_DIR="${TMP_DIR}/src-clone"
 # Clone from remote at the release tag (not local working tree)
 git clone --branch "${TAG}" --recurse-submodules \
     "https://github.com/${REPO}.git" "${SRC_CLONE_DIR}"
+CLONE_COMMIT=$(git -C "${SRC_CLONE_DIR}" rev-parse HEAD)
+[[ "${CLONE_COMMIT}" == "${TAG_COMMIT}" ]] \
+    || error "Tag ${TAG} is ${CLONE_COMMIT} on GitHub but ${TAG_COMMIT} locally. Fetch the tags and re-run."
+
+# The macOS binary is built from a copy of this clone, so it holds the tag's code and upstream
+# submodule rather than the working checkout's, which pre-release.sh leaves on unchanged main and
+# its SNAPSHOT version.
+BUILD_DIR="${TMP_DIR}/build-clone"
+trap 'rm -rf "${BUILD_DIR}"' EXIT
+cp -a "${SRC_CLONE_DIR}" "${BUILD_DIR}"
 
 # Pre-generate version.properties before removing .git (no git in source tarball)
 SRC_SW_COMMIT=$(git -C "${SRC_CLONE_DIR}/skywalking" rev-parse HEAD)
@@ -196,12 +220,19 @@ rm -rf "${SRC_CLONE_DIR}"
 log "Source package created: dist/${SRC_TARBALL}"
 
 # ─── Step 3: Build darwin-arm64 native binary ─────────────────────────────────
-log "Building macOS arm64 (Apple Silicon) native binary..."
-(cd "${REPO_ROOT}" && make native-image)
+log "Building macOS arm64 (Apple Silicon) native binary from tag ${TAG}..."
+# As the CI release build does, the tag's upstream submodule is installed into the local Maven
+# repository first, so the binary is not linked against upstream jars of another sync. Two make
+# runs, as the targets do not depend on each other and a parallel make would overlap them.
+echo "  This installs ${TAG}'s upstream artifacts into the local Maven repository; run"
+echo "  'make init-skywalking' in your checkout before building it again."
+(cd "${BUILD_DIR}" && make init-skywalking && make native-image)
 
-NATIVE_SRC=$(ls "${REPO_ROOT}"/oap-graalvm-native/target/oap-graalvm-native-*-native-dist.tar.gz)
+NATIVE_SRC="${BUILD_DIR}/oap-graalvm-native/target/oap-graalvm-native-${VERSION}-native-dist.tar.gz"
+[[ -f "${NATIVE_SRC}" ]] || error "The native build did not produce ${NATIVE_SRC}"
 DARWIN_TARBALL="${ARTIFACT_PREFIX}-${VERSION}-darwin-arm64.tar.gz"
 cp "${NATIVE_SRC}" "${DIST_DIR}/${DARWIN_TARBALL}"
+rm -rf "${BUILD_DIR}"
 
 log "darwin-arm64 tarball created: dist/${DARWIN_TARBALL}"
 
@@ -278,7 +309,7 @@ SVN_CHECKOUT_DIR="${SCRIPT_DIR}/${RELEASE_DIR}/svn-checkout"
 mkdir -p "${SVN_CHECKOUT_DIR}"
 
 # Create the parent directory in SVN if it does not exist yet
-if ! svn info "${SVN_DEV_BASE}" --username "${SVN_USER}" --password "${SVN_PASS}" --non-interactive >/dev/null 2>&1; then
+if ! svn_exists "${SVN_DEV_BASE}"; then
     log "SVN directory ${SVN_DEV_BASE} does not exist, creating..."
     svn mkdir "${SVN_DEV_BASE}" \
         -m "Create graalvm-distro directory for release staging" \
@@ -313,7 +344,7 @@ rm -rf "${SVN_CHECKOUT_DIR}"
 # ─── Step 9: Generate vote email ─────────────────────────────────────────────
 log "Generating vote email..."
 
-COMMIT_ID=$(git rev-parse "${TAG}")
+COMMIT_ID="${TAG_COMMIT}"
 
 # Collect submodule commit IDs
 SKYWALKING_COMMIT=$(git -C "${REPO_ROOT}" ls-tree "${TAG}" skywalking | awk '{print $3}')
@@ -393,6 +424,9 @@ cat "${MAIL_FILE}"
 echo "========================================="
 echo ""
 echo "Vote email saved to: ${MAIL_FILE}"
+echo ""
+echo "The local Maven repository now holds the upstream artifacts of ${TAG}'s submodule."
+echo "Run 'make init-skywalking' in your checkout before building it again."
 echo ""
 echo "Next step:"
 echo "  Send the above email to dev@skywalking.apache.org"

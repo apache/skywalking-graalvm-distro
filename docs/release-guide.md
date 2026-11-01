@@ -125,9 +125,9 @@ The script performs these steps in order:
 
 | Step | What | Notes |
 |------|------|-------|
-| Pre-flight | Verify GPG key, git tag, GitHub Release exist | Aborts early if anything is missing |
-| Source tarball | Clone from tag, strip `.git`/binaries, create `*-src.tar.gz` | Clean clone from GitHub, not local tree |
-| macOS build | `make native-image` locally | Requires GraalVM JDK 25 on macOS |
+| Pre-flight | Verify GPG key, git tag, GitHub Release, and the tag's `changes/changes.md` section exist | Aborts early if anything is missing |
+| Source tarball | Clone from tag, strip `.git`/binaries, create `*-src.tar.gz` | Clean clone from GitHub, not local tree; aborts if the GitHub tag is not the local one |
+| macOS build | `make init-skywalking`, then `make native-image`, in a copy of the tag clone | Requires GraalVM JDK 25 on macOS. Builds the tag's code and upstream submodule, as the CI release build does, not your checkout's; it reinstalls the tag's upstream artifacts in `~/.m2` |
 | Upload macOS | Push darwin-arm64 tarball to GitHub Release | Via `gh release upload` |
 | Download Linux | Pull linux-amd64/arm64 tarballs from GitHub Release | Verifies SHA-512 checksums |
 | GPG sign | Sign all 4 tarballs, generate SHA-512 | Uses `@apache.org` GPG key |
