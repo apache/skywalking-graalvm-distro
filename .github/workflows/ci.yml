@@ -475,7 +475,7 @@ jobs:
             package -DskipTests -Dmaven.javadoc.skip
 
       - name: Run E2E test
-        uses: apache/skywalking-infra-e2e@68bbdec303cf2d3df9f2353f970f91938b52f674
+        uses: apache/skywalking-infra-e2e@56ac8befeb5f910f2dc9339e65d07cd18953f90e
         with:
           e2e-file: $GITHUB_WORKSPACE/test/e2e/cases/${{ matrix.test.case }}/e2e.yaml
 

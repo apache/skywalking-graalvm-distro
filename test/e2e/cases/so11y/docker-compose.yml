@@ -40,6 +40,8 @@ services:
       SW_CONFIGURATION: none
       SW_PROMETHEUS_FETCHER: default
       SW_TELEMETRY: prometheus
+    volumes:
+      - ../../../../skywalking/test/e2e-v2/cases/so11y/alarm-settings.yml:/skywalking/config/alarm-settings.yml
     depends_on:
       banyandb:
         condition: service_healthy

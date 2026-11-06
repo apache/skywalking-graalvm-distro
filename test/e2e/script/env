@@ -28,7 +28,7 @@ SW_AI_SESSIONIZER_COMMIT=aa67971da10c82ef5b840524c9349c6a9510fbe3
 SW_UPSTREAM_COMMIT=f79451d3de23edb15277f5b6e315dc6779e73e1f
 
 # Last upstream commit that touched test/e2e-v2/java-test-service/ (image must be published)
-SW_E2E_SERVICE_COMMIT=f115aa7c0f4ccec09c044f9cdfd2f06ec4bc284f
+SW_E2E_SERVICE_COMMIT=208cf572830506ef59c6c5681e66bea8521c64a6
 
 # OTEL collector version for infrastructure monitoring tests
 OTEL_COLLECTOR_VERSION=0.102.1
