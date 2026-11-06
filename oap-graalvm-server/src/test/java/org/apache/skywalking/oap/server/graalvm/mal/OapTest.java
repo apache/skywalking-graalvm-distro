@@ -147,6 +147,12 @@ class OapTest extends MALScriptComparisonBase {
      * # --- Storage Write Latency ---
      * elasticsearch_write_latency{...le buckets...,operation="index"} histogram
      * banyandb_write_latency{...le buckets...,catalog="stream",operation="write"} histogram
+     *
+     * # --- Alarm HTTP hook delivery ---
+     * alarm_http_delivery_total{...,hook_type="webhook",result="success"} 30.0
+     * alarm_http_delivery_total{...,hook_type="webhook",result="timeout"} 2.0
+     * alarm_http_delivery_status_total{...,hook_type="webhook",status_class="2xx"} 30.0
+     * alarm_http_delivery_latency_seconds{...le buckets...,hook_type="webhook"} histogram
      * </pre>
      */
     private static ImmutableMap<String, SampleFamily> buildInput(
@@ -415,6 +421,40 @@ class OapTest extends MALScriptComparisonBase {
                         .put("catalog", "stream")
                         .put("operation", "write")
                         .build(),
+                    scale, timestamp))
+
+            // --- Alarm HTTP hook delivery ---
+            .put("alarm_http_delivery_total",
+                SampleFamilyBuilder.newBuilder(
+                    Sample.builder().name("alarm_http_delivery_total")
+                        .labels(ImmutableMap.<String, String>builder()
+                            .putAll(scope)
+                            .put("hook_type", "webhook")
+                            .put("result", "success")
+                            .build())
+                        .value(30.0 * scale).timestamp(timestamp).build(),
+                    Sample.builder().name("alarm_http_delivery_total")
+                        .labels(ImmutableMap.<String, String>builder()
+                            .putAll(scope)
+                            .put("hook_type", "webhook")
+                            .put("result", "timeout")
+                            .build())
+                        .value(2.0 * scale).timestamp(timestamp).build()
+                ).build())
+            .put("alarm_http_delivery_status_total",
+                SampleFamilyBuilder.newBuilder(
+                    Sample.builder().name("alarm_http_delivery_status_total")
+                        .labels(ImmutableMap.<String, String>builder()
+                            .putAll(scope)
+                            .put("hook_type", "webhook")
+                            .put("status_class", "2xx")
+                            .build())
+                        .value(30.0 * scale).timestamp(timestamp).build()
+                ).build())
+            .put("alarm_http_delivery_latency_seconds",
+                histogramSamples("alarm_http_delivery_latency_seconds",
+                    ImmutableMap.<String, String>builder()
+                        .putAll(scope).put("hook_type", "webhook").build(),
                     scale, timestamp))
 
             .build();
