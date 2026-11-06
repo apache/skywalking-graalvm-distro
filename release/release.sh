@@ -215,8 +215,9 @@ find "${SRC_CLONE_DIR}" -name "*.class" -delete 2>/dev/null || true
 find "${SRC_CLONE_DIR}" -name ".DS_Store" -delete 2>/dev/null || true
 rm -rf "${SRC_CLONE_DIR}/.idea" "${SRC_CLONE_DIR}/.vscode" "${SRC_CLONE_DIR}/.claude"
 
-# Create tarball from clean source
-tar -czf "${DIST_DIR}/${SRC_TARBALL}" \
+# Create tarball from clean source. macOS tar would otherwise add a ._ AppleDouble entry and a
+# com.apple.provenance xattr header for every file, which GNU tar extracts and warns about.
+tar --no-mac-metadata --no-xattrs -czf "${DIST_DIR}/${SRC_TARBALL}" \
     -C "${TMP_DIR}" \
     -s "/^src-clone/${ARTIFACT_PREFIX}-${VERSION}-src/" \
     src-clone
