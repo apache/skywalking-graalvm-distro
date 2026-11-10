@@ -1,5 +1,11 @@
 # Changes
 
+## 0.6.0
+
+### Documentation
+
+- Move the `version-mapping.md` dev row to `0.6.0-SNAPSHOT` and add `0.5.0` → `11.1.0`.
+
 ## 0.5.0
 
 ### Upstream Sync
