@@ -72,9 +72,8 @@
             </includes>
         </fileSet>
         <!-- config/ — upstream resource files loaded at runtime.
-             OAL/MAL/LAL scripts are NOT included — they are pre-compiled at build time
-             and loaded from manifests + pre-compiled .class files in JARs.
-             Only runtime config files (loaded via ResourceUtils.read()) are packaged.
+             No rule files: the rules are compiled at build time into the generated rule registry, and a rule file
+             under config/ fails the boot. Only runtime config files (loaded via ResourceUtils.read()) are packaged.
              log4j2.xml and alarm-settings.yml come from dist-material above. -->
         <fileSet>
             <directory>${project.basedir}/../skywalking/oap-server/server-starter/src/main/resources</directory>
@@ -95,8 +94,6 @@
                 <include>gateways.yml</include>
                 <!-- Server clusters (loaded by ServerClusterConfig) -->
                 <include>server-clusters.yml</include>
-                <!-- Hierarchy definitions (loaded by HierarchyDefinitionService) -->
-                <include>hierarchy-definition.yml</include>
                 <!-- Metadata service mapping -->
                 <include>metadata-service-mapping.yaml</include>
                 <!-- APDEX thresholds (loaded by ApdexThresholdConfig) -->
@@ -139,6 +136,7 @@
                 <exclude>org.apache.skywalking:agent-analyzer</exclude>
                 <exclude>org.apache.skywalking:envoy-metrics-receiver-plugin</exclude>
                 <exclude>org.apache.skywalking:otel-receiver-plugin</exclude>
+                <exclude>org.apache.skywalking:skywalking-zabbix-receiver-plugin</exclude>
                 <exclude>org.apache.skywalking:skywalking-ebpf-receiver-plugin</exclude>
                 <exclude>org.apache.skywalking:aws-firehose-receiver</exclude>
                 <exclude>org.apache.skywalking:cilium-fetcher-plugin</exclude>

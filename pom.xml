@@ -480,6 +480,11 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
+                <artifactId>zabbix-receiver-for-graalvm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
                 <artifactId>ebpf-receiver-for-graalvm</artifactId>
                 <version>${project.version}</version>
             </dependency>

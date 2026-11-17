@@ -44,6 +44,20 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
+        <!-- CompiledRules, the generated rule registry: on the runtime classpath through the server -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>precompiler</artifactId>
+            <version>${project.version}</version>
+            <classifier>generated</classifier>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
     </dependencies>
 
     <build>

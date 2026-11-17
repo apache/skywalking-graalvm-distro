@@ -38,6 +38,7 @@ import org.apache.skywalking.oap.server.core.analysis.meter.function.LabeledValu
 import org.apache.skywalking.oap.server.core.analysis.metrics.Metrics;
 import org.apache.skywalking.oap.server.core.analysis.worker.MetricsStreamProcessor;
 import org.apache.skywalking.oap.server.core.storage.StorageException;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.Service;
 
@@ -47,7 +48,8 @@ import org.apache.skywalking.oap.server.library.module.Service;
  * Repackaged into server-core-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
  *
  * Change: Complete rewrite. Loads @MeterFunction classes from META-INF/annotation-scan/MeterFunction.txt manifest
- * instead of Guava ClassPath.from(). Loads pre-generated meter classes from classpath instead of Javassist.
+ * instead of Guava ClassPath.from(). Takes the meter classes the precompiler generated from the generated
+ * CompiledRules registry instead of generating them with Javassist.
  * Why: Guava ClassPath scanning and Javassist runtime code generation are incompatible with GraalVM native image.
  */
 @Slf4j
@@ -181,12 +183,17 @@ public class MeterSystem implements Service {
                 "Function " + functionName + " doesn't inherit from Metrics.");
         }
 
-        // Load pre-generated meter class from classpath (built by Precompiler)
+        // The meter class the precompiler generated, from the generated rule registry
         final String className = METER_CLASS_PACKAGE + formatName(metricsName);
+        final Class<?> generated = CompiledRules.meterClasses().get(className);
+        if (generated == null) {
+            throw new UnexpectedException(
+                "Pre-generated meter class not found: " + className
+                    + ". Ensure the precompiler generated this class at build time.");
+        }
         try {
             @SuppressWarnings("unchecked")
-            Class<? extends Metrics> targetClass =
-                (Class<? extends Metrics>) Class.forName(className);
+            Class<? extends Metrics> targetClass = (Class<? extends Metrics>) generated;
             AcceptableValue prototype = (AcceptableValue) targetClass.getDeclaredConstructor().newInstance();
             meterPrototypes.put(metricsName, new MeterDefinition(type, prototype, dataType));
 
@@ -198,10 +205,6 @@ public class MeterSystem implements Service {
                     metricsName, type.getScopeId(), prototype.builder(), MetricsStreamProcessor.class),
                 targetClass
             );
-        } catch (ClassNotFoundException e) {
-            throw new UnexpectedException(
-                "Pre-generated meter class not found: " + className
-                    + ". Ensure the precompiler generated this class at build time.", e);
         } catch (StorageException | ReflectiveOperationException e) {
             log.error("Can't load/init pre-generated meter class: {}", className, e);
             throw new UnexpectedException(e.getMessage(), e);

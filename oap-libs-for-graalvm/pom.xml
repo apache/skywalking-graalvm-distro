@@ -43,6 +43,7 @@
         <module>agent-analyzer-for-graalvm</module>
         <module>envoy-metrics-receiver-for-graalvm</module>
         <module>otel-receiver-for-graalvm</module>
+        <module>zabbix-receiver-for-graalvm</module>
         <module>ebpf-receiver-for-graalvm</module>
         <module>aws-firehose-receiver-for-graalvm</module>
         <module>cilium-fetcher-for-graalvm</module>

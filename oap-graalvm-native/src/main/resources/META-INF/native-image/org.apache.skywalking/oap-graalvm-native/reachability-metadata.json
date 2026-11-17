@@ -19729,9 +19729,6 @@
       "glob": "gateways.yml"
     },
     {
-      "glob": "hierarchy-definition.yml"
-    },
-    {
       "glob": "i18n/Parsing.properties"
     },
     {

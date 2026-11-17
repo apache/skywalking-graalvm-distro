@@ -20,24 +20,23 @@ package org.apache.skywalking.oap.meter.analyzer.v2.dsl;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import javassist.ClassPool;
 import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 
 /**
  * Same-FQCN replacement for upstream v2 MAL FilterExpression.
  *
- * <p>Loads pre-compiled {@link MalFilter} classes from the per-file MAL
- * configs (shared with {@link DSL}) instead of compiling at runtime.
+ * <p>Returns the {@link MalFilter} the precompiler compiled from the filter literal, from the generated
+ * {@link CompiledRules} registry, instead of compiling it at runtime.
  */
 @Slf4j
 @ToString(of = {"literal"})
 public class FilterExpression {
-    private static final AtomicInteger LOADED_COUNT = new AtomicInteger();
-
     @Getter
     private final String literal;
     private final MalFilter malFilter;
@@ -54,27 +53,13 @@ public class FilterExpression {
                             final String filterNameHint,
                             final DslSourceRef sourceRef) {
         this.literal = literal;
-
-        final String className = DSL.getFilterClassName(literal);
-        if (className == null) {
+        final Supplier<MalFilter> compiled = CompiledRules.malFilters().get(literal);
+        if (compiled == null) {
             throw new IllegalStateException(
                 "Pre-compiled MAL filter not found for: " + literal
-                    + ". Available filters: " + DSL.getFilterMapSize());
+                    + ". Available filters: " + CompiledRules.malFilters().size());
         }
-
-        try {
-            final Class<?> filterClass = Class.forName(className);
-            malFilter = (MalFilter) filterClass.getDeclaredConstructor().newInstance();
-            final int count = LOADED_COUNT.incrementAndGet();
-            log.debug("Loaded pre-compiled MAL filter [{}/{}]: {}",
-                count, DSL.getFilterMapSize(), literal);
-        } catch (ClassNotFoundException e) {
-            throw new IllegalStateException(
-                "Pre-compiled MAL filter class not found: " + className, e);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(
-                "Failed to instantiate pre-compiled MAL filter: " + className, e);
-        }
+        malFilter = compiled.get();
     }
 
     // Runtime-rule overload (upstream signature). We load the pre-compiled filter by literal,

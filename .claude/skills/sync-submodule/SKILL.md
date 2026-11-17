@@ -244,7 +244,15 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   (`server-core-for-graalvm`). 11.1 TAL calls `createMetrics` → `MeterSystem#limitLabels`, which
   neither replacement had; the build-time call fails the precompiler, the runtime one fails boot. TAL
   creates its metrics through the shared build-time `MeterSystem`, so its meter classes land in
-  `tal-meter-classes.txt`, and the runtime `TalDSL` replays `create` + `limitLabels` from the manifest.
+  `tal-meter-classes.txt`, and the runtime `TalDSL` replays `create` + `limitLabels` from the rule registry.
+- **The rule registry is generated from upstream's rule data classes**: `RegistryGenerator` writes each rule
+  file's `Rule` / `LALConfigs` / `TALConfigs` / `ZabbixConfig` / `LayerDefinition` as setter calls, compiled
+  against upstream's classes but run against the same-FQCN `LALConfigs` / `TALConfigs` replacements. When upstream
+  adds a property to one of them, add it to the replacement too, or the generated code fails with
+  `NoSuchMethodError` the first time the registry loads. `RegistryParityTest` (precompiler) fails when the
+  registry no longer matches what upstream's loaders read; a new rule-data file upstream reads at runtime needs a
+  replacement reading the registry, or it is silently ignored (the boot check `CompiledRulesCheck` only rejects
+  rule files the operator adds).
 - **Retire a replacement when upstream removes the reason for it**: 11.1 `HttpAlarmCallback` moved its
   `HttpClient` from a static field to a constructor argument; keeping the old lazy-static replacement
   would have dropped the constructor every hook subclass calls. Diff each changed replacement's upstream

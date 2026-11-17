@@ -17,7 +17,8 @@ OAL engine generates metrics, builder, and dispatcher classes at runtime via Jav
 1. Validates all 9 OAL script files are on the classpath
 2. Initializes `DefaultScopeDefine` by scanning `@ScopeDeclaration` annotations (OAL enricher needs scope metadata)
 3. For each of the 9 `OALDefine` configs: instantiates `OALEngineV2`, enables debug output (`setOpenEngineDebug(true)` + `setGeneratedFilePath()`), calls `engine.start()` which parses OAL → enriches → generates `.class` files via Javassist
-4. Scans the output directory for generated `.class` files and writes OAL manifests:
+4. Scans the output directory for generated `.class` files and writes OAL manifests (build intermediates the rule
+   registry is generated from; the generated jar leaves them out):
    - `META-INF/oal-metrics-classes.txt` — ~620 fully-qualified class names
    - `META-INF/oal-dispatcher-classes.txt` — ~45 fully-qualified class names
    - `META-INF/oal-disabled-sources.txt` — disabled source names from `disable.oal`
@@ -61,10 +62,12 @@ Instead of extending upstream classes or hooking via `ModuleWiringBridge`, we us
 
 **1. `OALEngineLoaderService`** (`oap-graalvm-server/.../core/oal/rt/OALEngineLoaderService.java`)
 
-Same FQCN as upstream `org.apache.skywalking.oap.server.core.oal.rt.OALEngineLoaderService`. On first `load()` call:
-- Reads `META-INF/oal-disabled-sources.txt` → registers with `DisableRegister`
-- Reads `META-INF/oal-metrics-classes.txt` → `Class.forName()` → `StreamAnnotationListener.notify()`
-- Reads `META-INF/oal-dispatcher-classes.txt` → `Class.forName()` → `DispatcherDetectorListener.addIfAsSourceDispatcher()`
+Same FQCN as upstream `org.apache.skywalking.oap.server.core.oal.rt.OALEngineLoaderService`. On first `load()` call,
+from the generated rule registry (`CompiledRules`, see [dsl-immigration.md](dsl-immigration.md)), which the precompiler
+generates from the OAL manifests below:
+- the disabled sources → registers with `DisableRegister`
+- the metrics class literals → `StreamAnnotationListener.notify()`
+- the dispatcher class literals → `DispatcherDetectorListener.addIfAsSourceDispatcher()`
 - All subsequent `load()` calls are no-ops (all classes registered on first call regardless of which `OALDefine` triggered it)
 
 **2. `AnnotationScan`** (`oap-graalvm-server/.../core/annotation/AnnotationScan.java`)
@@ -150,9 +153,10 @@ make build-distro
 ls build-tools/precompiler/target/generated-classes/org/apache/skywalking/oap/server/core/source/oal/rt/metrics/
 ls build-tools/precompiler/target/generated-classes/org/apache/skywalking/oap/server/core/source/oal/rt/dispatcher/
 
-# 3. Check manifest files
+# 3. Check the build manifests and the generated registry
 cat build-tools/precompiler/target/generated-classes/META-INF/oal-metrics-classes.txt
 cat build-tools/precompiler/target/generated-classes/META-INF/oal-dispatcher-classes.txt
+less build-tools/precompiler/target/generated-registry/org/apache/skywalking/oap/server/graalvm/rules/OalRegistry.java
 
 # 4. Check annotation scan manifests
 ls build-tools/precompiler/target/generated-classes/META-INF/annotation-scan/

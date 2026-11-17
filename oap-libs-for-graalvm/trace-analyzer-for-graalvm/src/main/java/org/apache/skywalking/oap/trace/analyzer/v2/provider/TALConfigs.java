@@ -17,11 +17,6 @@
 
 package org.apache.skywalking.oap.trace.analyzer.v2.provider;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -35,6 +30,8 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.UnexpectedException;
 import org.apache.skywalking.oap.server.core.analysis.LayerDefinition;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.TalFile;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 
@@ -46,10 +43,11 @@ import static org.apache.skywalking.oap.server.library.util.CollectionUtils.isEm
  * Original: skywalking/oap-server/analyzer/trace-analyzer/src/main/java/.../v2/provider/TALConfigs.java
  * Repackaged into trace-analyzer-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
  *
- * Change: Loads the rule files from the JSON the precompiler serialized (META-INF/config-data/tal.json)
- * instead of reading tal/*.yaml from disk through RuleSetMerger; requiredModulesOf reads the same JSON.
+ * Change: Returns the rule files from the generated {@link CompiledRules} registry, which holds what upstream's
+ * loader read from each tal/ file at build time, instead of reading tal/*.yaml from disk through RuleSetMerger;
+ * requiredModulesOf reads the same registry.
  * Why: The distro ships no tal/ directory; its rules are compiled at build time. RuleSetMerger only overlays
- * runtime rules, and upstream's Catalog has no TAL entry, so nothing is lost. lineNo comes from the JSON;
+ * runtime rules, and upstream's Catalog has no TAL entry, so nothing is lost. lineNo comes from the registry;
  * sourceName/sourcePath/metricPrefix are re-stamped, files whose requiredModules are not all loaded skipped and
  * inline layers registered exactly as upstream parse() does, because SpanFilterListener builds the DslSourceRef the
  * pre-compiled class is looked up by from them.
@@ -79,11 +77,6 @@ public class TALConfigs {
 
     // Must match upstream: TALClassGenerator strips this catalog prefix when naming classes.
     public static final String TAL_CATALOG = "tal/";
-
-    private static final String CONFIG_DATA = "META-INF/config-data/tal.json";
-
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public static void stampSource(final TALConfig config, final String fileName) {
         final String canonical = fileName.endsWith(".yaml") || fileName.endsWith(".yml")
@@ -164,18 +157,14 @@ public class TALConfigs {
         if (isEmpty(files)) {
             return modules;
         }
-        try {
-            final Map<String, TALConfigs> all = readPrecompiled();
-            for (final String name : files) {
-                for (final Map.Entry<String, TALConfigs> e : all.entrySet()) {
-                    if (name.equals(getNameWithoutExtension(e.getKey())) && e.getValue() != null
-                        && e.getValue().getRequiredModules() != null) {
-                        modules.addAll(e.getValue().getRequiredModules());
-                    }
+        final Map<String, TALConfigs> all = readPrecompiled();
+        for (final String name : files) {
+            for (final Map.Entry<String, TALConfigs> e : all.entrySet()) {
+                if (name.equals(getNameWithoutExtension(e.getKey())) && e.getValue() != null
+                    && e.getValue().getRequiredModules() != null) {
+                    modules.addAll(e.getValue().getRequiredModules());
                 }
             }
-        } catch (final IOException | ModuleStartException e) {
-            log.debug("TAL config data not read for the requiredModules of {}", files, e);
         }
         return modules;
     }
@@ -195,15 +184,15 @@ public class TALConfigs {
                 + "rules only");
     }
 
-    private static Map<String, TALConfigs> readPrecompiled() throws IOException, ModuleStartException {
-        try (InputStream is = TALConfigs.class.getClassLoader().getResourceAsStream(CONFIG_DATA)) {
-            if (is == null) {
-                throw new ModuleStartException(
-                    "Pre-compiled TAL config data not found: " + CONFIG_DATA + ". Ensure the precompiler has been run.");
-            }
-            return MAPPER.readValue(is, new TypeReference<LinkedHashMap<String, TALConfigs>>() {
-            });
+    /**
+     * @return the rule files by their name with extension, in listing order
+     */
+    private static Map<String, TALConfigs> readPrecompiled() {
+        final Map<String, TALConfigs> all = new LinkedHashMap<>();
+        for (final TalFile file : CompiledRules.talFiles()) {
+            all.put(file.getFileName(), file.getConfigs());
         }
+        return all;
     }
 
     private static void registerInlineLayers(final String ruleName, final TALConfigs configs) {

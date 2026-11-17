@@ -43,6 +43,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -170,8 +171,13 @@ public class Precompiler {
         final String outputDir = args.length > 0
             ? args[0]
             : "target/generated-classes";
+        final Path registrySources = args.length > 1
+            ? Path.of(args[1])
+            : Files.createTempDirectory("compiled-rules-src");
 
         log.info("Precompiler: output -> {}", outputDir);
+        // The manifests list every class in the directory: a class a rule no longer compiles must not linger.
+        deleteRecursively(Path.of(outputDir));
 
         // Discover OALDefine subclasses from classpath and validate scripts
         OALDefine[] oalDefines = discoverOALDefines();
@@ -198,13 +204,27 @@ public class Precompiler {
         // classes are debuggable by the dsl-debugging module at runtime (upstream has it on by default).
         DSLDebugCodegenSwitch.enableInjection();
 
-        // Run all discovered OAL defines
-        for (OALDefine define : oalDefines) {
+        // Run all discovered OAL defines, recording what each script generated (oal-scripts.txt, which the rule
+        // registry's per-script classes are generated from)
+        final Properties oalScripts = new Properties();
+        for (int i = 0; i < oalDefines.length; i++) {
+            final OALDefine define = oalDefines[i];
             log.info("Processing: {}", define.getConfigFile());
+            final List<String> metricsBefore = scanClassNames(outputDir, "metrics", METRICS_PACKAGE);
+            final List<String> dispatchersBefore = scanClassNames(outputDir, "dispatcher", DISPATCHER_PACKAGE);
+            final List<String> disabledBefore = getDisabledSources();
             OALEngineV2 engine = new OALEngineV2(define);
             engine.getClassGeneratorV2().setOpenEngineDebug(true);
             engine.setStorageBuilderFactory(new StorageBuilderFactory.Default());
             engine.start(Precompiler.class.getClassLoader());
+            final String prefix = "script." + i + ".";
+            oalScripts.setProperty(prefix + "define", define.getClass().getName());
+            oalScripts.setProperty(prefix + "file", define.getConfigFile());
+            oalScripts.setProperty(prefix + "metrics",
+                added(metricsBefore, scanClassNames(outputDir, "metrics", METRICS_PACKAGE)));
+            oalScripts.setProperty(prefix + "dispatchers",
+                added(dispatchersBefore, scanClassNames(outputDir, "dispatcher", DISPATCHER_PACKAGE)));
+            oalScripts.setProperty(prefix + "disabled", added(disabledBefore, getDisabledSources()));
         }
 
         // Scan generated .class files and build manifests
@@ -218,6 +238,7 @@ public class Precompiler {
         writeManifest(metaInf.resolve("oal-metrics-classes.txt"), metricsClasses);
         writeManifest(metaInf.resolve("oal-dispatcher-classes.txt"), dispatcherClasses);
         writeManifest(metaInf.resolve("oal-disabled-sources.txt"), disabledSources);
+        writeEscapedProperties(metaInf.resolve("oal-scripts.txt"), oalScripts);
 
         log.info("Precompiler: {} metrics, {} dispatchers, {} disabled sources",
             metricsClasses.size(), dispatcherClasses.size(), disabledSources.size());
@@ -280,6 +301,9 @@ public class Precompiler {
         // ---- Hierarchy pre-compilation (v2 ANTLR4 + Javassist) ----
         compileHierarchy(outputDir, "hierarchy-definition.yml");
         exportRuleSources(outputDir, oalDefines);
+
+        // ---- The static rule registry the runtime reads instead of rule files and the manifests above ----
+        RegistryGenerator.generate(Path.of(outputDir), registrySources);
 
         // ---- GraalVM native-image metadata generation ----
         generateNativeImageConfig(outputDir);
@@ -979,6 +1003,11 @@ public class Precompiler {
      * Read disabled source names from DisableRegister singleton via reflection.
      */
     @SuppressWarnings("unchecked")
+    private static String added(final List<String> before, final List<String> after) {
+        final Set<String> previous = new HashSet<>(before);
+        return after.stream().filter(name -> !previous.contains(name)).collect(Collectors.joining(","));
+    }
+
     private static List<String> getDisabledSources() throws Exception {
         Field field = DisableRegister.class.getDeclaredField("disableEntitySet");
         field.setAccessible(true);
@@ -1646,6 +1675,19 @@ public class Precompiler {
         log.info("Rule sources: exported {} MAL/LAL files, {} OAL scripts", index.size(), oalFiles);
     }
 
+    private static void deleteRecursively(final Path dir) throws IOException {
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(dir)) {
+            for (final Path p : paths.sorted(Comparator.reverseOrder()).collect(Collectors.toList())) {
+                if (!p.equals(dir)) {
+                    Files.delete(p);
+                }
+            }
+        }
+    }
+
     private static String sha256Hex(byte[] bytes) throws Exception {
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
         StringBuilder sb = new StringBuilder(64);
@@ -1938,15 +1980,8 @@ public class Precompiler {
         Map<String, Object> resources = new LinkedHashMap<>();
         List<Map<String, String>> includes = new ArrayList<>();
 
+        // Rule data is code (the generated registry); these are the scans and the rule text the catalogs display.
         includes.add(Map.of("pattern", "META-INF/annotation-scan/.*\\.txt"));
-        includes.add(Map.of("pattern", "META-INF/oal-.*\\.txt"));
-        includes.add(Map.of("pattern", "META-INF/mal-.*\\.txt"));
-        includes.add(Map.of("pattern", "META-INF/mal-v2\\.manifest"));
-        includes.add(Map.of("pattern", "META-INF/mal-v2/.*"));
-        includes.add(Map.of("pattern", "META-INF/lal-.*\\.txt"));
-        includes.add(Map.of("pattern", "META-INF/tal-.*\\.txt"));
-        includes.add(Map.of("pattern", "META-INF/hierarchy-.*\\.txt"));
-        includes.add(Map.of("pattern", "META-INF/config-data/.*\\.json"));
         includes.add(Map.of("pattern", "META-INF/rule-source/.*"));
         includes.add(Map.of("pattern", "oal/.*\\.oal"));
 

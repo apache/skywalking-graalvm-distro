@@ -17,15 +17,15 @@
 
 package org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.skywalking.oap.server.core.UnexpectedException;
+import org.apache.skywalking.oap.server.core.analysis.LayerDefinition;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.MalFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,17 +34,13 @@ import org.slf4j.LoggerFactory;
  * Original: skywalking/oap-server/analyzer/meter-analyzer/src/main/java/.../v2/prometheus/rule/Rules.java
  * Repackaged into meter-analyzer-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
  *
- * Change: Complete rewrite. Loads pre-compiled rule data from JSON manifests
- * (META-INF/config-data/{path}.json) instead of filesystem YAML files via ResourceUtils.getPath().
- * Why: The distro intentionally excludes raw YAML config directories (otel-rules, envoy-metrics-rules, etc.)
- * — their Groovy/DSL expressions are pre-compiled at build time. Config data (metric prefixes, rule names)
- * is serialized as JSON by the precompiler for runtime wiring.
+ * Change: Complete rewrite. Returns the rules of a catalog from the generated {@link CompiledRules} registry, which
+ * holds what upstream's loader read from each rule file at build time, instead of reading YAML through
+ * ResourceUtils.getPath(); registers their inline layerDefinitions as upstream does.
+ * Why: The distro ships no rule YAML; the rules are compiled at build time.
  */
 public class Rules {
     private static final Logger LOG = LoggerFactory.getLogger(Rules.class);
-
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public static List<Rule> loadRules(final String path) throws IOException {
         return loadRules(path, Collections.emptyList());
@@ -55,40 +51,38 @@ public class Rules {
             return Collections.emptyList();
         }
 
-        LOG.info("Loading rules from pre-compiled distro ({})", path);
-
-        String resourcePath = "META-INF/config-data/" + path + ".json";
-        try (InputStream is = Rules.class.getClassLoader().getResourceAsStream(resourcePath)) {
-            if (is == null) {
-                throw new IOException(
-                    "Pre-compiled config data not found: " + resourcePath
-                    + ". Ensure the precompiler has been run.");
-            }
-
-            List<Rule> allRules = MAPPER.readValue(is, new TypeReference<List<Rule>>() { });
-
-            // Normalize enabled rules: trim, remove leading "/", remove extension
-            Set<String> normalizedEnabled = enabledRules.stream()
-                .map(String::trim)
-                .map(r -> r.startsWith("/") ? r.substring(1) : r)
-                .map(r -> {
-                    if (r.endsWith(".yaml")) {
-                        return r.substring(0, r.length() - 5);
-                    } else if (r.endsWith(".yml")) {
-                        return r.substring(0, r.length() - 4);
-                    }
-                    return r;
-                })
-                .collect(Collectors.toSet());
-
-            List<Rule> result = allRules.stream()
-                .filter(r -> matchesAny(r.getName(), normalizedEnabled))
-                .collect(Collectors.toList());
-
-            LOG.info("Loaded {} pre-compiled rules from {} (filtered from {} available, enabled: {})",
-                result.size(), path, allRules.size(), normalizedEnabled);
-            return result;
+        final List<MalFile> files = CompiledRules.malFiles();
+        if (files.stream().noneMatch(f -> f.getCatalog().equals(path))) {
+            throw new IOException("No pre-compiled MAL rules under " + path + "; the catalogs compiled into this image "
+                + "are " + files.stream().map(MalFile::getCatalog).distinct().collect(Collectors.toList()));
         }
+        final List<Rule> allRules = files.stream()
+            .filter(f -> f.getCatalog().equals(path))
+            .map(MalFile::getRule)
+            .collect(Collectors.toList());
+
+        // Normalize enabled rules: trim, remove leading "/", remove extension
+        Set<String> normalizedEnabled = enabledRules.stream()
+            .map(String::trim)
+            .map(r -> r.startsWith("/") ? r.substring(1) : r)
+            .map(r -> {
+                if (r.endsWith(".yaml")) {
+                    return r.substring(0, r.length() - 5);
+                } else if (r.endsWith(".yml")) {
+                    return r.substring(0, r.length() - 4);
+                }
+                return r;
+            })
+            .collect(Collectors.toSet());
+
+        List<Rule> result = allRules.stream()
+            .filter(r -> matchesAny(r.getName(), normalizedEnabled))
+            .collect(Collectors.toList());
+        result.forEach(Rules::registerInlineLayers);
+
+        LOG.info("Loaded {} pre-compiled rules from {} (filtered from {} available, enabled: {})",
+            result.size(), path, allRules.size(), normalizedEnabled);
+        return result;
     }
 
     /**
@@ -109,5 +103,21 @@ public class Rules {
             }
         }
         return false;
+    }
+
+    // Same registration and message as upstream's registerInlineLayers.
+    private static void registerInlineLayers(final Rule rule) {
+        final List<LayerDefinition> defs = rule.getLayerDefinitions();
+        if (defs == null || defs.isEmpty()) {
+            return;
+        }
+        for (final LayerDefinition def : defs) {
+            try {
+                def.register();
+            } catch (RuntimeException e) {
+                throw new UnexpectedException(
+                    "MAL rule " + rule.getName() + " layerDefinitions entry rejected: " + def, e);
+            }
+        }
     }
 }

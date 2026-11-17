@@ -33,9 +33,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.LalRule;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -53,7 +54,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LalInputTypeReflectionTest {
     private static final String REFLECT_CONFIG =
         "META-INF/native-image/org.apache.skywalking/oap-graalvm-distro/reflect-config.json";
-    private static final String LAL_RULES = "META-INF/lal-v2-rules.txt";
 
     @Test
     void everyProtoTypeReachableFromLalInputsHasMethodAccess() throws Exception {
@@ -81,7 +81,7 @@ class LalInputTypeReflectionTest {
         }
 
         Set<String> inputTypes = lalInputTypes();
-        assertFalse(inputTypes.isEmpty(), "no LAL input types recorded in " + LAL_RULES);
+        assertFalse(inputTypes.isEmpty(), "no LAL input types recorded in the rule registry");
         Set<String> visited = new HashSet<>();
         Set<String> missing = new TreeSet<>();
         for (String inputType : inputTypes) {
@@ -142,16 +142,11 @@ class LalInputTypeReflectionTest {
         return names;
     }
 
-    private Set<String> lalInputTypes() throws Exception {
-        Properties props = new Properties();
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream(LAL_RULES)) {
-            assertNotNull(is, LAL_RULES + " not found on the test classpath");
-            props.load(new InputStreamReader(is, StandardCharsets.UTF_8));
-        }
+    private Set<String> lalInputTypes() {
         Set<String> types = new TreeSet<>();
-        for (String key : props.stringPropertyNames()) {
-            if (key.endsWith(".inputType") && !props.getProperty(key).isBlank()) {
-                types.add(props.getProperty(key).trim());
+        for (LalRule rule : CompiledRules.lalRules()) {
+            if (rule.getInputType() != null) {
+                types.add(rule.getInputType().getName());
             }
         }
         return types;
