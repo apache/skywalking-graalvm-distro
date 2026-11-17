@@ -47,3 +47,4 @@ verify:
     - includes:
         - ../../../../skywalking/test/e2e-v2/cases/otlp-traces/native/traceql-cases.yaml
         - ../../../../skywalking/test/e2e-v2/cases/otlp-traces/native/tal-cases.yaml
+        - ../../../../skywalking/test/e2e-v2/cases/otlp-traces/native/log-cases.yaml

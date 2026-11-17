@@ -20,6 +20,7 @@ package org.apache.skywalking.oap.trace.analyzer.v2.dsl;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -44,6 +45,7 @@ import org.apache.skywalking.oap.server.core.analysis.meter.ScopeType;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
+import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricDeclaration;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricShapes;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.spec.FilterSpec;
@@ -58,7 +60,9 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.PairingFact;
  * Change: of() loads the pre-compiled {@link TalExpression} class from META-INF/tal-v2-rules.txt instead of
  * running TALClassGenerator: the class compiled from exactly the inputs it is given, the
  * {@code tal/<file>.yaml:<line>} coordinates upstream passes as {@link DslSourceRef} (several rules can share a line),
- * the rule name, the DSL text, the input and output types and the metric prefix. The metric declarations the
+ * the rule name, the DSL text, the input type and alias and the metric prefix. Upstream's generator sets the
+ * class's function-object fields from the registry after instantiating it; the manifest records each field's
+ * registry key, so the same objects of the registry passed in are set here. The metric declarations the
  * compiler collected are read from the same manifest, then
  * claimed and created exactly as upstream does, so the pre-generated meter classes are installed before a span
  * is seen. The pool / target loader of the runtime-rule overload are ignored: TAL has no runtime rules.
@@ -73,6 +77,7 @@ public class TalDSL {
     private final String ruleName;
     @Getter
     private final TalExpression expression;
+    @Getter
     private final FilterSpec filterSpec;
 
     @Getter
@@ -88,7 +93,8 @@ public class TalDSL {
                             final TraceAnalyzerModuleConfig config,
                             final String dsl,
                             final Class<?> inputType,
-                            final Class<?> outputType,
+                            final String inputAlias,
+                            final TALFunctionRegistry functions,
                             final String ruleName,
                             final String metricPrefix,
                             final DslSourceRef sourceRef,
@@ -98,17 +104,18 @@ public class TalDSL {
         loadManifest();
         final List<PrecompiledRule> candidates = sourceRef == null ? List.of()
             : BY_SOURCE.getOrDefault(sourceRef.getYamlFile() + ":" + sourceRef.getYamlLine(), List.of());
-        final PrecompiledRule rule = select(candidates, ruleName, dsl, inputType, outputType, metricPrefix);
+        final PrecompiledRule rule = select(candidates, ruleName, dsl, inputType, inputAlias, metricPrefix);
         if (rule == null) {
             throw new ModuleStartException(
                 "No pre-compiled TAL expression matches rule " + ruleName + " (source: " + sourceRef
-                    + ", input " + typeName(inputType) + ", output " + typeName(outputType) + ", prefix "
+                    + ", input " + typeName(inputType) + " (" + inputAlias + "), prefix "
                     + metricPrefix + "); compiled at that source: " + candidates.size()
                     + ". The rule files changed after the build; rebuild the distro.");
         }
         try {
             final TalExpression expression = (TalExpression) Class.forName(rule.className)
                                                                   .getDeclaredConstructor().newInstance();
+            setFunctionFields(expression, rule, functions == null ? TALFunctionRegistry.defaults() : functions);
             metricShapes.claim(sourceRef + "#" + ruleName, rule.metrics);
             final MeterSystem meterSystem =
                 moduleManager.find(CoreModule.NAME).provider().getService(MeterSystem.class);
@@ -121,8 +128,27 @@ public class TalDSL {
             }
             log.debug("Loaded pre-compiled TAL expression: {} -> {}", ruleName, rule.className);
             return new TalDSL(ruleName, expression, new FilterSpec(moduleManager, config), inputType);
+        } catch (final ModuleStartException e) {
+            throw e;
         } catch (final Exception e) {
             throw new ModuleStartException("Failed to load pre-compiled TAL rule " + ruleName, e);
+        }
+    }
+
+    static void setFunctionFields(final TalExpression expression, final PrecompiledRule rule,
+                                  final TALFunctionRegistry registry)
+        throws ReflectiveOperationException, ModuleStartException {
+        for (final FunctionField function : rule.functions) {
+            final Object owner = registry.instance(function.key);
+            if (owner == null || !owner.getClass().getName().equals(function.type)) {
+                throw new ModuleStartException(
+                    "TAL rule " + rule.name + " was compiled against " + function.type + " under the function key "
+                        + function.key + ", but the bound function registry holds "
+                        + (owner == null ? "nothing" : owner.getClass().getName()) + " there; rebuild the distro.");
+            }
+            final Field field = expression.getClass().getDeclaredField(function.field);
+            field.setAccessible(true);
+            field.set(expression, owner);
         }
     }
 
@@ -141,14 +167,16 @@ public class TalDSL {
 
     /**
      * @return the candidate compiled from these inputs, or null; the generated execute() casts the span to the
-     * input type and builds the output type it was compiled for, so a class compiled for other inputs never runs
+     * input type and calls the functions of the input alias it was compiled for, so a class compiled for other
+     * inputs never runs
      */
     static PrecompiledRule select(final List<PrecompiledRule> candidates, final String ruleName, final String dsl,
-                                  final Class<?> inputType, final Class<?> outputType, final String metricPrefix) {
+                                  final Class<?> inputType, final String inputAlias, final String metricPrefix) {
         final String dslSha256 = dsl == null ? "" : sha256(dsl);
         for (final PrecompiledRule rule : candidates) {
             if (rule.name.equals(ruleName) && rule.dslSha256.equals(dslSha256)
-                && rule.inputType.equals(typeName(inputType)) && rule.outputType.equals(typeName(outputType))
+                && rule.inputType.equals(typeName(inputType))
+                && rule.inputAlias.equals(inputAlias == null ? "" : inputAlias)
                 && rule.metricPrefix.equals(metricPrefix == null ? "" : metricPrefix)) {
                 return rule;
             }
@@ -173,20 +201,33 @@ public class TalDSL {
         final String name;
         final String className;
         final String inputType;
-        final String outputType;
+        final String inputAlias;
         final String metricPrefix;
         final String dslSha256;
         final List<TALMetricDeclaration> metrics;
+        final List<FunctionField> functions;
 
         private PrecompiledRule(final Properties props, final String prefix) {
             this.name = props.getProperty(prefix + "name");
             this.className = props.getProperty(prefix + "class");
             this.inputType = props.getProperty(prefix + "inputType", "");
-            this.outputType = props.getProperty(prefix + "outputType", "");
+            this.inputAlias = props.getProperty(prefix + "inputAlias", "");
             this.metricPrefix = props.getProperty(prefix + "metricPrefix", "");
             this.dslSha256 = props.getProperty(prefix + "dslSha256", "");
             this.metrics = readMetrics(props, prefix);
+            this.functions = readFunctions(props, prefix);
         }
+    }
+
+    /**
+     * A function-object field of a generated class: its name, the registry key of the object it holds, and that
+     * object's class.
+     */
+    @RequiredArgsConstructor
+    static final class FunctionField {
+        final String field;
+        final String key;
+        final String type;
     }
 
     private static void loadManifest() {
@@ -244,6 +285,18 @@ public class TalDSL {
                 parseList(props.getProperty(prefix + "buckets"), Long::valueOf),
                 parseList(props.getProperty(prefix + "ranks"), Integer::valueOf),
                 Integer.parseInt(props.getProperty(prefix + "labelLimit", "0"))));
+        }
+    }
+
+    private static List<FunctionField> readFunctions(final Properties props, final String rulePrefix) {
+        final List<FunctionField> functions = new ArrayList<>();
+        for (int f = 0; ; f++) {
+            final String prefix = rulePrefix + "function." + f + ".";
+            final String field = props.getProperty(prefix + "field");
+            if (field == null) {
+                return functions;
+            }
+            functions.add(new FunctionField(field, props.getProperty(prefix + "key"), props.getProperty(prefix + "type")));
         }
     }
 

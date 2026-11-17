@@ -88,9 +88,10 @@ jobs:
             echo "is-release=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up GraalVM JDK 25
+      - name: Set up GraalVM 25.5
         uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc  # v1.6.8
         with:
+          version: '25.5'
           java-version: '25'
           distribution: 'graalvm'
 
@@ -122,9 +123,10 @@ jobs:
           ref: ${{ github.event.inputs.commit || github.ref }}
           submodules: recursive
 
-      - name: Set up GraalVM JDK 25
+      - name: Set up GraalVM 25.5
         uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc  # v1.6.8
         with:
+          version: '25.5'
           java-version: '25'
           distribution: 'graalvm'
 
@@ -176,9 +178,10 @@ jobs:
           ref: ${{ github.event.inputs.commit || github.ref }}
           submodules: recursive
 
-      - name: Set up GraalVM JDK 25
+      - name: Set up GraalVM 25.5
         uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc  # v1.6.8
         with:
+          version: '25.5'
           java-version: '25'
           distribution: 'graalvm'
 
@@ -349,6 +352,8 @@ jobs:
             case: ssl
           - name: mTLS
             case: mtls
+          - name: Query Port
+            case: query-port
           - name: RabbitMQ
             case: rabbitmq
           - name: RocketMQ

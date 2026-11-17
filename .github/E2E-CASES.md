@@ -39,6 +39,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | Kafka Exporter | `exporter/` | Kafka exporter |
 | SSL | `ssl/` | gRPC TLS (JDK SSL provider) |
 | mTLS | `mtls/` | gRPC mutual TLS |
+| Query Port | `query-port/` | Query APIs on their own port (`query-server`), receivers on theirs (`receiver-sharing-server`) |
 | RabbitMQ | `rabbitmq/` | RabbitMQ OTel rules |
 | RocketMQ | `rocketmq/` | RocketMQ OTel rules |
 | ActiveMQ | `activemq/` | ActiveMQ OTel rules |
@@ -107,6 +108,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | gRPC auth | `simple/auth/` | Standalone | Token-based gRPC authentication |
 | gRPC SSL | `simple/ssl/` | Standalone | SSL/TLS gRPC channel |
 | gRPC mTLS | `simple/mtls/` | Standalone | Mutual TLS gRPC channel |
+| Query port | `simple/query-port/` | Standalone | Query APIs on the `query-server` port, receivers on the sharing server |
 
 ## Tier 3 — OTEL and monitoring integrations (OAP + BanyanDB + monitored system + OTEL Collector)
 

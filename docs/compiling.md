@@ -5,16 +5,21 @@ JVM distribution and the GraalVM native image binary.
 
 ## Prerequisites
 
-- **GraalVM JDK 25** with `native-image` installed
+- **GraalVM 25.5** (JDK 25) with `native-image` installed. The Makefile picks it from sdkman
+  (`sdk install java 25.5.5.0+3-graal`) and warns when the GraalVM it uses is another release
 - **Maven 3.9+** (the Maven wrapper `./mvnw` is included)
 - **Docker** (for macOS cross-compilation and container packaging)
 - **Git** (with submodule support; not required when building from Apache source tarball)
 
-Set `JAVA_HOME` to your GraalVM installation for all commands below:
+The Makefile picks the GraalVM itself: the newest sdkman `25.5*-graal` (Oracle before `-graalce`), else a GraalVM
+`JAVA_HOME`, else the newest sdkman GraalVM 25. An exported `JAVA_HOME` therefore does not win over an installed
+sdkman 25.5; to build with a specific installation, name it:
 
 ```bash
-export JAVA_HOME=/path/to/graalvm-jdk-25
+make GRAAL_HOME=/path/to/graalvm-25.5 build-distro
 ```
+
+`./mvnw` invoked directly uses `JAVA_HOME` as usual.
 
 ## Building from Apache Source Tarball
 
@@ -134,8 +139,8 @@ If you are on macOS and need a Linux native binary (e.g., for Docker):
 make native-image-macos
 ```
 
-This runs the `native-image` step inside a `ghcr.io/graalvm/native-image-community:25`
-container, producing a Linux binary while reusing your host's Maven cache and compiled classes.
+This runs the `native-image` step inside a `ghcr.io/graalvm/native-image-community:25i5`
+container (GraalVM Community 25.5; `make GRAALVM_IMAGE=<image>` picks another), producing a Linux binary while reusing your host's Maven cache and compiled classes.
 
 ### Step 5: Package as Docker Image
 

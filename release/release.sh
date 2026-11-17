@@ -33,7 +33,7 @@ Package an Apache-style release for SkyWalking GraalVM Distro.
 Prerequisites:
   - CI release workflow must have completed for tag v<version>
     (pushes linux-amd64 and linux-arm64 tarballs to GitHub Release)
-  - GraalVM JDK 25 installed (for building darwin-arm64 native image)
+  - GraalVM 25.5 installed (for building darwin-arm64 native image)
   - GPG key with @apache.org email must be configured
 
 What this script does:

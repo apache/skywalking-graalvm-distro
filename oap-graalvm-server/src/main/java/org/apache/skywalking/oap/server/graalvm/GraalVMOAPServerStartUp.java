@@ -114,6 +114,8 @@ import org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherModule;
 import org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherProvider;
 // Query
 import org.apache.skywalking.oap.query.graphql.GraphQLQueryProvider;
+import org.apache.skywalking.oap.query.server.QueryServerModule;
+import org.apache.skywalking.oap.query.server.QueryServerModuleProvider;
 import org.apache.skywalking.oap.query.zipkin.ZipkinQueryModule;
 import org.apache.skywalking.oap.query.zipkin.ZipkinQueryProvider;
 import org.apache.skywalking.oap.query.promql.PromQLModule;
@@ -231,7 +233,8 @@ public class GraalVMOAPServerStartUp {
         // Analyzers
         manager.register(new AnalyzerModule(), new AnalyzerModuleProvider());
         manager.register(new LogAnalyzerModule(), new LogAnalyzerModuleProvider());
-        // Trace analyzer (TAL): `selector: -` removes it, and the OTLP receiver then stores spans unanalyzed.
+        // Trace analyzer (TAL): `selector: -` removes it, which fails the boot while the native trace receiver or the
+        // Kafka fetcher is loaded, as both require it; with neither, the OTLP receiver stores spans unanalyzed.
         if (configuration.has("trace-analyzer")) {
             manager.register(new TraceAnalyzerModule(), new TraceAnalyzerModuleProvider());
         }
@@ -286,7 +289,9 @@ public class GraalVMOAPServerStartUp {
             manager.register(new CiliumFetcherModule(), new CiliumFetcherProvider());
         }
 
-        // Query
+        // Query: GraphQL, the AI agent conversation API and the status TTL route mount on query-server, which serves
+        // them on the core REST server unless its restPort is set.
+        manager.register(new QueryServerModule(), new QueryServerModuleProvider());
         manager.register(new QueryModule(), new GraphQLQueryProvider());
         if (configuration.has("query-zipkin")) {
             manager.register(new ZipkinQueryModule(), new ZipkinQueryProvider());

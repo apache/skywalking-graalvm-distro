@@ -104,6 +104,13 @@
             <artifactId>ai-agent-conversation</artifactId>
         </dependency>
 
+        <!-- TAL module functions (TALFunctionProvider `AIEvaluationTALFunctions`) the ai-evaluation rules call, and
+             the GenAIEvaluationSample dispatcher the annotation scan lists -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>ai-evaluation</artifactId>
+        </dependency>
+
         <!-- Query plugins (GraphQL resolvers, HTTP handlers, adapter types) -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>

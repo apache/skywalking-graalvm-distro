@@ -13,11 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# A native-only function under the default (otlp) input: upstream fails the boot with a compile error naming the
+# input the function belongs to, so the build fails.
 rules:
-  - name: not-a-builder
+  - name: native-function-under-otlp
     layer: GENERAL
-    outputType: java.lang.Object
     dsl: |
       filter {
-        sink {}
+        if (segmentLatency() > 100) {
+          abort {}
+        }
       }

@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Operator-written TAL rules, not the shipped ones: every metric shape, an FQCN input and output type, and a layer
-# another file declares.
+# Operator-written TAL rules, not the shipped ones: every metric shape, an FQCN input type, a record sent as a
+# source, and a layer another file declares.
 metricPrefix: fleet
 rules:
   - name: fleet-calls
@@ -35,17 +35,20 @@ rules:
   - name: fleet-slow
     layer: FIXTURE_FLEET
     inputType: io.opentelemetry.proto.trace.v1.Span
-    outputType: org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder
     dsl: |
       filter {
         if (meta.kind != "CLIENT") {
           abort {}
         }
         extractor {
-          service meta.service
-          id meta.traceId + "-" + meta.spanId
-          statement span.name
-          latency meta.latency
+          source DatabaseSlowStatement {
+            id meta.traceId + "-" + meta.spanId
+            traceId meta.traceId
+            databaseServiceId buildServiceId(formatServiceName(meta.service), false)
+            statement span.name
+            latency meta.latency
+            timeBucket recordTimeBucket(meta.timestamp)
+            timestamp meta.timestamp
+          }
         }
-        sink {}
       }

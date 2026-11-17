@@ -19,7 +19,7 @@ package org.apache.skywalking.oap.server.graalvm.lal;
 
 import java.util.List;
 import java.util.Map;
-import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
+import java.util.stream.Collectors;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.junit.jupiter.api.Test;
 
@@ -37,11 +37,20 @@ class LALDefaultTest extends LALScriptComparisonBase {
     @Test
     void defaultRulePrecompiledClassLoads() throws Exception {
         final List<LALConfig> rules = loadLALRules("default.yaml");
-        assertEquals(1, rules.size());
-        assertEquals("default", rules.get(0).getName());
+        assertEquals(List.of("default", "otlp-general", "default-fallback"),
+            rules.stream().map(LALConfig::getName).collect(Collectors.toList()));
+        for (final LALConfig rule : rules) {
+            assertNotNull(loadPrecompiled(rule), "Pre-compiled class for '" + rule.getName() + "' should be loadable");
+        }
+    }
 
-        final LalExpression expr = loadPrecompiled("default");
-        assertNotNull(expr, "Pre-compiled class for 'default' rule should be loadable");
+    @Test
+    void fallbackFlagSurvivesTheConfigData() throws Exception {
+        // LogAnalyzer runs fallback rules only after the auto rules; dropped by lal.json, the rule would be an ordinary
+        // auto rule and claim every layerless log first.
+        for (final LALConfig rule : loadLALRules("default.yaml")) {
+            assertEquals("default-fallback".equals(rule.getName()), rule.isFallback(), rule.getName());
+        }
     }
 
     @Test

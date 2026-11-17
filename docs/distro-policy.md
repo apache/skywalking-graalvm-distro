@@ -17,8 +17,8 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 | **Cluster** | ClusterModule | Standalone, Kubernetes |
 | **Configuration** | ConfigurationModule | Kubernetes |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
-| **Analyzers** | AnalyzerModule, LogAnalyzerModule, TraceAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule, AIEvaluationModule, AIAgentConversationModule | default providers (AIEvaluationModule disabled by default; AIAgentConversationModule also offers `none`; TraceAnalyzerModule can be removed with `-`) |
-| **Query** | QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule | default providers |
+| **Analyzers** | AnalyzerModule, LogAnalyzerModule, TraceAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule, AIEvaluationModule, AIAgentConversationModule | default providers (AIEvaluationModule disabled by default; AIAgentConversationModule also offers `none`; TraceAnalyzerModule analyzes both OTLP spans and agent segments, and the native trace receiver and Kafka fetcher require it) |
+| **Query** | QueryServerModule, QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule | default providers (QueryServerModule serves GraphQL, the AI agent conversation API and `/status/config/ttl` on the core REST port unless its `restPort` is set) |
 | **Admin** | AdminServerModule, StatusModule, InspectModule, UIManagementModule, DSLDebuggingModule | default; runtime-rule excluded (mutations return 501) |
 | **Alarm** | AlarmModule | default |
 | **Telemetry** | TelemetryModule | Prometheus |
@@ -77,15 +77,15 @@ Run all five v2 compilers at build time via their native exposed APIs (`setClass
 - `MeterSystem.create()` also runs at build time → exports ~1500 Javassist meter classes.
 
 ### LAL
-- `LALClassGenerator` compiles 16 LAL rules (12 YAML files) at build time.
+- `LALClassGenerator` compiles 19 LAL rules (12 YAML files) at build time.
 - Deterministic class naming via `DslSourceRef` (`{yaml}_L{line}_{ruleName}`).
 - Same-FQCN v2 `DSL.java` loads pre-compiled `LalExpression` classes by source coordinates from `META-INF/lal-v2-rules.txt`, which also records each rule's effective input type (upstream routes Envoy HTTP vs TCP access logs by it).
 
 ### TAL
-- `TALClassGenerator` compiles every `tal/*.yaml` at build time (shipped: `otlp-general.yaml` with `otlp-general` and `otlp-slow-sql`), resolving input / output / layer exactly as upstream `SpanFilterListener.Factory` does; a rule that does not compile fails the build. Nothing is specific to the shipped rules: an operator's own TAL files, and the scripts in upstream's TAL docs, go through the same pass (`TALPrecompileTest`, `TALDocScriptsTest`).
+- `TALClassGenerator` compiles every `tal/*.yaml` at build time (shipped: 9 files, 14 rules — `otlp-general.yaml` and `otlp-ai-evaluation.yaml` for OTLP spans, the seven `native-*.yaml` files that analyze SkyWalking agent segments since SWIP-17), resolving input / layer exactly as upstream `SpanFilterListener.Factory` does, against a function registry bound as the factory binds its own; a rule that does not compile fails the build. Nothing is specific to the shipped rules: an operator's own TAL files, and the scripts in upstream's TAL docs, go through the same pass (`TALPrecompileTest`, `TALDocScriptsTest`).
 - Deterministic class naming via `DslSourceRef` (`{yaml}_L{line}_{ruleName}`).
 - The precompiler runs `createMetrics` on the build-time `MeterSystem` it shares with MAL, so the 28 `otlp_*` meter classes are generated (`tal-meter-classes.txt`).
-- Same-FQCN `TalDSL` loads the pre-compiled `TalExpression` by source coordinates from `META-INF/tal-v2-rules.txt`, which also carries each rule's input type and metric declarations; it claims and creates those metrics (incl. `limitLabels`) as upstream does. Same-FQCN `TALConfigs` reads `META-INF/config-data/tal.json`.
+- Same-FQCN `TalDSL` loads the pre-compiled `TalExpression` by source coordinates from `META-INF/tal-v2-rules.txt`, which also carries each rule's input type and alias, the registry key of every function object the class holds and its metric declarations; it sets those function objects from the factory's registry, then claims and creates the metrics (incl. `limitLabels`) as upstream does. Same-FQCN `TALConfigs` reads `META-INF/config-data/tal.json`, honoring `requiredModules` and the `nativeTalFiles` order.
 
 ### Hierarchy
 - `HierarchyRuleClassGenerator` compiles 4 hierarchy matching rules at build time.
@@ -94,7 +94,7 @@ Run all five v2 compilers at build time via their native exposed APIs (`setClass
 ### Upstream Changes & Simplification
 - **Groovy Removed**: Groovy was completely removed from upstream production code (PR #13723).
 - **Transpiler Deleted**: The legacy Groovy-to-Java transpiler (~9,800 lines of complex AST walking logic) has been deleted from this distro.
-- **Native Alignment**: We now use the exact same compilation pipeline as upstream, just executed at build-time. This ensures 100% behavioral parity and zero maintenance lag for new DSL features.
+- **Native Alignment**: We now use the exact same compilation pipeline as upstream, just executed at build-time, so the generated classes are the ones upstream's compilers emit. The loading, wiring and registration around them are the distro's same-FQCN replacements, which the MAL / LAL / TAL / Hierarchy comparison tests hold to upstream's behavior.
 
 ---
 
@@ -252,11 +252,11 @@ packaged in JARs. The YAML source files are not needed at runtime.
 | `envoy-metrics-rules/*.yaml` | 2 | ~26 `MalExpression` classes + meter classes | MAL v2 compiler |
 | `telegraf-rules/*.yaml` | 1 | ~20 `MalExpression` classes + meter classes | MAL v2 compiler |
 | `zabbix-rules/*.yaml` | 1 | ~15 `MalExpression` classes + meter classes | MAL v2 compiler |
-| `lal/*.yaml` | 12 | 16 `LalExpression` classes (ANTLR4+Javassist) | LAL v2 compiler |
-| `tal/*.yaml` | 1 | 2 `TalExpression` classes (ANTLR4+Javassist) + 28 meter classes | TAL v2 compiler |
+| `lal/*.yaml` | 12 | 19 `LalExpression` classes (ANTLR4+Javassist) | LAL v2 compiler |
+| `tal/*.yaml` | 9 | 14 `TalExpression` classes (ANTLR4+Javassist) + 28 meter classes | TAL v2 compiler |
 | `hierarchy-definition.yml` | 1 | ~4 `BiFunction` hierarchy rule classes | Hierarchy v2 compiler |
 
-**Total: 121 files** consumed at build time, producing ~1330 OAL classes, ~1570 MAL expression classes, ~1560 meter classes, 16 LAL expression classes, 2 TAL expression classes, and 4 hierarchy rule classes.
+**Total: 129 files** consumed at build time, producing ~1330 OAL classes, ~1570 MAL expression classes, ~1560 meter classes, 19 LAL expression classes, 14 TAL expression classes, and 4 hierarchy rule classes.
 
 Additionally, the precompiler serializes parsed config POJOs as JSON manifests in
 `META-INF/config-data/` (8 JSON files for meter-analyzer-config, otel-rules,
@@ -276,7 +276,7 @@ keys) that replacement loader classes use instead of filesystem YAML access.
 
 ### Build System
 - Maven + Makefile orchestrates building on top of the skywalking submodule
-- GraalVM JDK 25 in CI (`.github/workflows/ci.yml`)
+- Oracle GraalVM 25.5 in CI (`.github/workflows/ci.yml`), the same release the Makefile looks for locally
 - JVM-mode starter with fixed module wiring (`FixedModuleManager` + `GraalVMOAPServerStartUp`)
 - Simplified config file for selected modules (`application.yml`)
 
@@ -288,9 +288,9 @@ All five DSL compilers (OAL/MAL/LAL/TAL/Hierarchy) use ANTLR4 + Javassist v2 eng
 
 **MAL**: MAL v2 compiler processes 96 YAML files → ~1570 `MalExpression` classes + ~1530 Javassist meter classes. Deterministic `DslSourceRef` class naming. Same-FQCN v2 `DSL.java` loads pre-compiled classes by expression text from per-file manifests.
 
-**LAL**: LAL v2 compiler processes 12 YAML files → 16 `LalExpression` classes. Deterministic `DslSourceRef` class naming. Same-FQCN v2 `DSL.java` loads pre-compiled classes by source coordinates.
+**LAL**: LAL v2 compiler processes 12 YAML files → 19 `LalExpression` classes. Deterministic `DslSourceRef` class naming. Same-FQCN v2 `DSL.java` loads pre-compiled classes by source coordinates.
 
-**TAL**: TAL v2 compiler processes 1 YAML file → 2 `TalExpression` classes + 28 meter classes. Same-FQCN `TalDSL` loads pre-compiled classes by source coordinates and creates the metrics recorded in the manifest.
+**TAL**: TAL v2 compiler processes 9 YAML files → 14 `TalExpression` classes + 28 meter classes. Same-FQCN `TalDSL` loads pre-compiled classes by source coordinates, wires their function objects by the recorded registry keys and creates the metrics recorded in the manifest.
 
 **Hierarchy**: Hierarchy v2 compiler processes 4 rules → 4 `BiFunction` classes. Same-FQCN `HierarchyDefinitionService` loads pre-compiled rules by name.
 

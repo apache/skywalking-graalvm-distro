@@ -25,7 +25,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricDeclaration;
 import org.junit.jupiter.api.Test;
 
@@ -39,16 +38,19 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  */
 class TalDSLManifestTest {
     private static final String SPAN = Span.class.getName();
-    private static final String SLOW_SQL = DatabaseSlowStatementBuilder.class.getName();
+    private static final String GENERAL = "org.apache.skywalking.oap.trace.analyzer.v2.compiler.rt.TalGeneralFunctions";
 
     @Test
     void everyFieldAndNameRoundTrips() throws Exception {
         final Properties written = new Properties();
-        rule(written, 0, "tal/flotte.yaml", 19, "zählung-café", "rt.flotte_L19_a", SPAN, "", "fleet", "filter { persist {} }");
+        rule(written, 0, "tal/flotte.yaml", 19, "zählung-café", "rt.flotte_L19_a", SPAN, "otlp", "fleet",
+            "filter { persist {} }");
         metric(written, 0, 0, "fleet_latency_percentile", "sumHistogramPercentile", "10,25,50", "50,99", 0);
         metric(written, 0, 1, "fleet_calls_by_status", "sumLabeled", "", "", 7);
-        rule(written, 1, "tal/flotte.yaml", 30, " payments\\edge=x:y\n", "rt.flotte_L30_b", SPAN, SLOW_SQL, "fleet",
-            "filter { sink {} }");
+        function(written, 0, 0, "_fn0", GENERAL, GENERAL);
+        function(written, 0, 1, "_fn1", GENERAL + "/sw-native", GENERAL);
+        rule(written, 1, "tal/flotte.yaml", 30, " payments\\edge=x:y\n", "rt.flotte_L30_b", SPAN, "sw-native", "fleet",
+            "filter { persist {} }");
 
         final Map<String, List<TalDSL.PrecompiledRule>> rules = TalDSL.parseManifest(readBack(written));
 
@@ -60,46 +62,52 @@ class TalDSLManifestTest {
                 new TALMetricDeclaration("fleet_calls_by_status", "sumLabeled", "SERVICE",
                     "fleet_calls_by_status", List.of(), List.of(), 7)),
             first.metrics);
+        assertEquals("otlp", first.inputAlias);
+        assertEquals(2, first.functions.size());
+        assertEquals("_fn1", first.functions.get(1).field);
+        assertEquals(GENERAL + "/sw-native", first.functions.get(1).key);
+        assertEquals(GENERAL, first.functions.get(1).type);
         final TalDSL.PrecompiledRule second = rules.get("tal/flotte.yaml:30").get(0);
         assertEquals(" payments\\edge=x:y\n", second.name);
-        assertEquals(SLOW_SQL, second.outputType);
+        assertEquals("sw-native", second.inputAlias);
         assertEquals(List.of(), second.metrics);
+        assertEquals(0, second.functions.size());
     }
 
     @Test
     void theClassCompiledFromTheseInputsIsPicked() throws Exception {
         // Flow-style YAML puts two rules on one line, so the coordinates hold both.
         final Properties written = new Properties();
-        rule(written, 0, "tal/inline.yaml", 1, "a", "rt.inline_L1_a", SPAN, "", "", "filter { persist {} }");
-        rule(written, 1, "tal/inline.yaml", 1, "b", "rt.inline_L1_b", SPAN, SLOW_SQL, "p", "filter { sink {} }");
+        rule(written, 0, "tal/inline.yaml", 1, "a", "rt.inline_L1_a", SPAN, "otlp", "", "filter { persist {} }");
+        rule(written, 1, "tal/inline.yaml", 1, "b", "rt.inline_L1_b", SPAN, "sw-native", "p", "filter { abort {} }");
         final List<TalDSL.PrecompiledRule> candidates = TalDSL.parseManifest(readBack(written)).get("tal/inline.yaml:1");
         assertEquals(2, candidates.size());
 
         assertEquals("rt.inline_L1_a",
-            TalDSL.select(candidates, "a", "filter { persist {} }", Span.class, null, null).className);
+            TalDSL.select(candidates, "a", "filter { persist {} }", Span.class, "otlp", null).className);
         assertEquals("rt.inline_L1_b",
-            TalDSL.select(candidates, "b", "filter { sink {} }", Span.class, DatabaseSlowStatementBuilder.class, "p")
-                  .className);
-        assertNull(TalDSL.select(candidates, "a", "filter { abort {} }", Span.class, null, null),
+            TalDSL.select(candidates, "b", "filter { abort {} }", Span.class, "sw-native", "p").className);
+        assertNull(TalDSL.select(candidates, "a", "filter { abort {} }", Span.class, "otlp", null),
             "rule text edited after the build");
-        assertNull(TalDSL.select(candidates, "a", "filter { persist {} }", String.class, null, null),
+        assertNull(TalDSL.select(candidates, "a", "filter { persist {} }", String.class, "otlp", null),
             "another input type");
-        assertNull(TalDSL.select(candidates, "b", "filter { sink {} }", Span.class, null, "p"), "another output type");
-        assertNull(TalDSL.select(candidates, "b", "filter { sink {} }", Span.class, DatabaseSlowStatementBuilder.class,
-            "q"), "another metric prefix");
-        assertNull(TalDSL.select(candidates, "c", "filter { persist {} }", Span.class, null, null), "another name");
+        assertNull(TalDSL.select(candidates, "b", "filter { abort {} }", Span.class, "otlp", "p"),
+            "another input alias, whose functions the class was not compiled against");
+        assertNull(TalDSL.select(candidates, "b", "filter { abort {} }", Span.class, "sw-native", "q"),
+            "another metric prefix");
+        assertNull(TalDSL.select(candidates, "c", "filter { persist {} }", Span.class, "otlp", null), "another name");
     }
 
     private static void rule(final Properties props, final int i, final String source, final int line,
                              final String name, final String className, final String inputType,
-                             final String outputType, final String metricPrefix, final String dsl) {
+                             final String inputAlias, final String metricPrefix, final String dsl) {
         final String prefix = "rule." + i + ".";
         props.setProperty(prefix + "source", source);
         props.setProperty(prefix + "line", String.valueOf(line));
         props.setProperty(prefix + "name", name);
         props.setProperty(prefix + "class", className);
         props.setProperty(prefix + "inputType", inputType);
-        props.setProperty(prefix + "outputType", outputType);
+        props.setProperty(prefix + "inputAlias", inputAlias);
         props.setProperty(prefix + "metricPrefix", metricPrefix);
         props.setProperty(prefix + "dslSha256", TalDSL.sha256(dsl));
     }
@@ -114,6 +122,14 @@ class TalDSLManifestTest {
         props.setProperty(prefix + "buckets", buckets);
         props.setProperty(prefix + "ranks", ranks);
         props.setProperty(prefix + "labelLimit", String.valueOf(labelLimit));
+    }
+
+    private static void function(final Properties props, final int rule, final int f, final String field,
+                                 final String key, final String type) {
+        final String prefix = "rule." + rule + ".function." + f + ".";
+        props.setProperty(prefix + "field", field);
+        props.setProperty(prefix + "key", key);
+        props.setProperty(prefix + "type", type);
     }
 
     /**

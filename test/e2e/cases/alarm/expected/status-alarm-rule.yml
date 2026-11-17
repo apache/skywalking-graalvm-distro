@@ -17,6 +17,7 @@ ruleId: service_resp_time_rule
 expression: sum(abs(increase(service_resp_time,1)) > 0) >= 1
 period: 10
 hooks:
+  - gRPC.default
   - webhook.custom
 tags:
   - level=WARNING

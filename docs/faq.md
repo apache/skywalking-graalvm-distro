@@ -123,8 +123,9 @@ GraalVM is only needed if you want to build from source.
 
 ### What GraalVM version is required for building?
 
-GraalVM JDK 25 with `native-image` installed. The Makefile auto-detects it via sdkman
-or `JAVA_HOME`.
+GraalVM 25.5 (JDK 25) with `native-image` installed, the release CI builds with. The Makefile
+picks the newest GraalVM 25.5 under sdkman (`sdk install java 25.5.5.0+3-graal`), else a GraalVM
+`JAVA_HOME`, and warns when that is another release. `make GRAAL_HOME=<dir>` overrides the pick.
 
 ### The native image build runs out of memory
 

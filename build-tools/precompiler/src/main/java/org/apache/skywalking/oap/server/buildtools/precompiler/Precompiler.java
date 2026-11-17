@@ -41,6 +41,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -69,6 +70,7 @@ import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
 import org.apache.skywalking.oap.log.analyzer.v2.spi.LALSourceTypeProvider;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALClassGenerator;
+import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricDeclaration;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricShapes;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalExpression;
@@ -76,7 +78,7 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfig;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.TALSourceTypeProvider;
 import org.apache.skywalking.oap.server.core.analysis.Layer;
-import org.apache.skywalking.oap.server.core.source.TALOutputBuilder;
+import org.apache.skywalking.oap.server.core.source.TALFunctionProvider;
 import org.apache.skywalking.oap.server.core.config.v2.compiler.HierarchyRuleClassGenerator;
 import org.apache.skywalking.oap.server.core.dsl.debug.DSLDebugCodegenSwitch;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
@@ -175,12 +177,7 @@ public class Precompiler {
         OALDefine[] oalDefines = discoverOALDefines();
         validateOALScripts(oalDefines);
 
-        // Initialize DefaultScopeDefine — scan @ScopeDeclaration annotations on source
-        // classes (Service, Endpoint, etc.) to populate the scope name → ID → columns
-        // registry. The OAL enricher needs this to resolve source metadata.
-        AnnotationScan scopeScan = new AnnotationScan();
-        scopeScan.registerListener(new DefaultScopeDefine.Listener());
-        scopeScan.scan();
+        declareScopes();
         log.info("Initialized DefaultScopeDefine scope registry");
 
         // Set generated file path so debug output lands in proper package structure.
@@ -275,13 +272,13 @@ public class Precompiler {
         MeterSystem meterSystem = compileMAL(outputDir, allClasses);
 
         // ---- LAL pre-compilation (v2 ANTLR4 + Javassist) ----
-        compileLAL(outputDir);
+        compileLAL(outputDir, "lal");
 
         // ---- TAL pre-compilation (v2 ANTLR4 + Javassist); its metrics share MAL's MeterSystem ----
         compileTAL(outputDir, meterSystem, "tal");
 
         // ---- Hierarchy pre-compilation (v2 ANTLR4 + Javassist) ----
-        compileHierarchy(outputDir);
+        compileHierarchy(outputDir, "hierarchy-definition.yml");
         exportRuleSources(outputDir, oalDefines);
 
         // ---- GraalVM native-image metadata generation ----
@@ -396,27 +393,25 @@ public class Precompiler {
 
     /**
      * Load rules from a resource directory and compile them through the MAL pipeline.
-     * Returns the loaded rules for config data serialization.
+     * Returns the loaded rules for config data serialization. A file that does not load or a rule that does not
+     * compile fails the build: the image would boot without it, where upstream fails to boot.
      */
-    private static List<Rule> loadAndCompileRules(String path, List<String> enabledPatterns,
+    static List<Rule> loadAndCompileRules(String path, List<String> enabledPatterns,
                                                   MeterSystem meterSystem) {
-        List<Rule> loadedRules = Collections.emptyList();
-        int count = 0;
+        List<Rule> loadedRules;
         try {
             loadedRules = Rules.loadRules(path, enabledPatterns);
-            for (Rule rule : loadedRules) {
-                try {
-                    new MetricConvert(rule, meterSystem);
-                    count++;
-                } catch (Exception e) {
-                    log.warn("Failed to compile MAL rule: {} ({})",
-                        rule.getMetricPrefix(), rule.getName(), e);
-                }
-            }
-            log.info("MAL: compiled {} rules from {}", count, path);
         } catch (Exception e) {
-            log.warn("Failed to load rules from {}", path, e);
+            throw new IllegalStateException("Failed to load MAL rules from " + path, e);
         }
+        for (Rule rule : loadedRules) {
+            try {
+                new MetricConvert(rule, meterSystem);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to compile MAL rule " + rule.getName() + " of " + path, e);
+            }
+        }
+        log.info("MAL: compiled {} rules from {}", loadedRules.size(), path);
         return loadedRules;
     }
 
@@ -441,8 +436,7 @@ public class Precompiler {
                 try (InputStream is = Precompiler.class.getClassLoader()
                         .getResourceAsStream(resourcePath)) {
                     if (is == null) {
-                        log.warn("Zabbix rule not found: {}", resourcePath);
-                        continue;
+                        throw new IllegalStateException("Zabbix rule " + resourcePath + " is listed but not on the classpath");
                     }
                     Map<String, Object> yamlMap = new Yaml().load(is);
                     Rule rule = new Rule();
@@ -469,12 +463,12 @@ public class Precompiler {
                     loadedRules.add(rule);
                     count++;
                 } catch (Exception e) {
-                    log.warn("Failed to compile Zabbix rule: {}", resourcePath, e);
+                    throw new IllegalStateException("Failed to compile Zabbix rule " + resourcePath, e);
                 }
             }
             log.info("MAL: compiled {} rules from {}", count, path);
-        } catch (Exception e) {
-            log.warn("Failed to load rules from {}", path, e);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load Zabbix rules from " + path, e);
         }
         return loadedRules;
     }
@@ -486,18 +480,16 @@ public class Precompiler {
      * via HierarchyRuleClassGenerator, and writes .class files to the output directory.
      */
     @SuppressWarnings("unchecked")
-    private static void compileHierarchy(String outputDir) throws Exception {
+    static void compileHierarchy(String outputDir, String definitionFile) throws Exception {
         HierarchyRuleClassGenerator hierarchyGenerator = new HierarchyRuleClassGenerator();
         File hierarchyRtDir = new File(outputDir, HIERARCHY_RT_PACKAGE.replace('.', '/'));
         hierarchyRtDir.mkdirs();
         hierarchyGenerator.setClassOutputDir(hierarchyRtDir);
 
-        // Load hierarchy-definition.yml from classpath
-        try (InputStream is = Precompiler.class.getClassLoader()
-                .getResourceAsStream("hierarchy-definition.yml")) {
+        // Upstream HierarchyDefinitionService fails the boot without the file or its auto-matching-rules section.
+        try (InputStream is = Precompiler.class.getClassLoader().getResourceAsStream(definitionFile)) {
             if (is == null) {
-                log.warn("hierarchy-definition.yml not found on classpath, skipping hierarchy compilation");
-                return;
+                throw new IllegalStateException(definitionFile + " is not on the classpath");
             }
             final String yamlText = new String(is.readAllBytes(), StandardCharsets.UTF_8);
             Map<String, Object> yamlMap = new Yaml().load(yamlText);
@@ -506,12 +498,12 @@ public class Precompiler {
             final Map<String, Integer> ruleLines =
                 DslYamlLineIndex.keyLines(yamlText, "auto-matching-rules");
             final List<String> hierarchyRuleEntries = new ArrayList<>();
+            if (yamlMap == null || !(yamlMap.get("auto-matching-rules") instanceof Map)) {
+                throw new IllegalStateException(definitionFile + " has no auto-matching-rules section");
+            }
+            // An empty section is valid: the manifests are written empty, as there are no rules to load.
             Map<String, String> autoMatchingRules =
                 (Map<String, String>) yamlMap.get("auto-matching-rules");
-            if (autoMatchingRules == null || autoMatchingRules.isEmpty()) {
-                log.warn("No auto-matching-rules found in hierarchy-definition.yml");
-                return;
-            }
 
             int count = 0;
             for (Map.Entry<String, String> entry : autoMatchingRules.entrySet()) {
@@ -527,7 +519,7 @@ public class Precompiler {
                     count++;
                     log.debug("Hierarchy: compiled rule {} -> {}", ruleName, expression);
                 } catch (Exception e) {
-                    log.warn("Failed to compile hierarchy rule: {}", ruleName, e);
+                    throw new IllegalStateException("Failed to compile hierarchy rule " + ruleName, e);
                 }
             }
 
@@ -575,7 +567,7 @@ public class Precompiler {
      * directly. The v2 LAL DSL.of() creates a new generator per call, so we compile
      * directly via our own generator for .class export.
      */
-    private static void compileLAL(String outputDir) throws Exception {
+    static void compileLAL(String outputDir, String lalPath) throws Exception {
         LALClassGenerator lalGenerator = new LALClassGenerator();
         File lalRtDir = new File(outputDir, LAL_RT_PACKAGE.replace('.', '/'));
         lalRtDir.mkdirs();
@@ -602,7 +594,7 @@ public class Precompiler {
         }
 
         // Enumerate all LAL YAML files from classpath
-        File[] lalFiles = ResourceUtils.getPathFiles("lal");
+        File[] lalFiles = ResourceUtils.getPathFiles(lalPath);
         List<String> lalFileNames = new ArrayList<>();
         Map<String, File> lalFileMap = new LinkedHashMap<>();
         for (File f : lalFiles) {
@@ -615,7 +607,7 @@ public class Precompiler {
         }
 
         // Load all LAL configs and compile each rule
-        List<LALConfigs> allConfigs = LALConfigs.load("lal", lalFileNames);
+        List<LALConfigs> allConfigs = LALConfigs.load(lalPath, lalFileNames);
         int totalRules = 0;
         // Properties-style manifest: source YAML + line + rule name -> class + effective input type.
         Properties lalRules = new Properties();
@@ -639,7 +631,8 @@ public class Precompiler {
                         try {
                             inputType = Class.forName(rule.getInputType());
                         } catch (ClassNotFoundException e) {
-                            log.warn("LAL: inputType not found: {}", rule.getInputType());
+                            throw new IllegalStateException("LAL rule '" + rule.getName() + "' declares inputType '"
+                                + rule.getInputType() + "' but the class was not found.", e);
                         }
                     } else if (rule.getLayer() != null) {
                         LALSourceTypeProvider spi = spiProviders.get(rule.getLayer());
@@ -662,7 +655,9 @@ public class Precompiler {
                             try {
                                 outputType = Class.forName(yamlOutputType);
                             } catch (ClassNotFoundException e) {
-                                log.warn("LAL: outputType not found: {}", yamlOutputType);
+                                throw new IllegalStateException("LAL rule '" + rule.getName() + "' declares outputType '"
+                                    + yamlOutputType + "' but neither a registered LALOutputBuilder name nor a class was"
+                                    + " found.", e);
                             }
                         }
                     } else if (rule.getLayer() != null) {
@@ -685,7 +680,8 @@ public class Precompiler {
                     log.debug("LAL: compiled rule {} -> {}", rule.getName(),
                         compiled.getClass().getName());
                 } catch (Exception e) {
-                    log.warn("Failed to compile LAL rule: {}", rule.getName(), e);
+                    throw new IllegalStateException("Failed to compile LAL rule " + rule.getName() + " ("
+                        + rule.getSourcePath() + ":" + rule.getLineNo() + ")", e);
                 }
             }
         }
@@ -705,17 +701,33 @@ public class Precompiler {
 
 
     /**
+     * Initialize DefaultScopeDefine: scan the @ScopeDeclaration annotations on the source classes (Service, Endpoint,
+     * etc.) to populate the scope name → ID → columns registry, which the OAL enricher and a TAL {@code source}
+     * block resolve through. Once per JVM: the registry rejects a scope declared twice.
+     */
+    static synchronized void declareScopes() throws Exception {
+        if (!DefaultScopeDefine.names().isEmpty()) {
+            return;
+        }
+        AnnotationScan scopeScan = new AnnotationScan();
+        scopeScan.registerListener(new DefaultScopeDefine.Listener());
+        scopeScan.scan();
+    }
+
+    /**
      * Pre-compile every TAL (Trace Analysis Language) rule file under {@code talPath}, whatever rules the
-     * operator wrote there, resolving each rule's input, output and layer as upstream
-     * {@code SpanFilterListener.Factory.compile} does and naming its class from the same {@link DslSourceRef}.
+     * operator wrote there, resolving each rule's input and layer as upstream
+     * {@code SpanFilterListener.Factory.compile} does, against a function registry bound as the factory binds its
+     * own, and naming its class from the same {@link DslSourceRef}.
      * Every file is loaded before any rule compiles, as upstream's {@code loadStaticRules} does, so a layer one
      * file declares is registered for the rules of every file. A rule that fails here would fail the boot, so
      * the build fails.
      *
-     * <p>{@code tal-v2-rules.txt} carries, per rule, the coordinates, the class, the input type and the
-     * metric declarations the same-FQCN {@code TalDSL} claims and creates at runtime; the meter classes the
-     * declarations need are generated here through {@code createMetrics} and listed in {@code tal-meter-classes.txt}.
-     * {@code tal-io-classes.txt} lists the input types, providers and output builders, for reflection metadata.
+     * <p>{@code tal-v2-rules.txt} carries, per rule, the coordinates, the class, the input type and alias, the
+     * registry key of every function object the class holds, and the metric declarations the same-FQCN
+     * {@code TalDSL} sets, claims and creates at runtime; the meter classes the declarations need are generated here
+     * through {@code createMetrics} and listed in {@code tal-meter-classes.txt}. {@code tal-io-classes.txt} lists the
+     * input types, providers and function objects, for reflection metadata.
      */
     static void compileTAL(String outputDir, MeterSystem meterSystem, String talPath) throws Exception {
         File talRtDir = new File(outputDir, TAL_RT_PACKAGE.replace('.', '/'));
@@ -725,11 +737,11 @@ public class Precompiler {
         for (TALSourceTypeProvider provider : java.util.ServiceLoader.load(TALSourceTypeProvider.class)) {
             inputProviders.put(provider.alias(), provider);
         }
-        Map<String, Class<?>> outputBuilders = new HashMap<>();
-        for (TALOutputBuilder builder : java.util.ServiceLoader.load(TALOutputBuilder.class)) {
-            outputBuilders.put(builder.name(), builder.getClass());
-        }
-        log.info("TAL: input providers {}, output builders {}", inputProviders.keySet(), outputBuilders.keySet());
+        // Discovered and bound in the factory's order (ServiceLoader's), which the registry keys depend on; no module
+        // manager, so every module's functions are bound, as a file is skipped at runtime when its modules are not.
+        TALFunctionRegistry registry = TALFunctionRegistry.discover();
+        registry.bind(null, inputProviders.values());
+        log.info("TAL: input providers {}, function modules {}", inputProviders.keySet(), registry.modules());
 
         // Every file, as upstream's loader takes any file whose name without extension talFiles lists. Upstream
         // keys the files by that stem, so two files sharing one would silently shadow each other: refuse them.
@@ -766,19 +778,20 @@ public class Precompiler {
                     throw new IllegalStateException("TAL rule " + rule.getName() + " declares "
                         + declaredInputs.size() + " input types; the span root can only be typed to one");
                 }
-                Class<?> inputType = resolveTalInput(rule, declaredInputs.get(0), inputProviders);
-                Class<?> outputType = resolveTalOutput(rule, outputBuilders);
+                TALSourceTypeProvider input = resolveTalInput(rule, declaredInputs.get(0), inputProviders);
+                Class<?> inputType = input.inputType();
                 resolveTalLayer(rule);
 
                 DslSourceRef sourceRef = DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo());
                 TALClassGenerator generator = new TALClassGenerator();
                 generator.setClassOutputDir(talRtDir);
                 generator.setInputType(inputType);
-                generator.setOutputType(outputType);
                 generator.setClassNameHint(rule.getName());
                 generator.setSourceRef(sourceRef);
                 generator.setMetricPrefix(rule.getMetricPrefix());
                 generator.setContent(rule.getDsl());
+                generator.setInputAlias(input.alias());
+                generator.setFunctionRegistry(registry);
                 TalExpression compiled = generator.compile(rule.getDsl());
                 metricShapes.claim(sourceRef + "#" + rule.getName(), generator.getMetricDeclarations());
                 generator.createMetrics(meterSystem);
@@ -791,12 +804,17 @@ public class Precompiler {
                 talRules.setProperty(prefix + "name", rule.getName());
                 talRules.setProperty(prefix + "class", compiled.getClass().getName());
                 talRules.setProperty(prefix + "inputType", inputType.getName());
-                talRules.setProperty(prefix + "outputType", outputType == null ? "" : outputType.getName());
+                talRules.setProperty(prefix + "inputAlias", input.alias());
                 talRules.setProperty(prefix + "metricPrefix", rule.getMetricPrefix() == null ? "" : rule.getMetricPrefix());
                 talRules.setProperty(prefix + "dslSha256", sha256Hex(rule.getDsl().getBytes(StandardCharsets.UTF_8)));
                 ioClasses.add(inputType.getName());
-                if (outputType != null) {
-                    ioClasses.add(outputType.getName());
+                List<String[]> functions = talFunctionFields(rule, compiled, registry, inputProviders.keySet());
+                for (int f = 0; f < functions.size(); f++) {
+                    String functionPrefix = prefix + "function." + f + ".";
+                    talRules.setProperty(functionPrefix + "field", functions.get(f)[0]);
+                    talRules.setProperty(functionPrefix + "key", functions.get(f)[1]);
+                    talRules.setProperty(functionPrefix + "type", functions.get(f)[2]);
+                    ioClasses.add(functions.get(f)[2]);
                 }
                 List<TALMetricDeclaration> declarations = generator.getMetricDeclarations();
                 for (int m = 0; m < declarations.size(); m++) {
@@ -824,9 +842,15 @@ public class Precompiler {
         List<String> exported = meterSystem.getExportedClasses();
         writeManifest(metaInf.resolve("tal-meter-classes.txt"),
             new ArrayList<>(exported.subList(meterClassesBefore, exported.size())));
-        // The SPI implementations ServiceLoader instantiates, and the builders rules name by class.
-        inputProviders.values().forEach(provider -> ioClasses.add(provider.getClass().getName()));
-        outputBuilders.values().forEach(builder -> ioClasses.add(builder.getName()));
+        // The SPI implementations ServiceLoader instantiates, and every object the registry binds: it lists their
+        // methods at boot, whether or not a rule calls one.
+        for (TALSourceTypeProvider provider : inputProviders.values()) {
+            ioClasses.add(provider.getClass().getName());
+            provider.helperFunctions().forEach(helper -> ioClasses.add(helper.getClass().getName()));
+        }
+        for (TALFunctionProvider provider : java.util.ServiceLoader.load(TALFunctionProvider.class)) {
+            ioClasses.add(provider.getClass().getName());
+        }
         writeManifest(metaInf.resolve("tal-io-classes.txt"), new ArrayList<>(ioClasses));
         log.info("TAL pre-compilation: {} files, {} rules, {} v2 expression classes, {} meter classes",
             configsByFile.size(), totalRules, talV2Classes.size(), exported.size() - meterClassesBefore);
@@ -852,36 +876,53 @@ public class Precompiler {
         }
     }
 
-    private static Class<?> resolveTalInput(TALConfig rule, String declared,
-                                            Map<String, TALSourceTypeProvider> inputProviders) {
+    private static TALSourceTypeProvider resolveTalInput(TALConfig rule, String declared,
+                                                         Map<String, TALSourceTypeProvider> inputProviders) {
         TALSourceTypeProvider byAlias = inputProviders.get(declared);
         if (byAlias != null) {
-            return byAlias.inputType();
+            return byAlias;
         }
         for (TALSourceTypeProvider provider : inputProviders.values()) {
             if (provider.inputType().getName().equals(declared)) {
-                return provider.inputType();
+                return provider;
             }
         }
         throw new IllegalStateException("TAL rule " + rule.getName() + " declares inputType '" + declared
             + "' which no TALSourceTypeProvider claims; registered aliases are " + inputProviders.keySet());
     }
 
-    private static Class<?> resolveTalOutput(TALConfig rule, Map<String, Class<?>> outputBuilders)
-        throws ClassNotFoundException {
-        if (rule.getOutputType() == null || rule.getOutputType().isEmpty()) {
-            return null;
+    /**
+     * The function objects upstream's generator set on the compiled instance, every instance field the class declares
+     * besides its static logger, each as {field, registry key, object class}. The key is the one the registry holds
+     * that very object under, so the runtime TalDSL re-binds the same object from the factory's registry.
+     */
+    static List<String[]> talFunctionFields(TALConfig rule, TalExpression compiled, TALFunctionRegistry registry,
+                                            Collection<String> inputAliases) throws IllegalAccessException {
+        List<String[]> functions = new ArrayList<>();
+        for (Field field : compiled.getClass().getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            field.setAccessible(true);
+            Object owner = field.get(compiled);
+            if (owner == null) {
+                throw new IllegalStateException("TAL rule " + rule.getName() + ": field " + field.getName()
+                    + " of " + compiled.getClass().getName() + " was left unset by the generator");
+            }
+            String byClass = owner.getClass().getName();
+            List<String> candidates = new ArrayList<>();
+            candidates.add(byClass);
+            inputAliases.forEach(alias -> candidates.add(byClass + "/" + alias));
+            List<String> keys = candidates.stream().filter(k -> registry.instance(k) == owner)
+                                          .collect(Collectors.toList());
+            if (keys.size() != 1) {
+                throw new IllegalStateException("TAL rule " + rule.getName() + ": the " + byClass + " in field "
+                    + field.getName() + " is held by the function registry under " + keys.size() + " of the keys "
+                    + candidates);
+            }
+            functions.add(new String[] {field.getName(), keys.get(0), byClass});
         }
-        Class<?> byName = outputBuilders.get(rule.getOutputType());
-        if (byName != null) {
-            return byName;
-        }
-        Class<?> clazz = Class.forName(rule.getOutputType());
-        if (!TALOutputBuilder.class.isAssignableFrom(clazz)) {
-            throw new IllegalStateException("TAL rule " + rule.getName() + " outputType " + rule.getOutputType()
-                + " is not a TALOutputBuilder");
-        }
-        return clazz;
+        return functions;
     }
 
 
@@ -1813,14 +1854,17 @@ public class Precompiler {
         // LAL v2 expression classes — one FQCN per line, constructor-only
         addConstructorEntries(entries, metaInf.resolve("lal-v2-classes.txt"));
 
-        // TAL v2 expression classes — one FQCN per line, constructor-only
-        addConstructorEntries(entries, metaInf.resolve("tal-v2-classes.txt"));
-        // The input types, providers and output builders the TAL rules were resolved through: ServiceLoader
-        // instantiates the SPI ones, and toJson() in a rule serializes whatever object it is given through Gson
+        // TAL v2 expression classes: the constructor, plus the function-object fields the runtime TalDSL sets
+        addTalExpressionEntries(entries, metaInf.resolve("tal-v2-classes.txt"), metaInf.resolve("tal-v2-rules.txt"));
+        // The input types, providers and function objects the TAL rules were resolved through: ServiceLoader
+        // instantiates the SPI ones, TALFunctionRegistry.bind lists the methods of every bound object (getMethods on
+        // the providers), and toJson() in a rule serializes whatever object it is given through Gson
         Path talIoClasses = metaInf.resolve("tal-io-classes.txt");
         if (Files.exists(talIoClasses)) {
             for (String className : readClassNames(talIoClasses)) {
-                entries.add(fullAccessEntry(className));
+                Map<String, Object> entry = fullAccessEntry(className);
+                entry.put("allPublicMethods", true);
+                entries.add(entry);
             }
         }
         // TAL pairing halves cross OAP nodes as stream data; RemoteHandleWorker rebuilds them with newInstance()
@@ -2093,6 +2137,42 @@ public class Precompiler {
             .distinct()
             .sorted()
             .collect(Collectors.toList());
+    }
+
+    /**
+     * The TAL expression classes of {@code tal-v2-classes.txt}: each one's constructor, plus the function-object
+     * fields {@code tal-v2-rules.txt} records for it, which the runtime TalDSL writes.
+     */
+    private static void addTalExpressionEntries(List<Map<String, Object>> entries, Path classes, Path rules)
+        throws IOException {
+        if (!Files.exists(classes)) {
+            return;
+        }
+        Map<String, List<Map<String, Object>>> fieldsByClass = new HashMap<>();
+        if (Files.exists(rules)) {
+            Properties props = new Properties();
+            try (java.io.Reader reader = Files.newBufferedReader(rules, StandardCharsets.UTF_8)) {
+                props.load(reader);
+            }
+            for (int i = 0; props.getProperty("rule." + i + ".class") != null; i++) {
+                List<Map<String, Object>> fields = fieldsByClass.computeIfAbsent(
+                    props.getProperty("rule." + i + ".class"), k -> new ArrayList<>());
+                for (int f = 0; props.getProperty("rule." + i + ".function." + f + ".field") != null; f++) {
+                    Map<String, Object> field = new LinkedHashMap<>();
+                    field.put("name", props.getProperty("rule." + i + ".function." + f + ".field"));
+                    field.put("allowWrite", true);
+                    fields.add(field);
+                }
+            }
+        }
+        for (String className : readClassNames(classes)) {
+            Map<String, Object> entry = constructorOnlyEntry(className);
+            List<Map<String, Object>> fields = fieldsByClass.get(className);
+            if (fields != null && !fields.isEmpty()) {
+                entry.put("fields", fields);
+            }
+            entries.add(entry);
+        }
     }
 
     /**

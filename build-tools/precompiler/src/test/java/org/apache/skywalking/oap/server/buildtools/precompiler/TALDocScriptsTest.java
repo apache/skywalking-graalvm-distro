@@ -23,6 +23,7 @@ import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.trace.v1.Span;
 import java.io.InputStream;
 import java.io.Reader;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,13 +44,13 @@ import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.AcceptableValue;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.apdex.ApdexFunction;
 import org.apache.skywalking.oap.server.core.cache.NetworkAddressAliasCache;
-import org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder;
 import org.apache.skywalking.oap.server.configuration.api.ConfigChangeWatcher.ConfigChangeEvent;
 import org.apache.skywalking.oap.server.configuration.api.ConfigChangeWatcher.EventType;
 import org.apache.skywalking.oap.server.core.config.IComponentLibraryCatalogService;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.ServerClusterConfig;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
+import org.apache.skywalking.oap.server.core.source.DatabaseSlowStatement;
 import org.apache.skywalking.oap.server.core.source.NetworkAddressAliasSetup;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
 import org.apache.skywalking.oap.server.core.trace.SpanMetadata;
@@ -57,10 +58,15 @@ import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.apache.skywalking.oap.server.library.module.ModuleProviderHolder;
 import org.apache.skywalking.oap.server.library.module.ModuleServiceHolder;
+import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.ExecutionContext;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalExpression;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.spec.FilterSpec;
+import org.apache.skywalking.oap.trace.analyzer.v2.dsl.spec.RateLimitingSamplers;
+import org.apache.skywalking.oap.trace.analyzer.v2.module.TraceAnalyzerModule;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleConfig;
+import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.AliasRegistrar;
+import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.SpanPairing;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.OtlpTALSourceTypeProvider;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -87,7 +93,7 @@ import static org.mockito.Mockito.when;
 class TALDocScriptsTest {
     private static final Path SUBMODULE = Path.of(System.getProperty("user.dir")).getParent().getParent()
         .resolve("skywalking");
-    private static final Path TAL_MD = SUBMODULE.resolve("docs/en/concepts-and-designs/tal.md");
+    private static final Path TAL_OTLP_MD = SUBMODULE.resolve("docs/en/concepts-and-designs/tal-otlp.md");
     private static final Path PRACTICES = SUBMODULE.resolve("docs/en/setup/backend/otlp-trace-practices");
     private static final Path GATEWAY_MD = PRACTICES.resolve("gateway-overview.md");
     private static final Path CANARY_MD = PRACTICES.resolve("gateway-canary.md");
@@ -137,7 +143,7 @@ class TALDocScriptsTest {
                 if (SERVER_RULE == null && dsl.contains(SERVER_ANCHOR)) {
                     SERVER_RULE = name;
                 }
-                if (SLOW_SQL_RULE == null && "SlowSQL".equals(rule.get("outputType"))) {
+                if (SLOW_SQL_RULE == null && dsl.contains("source DatabaseSlowStatement")) {
                     SLOW_SQL_RULE = name;
                 }
             }
@@ -149,7 +155,7 @@ class TALDocScriptsTest {
             "  - name: address-named-peers",
             "    layer: OTLP_GENERAL",
             "    dsl: |",
-            indent(block(TAL_MD, "prepareNetworkAlias peer"), "      ")));
+            indent(block(TAL_OTLP_MD, "prepareNetworkAlias peer"), "      ")));
 
         final List<String> gatewayPeer = block(GATEWAY_MD, "hasAttr(\"<attribute>\")");
         write(docsDir, "practice-gateway-peer.yaml", spliceBefore(shipped,
@@ -157,7 +163,7 @@ class TALDocScriptsTest {
         write(docsDir, "practice-canary-gateway.yaml", spliceBefore(shipped,
             CLIENT_ANCHOR, fill(block(CANARY_MD, "meta.service == \"<gateway>\""), "<gateway>", "gateway")));
         write(docsDir, "practice-canary-router.yaml", spliceBefore(shipped,
-            CLIENT_ANCHOR, block(CANARY_MD, "!isGateway(peer) && attr(\"http.request.header.x-canary\")")));
+            CLIENT_ANCHOR, block(CANARY_MD, "if (peer && !isGateway(peer)")));
         final List<String> nginx = block(NGINX_MD, "nginx's SERVER span");
         write(docsDir, "practice-nginx.yaml", spliceAfter(shipped, SERVER_ANCHOR, nginx));
         // The page's alternative picks nginx by a resource tag instead of its service name.
@@ -185,6 +191,7 @@ class TALDocScriptsTest {
             ClassPath.from(TALDocScriptsTest.class.getClassLoader())
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
         MeterSystem.setOutputDirectory(OUT.toString());
+        Precompiler.declareScopes();
         Precompiler.compileTAL(OUT.toString(), new MeterSystem(null), DOCS);
 
         MANIFEST = new Properties();
@@ -397,11 +404,11 @@ class TALDocScriptsTest {
             "00f067aa0ba902b7", 350);
         final ExecutionContext ctx = h.run(file, SLOW_SQL_RULE, statement);
         assertFalse(ctx.isAborted(), "a 350 ms statement is slow");
-        assertTrue(ctx.isSinkKept(), "the rule's sink keeps the record");
-        // TraceAnalyzerServiceImpl#writeRecord fills the record from the metadata the rule's `service` set.
-        final DatabaseSlowStatementBuilder record = (DatabaseSlowStatementBuilder) ctx.outputAsBuilder();
-        record.init(ctx.getMeta(), statement.span, h.filterSpec.getModuleManager());
-        return record.getServiceName();
+        final List<DatabaseSlowStatement> records = new ArrayList<>();
+        h.sources.stream().filter(DatabaseSlowStatement.class::isInstance)
+                 .forEach(source -> records.add((DatabaseSlowStatement) source));
+        assertEquals(1, records.size(), "the rule sends one slow statement: " + h.sources);
+        return IDManager.ServiceID.analysisId(records.get(0).getDatabaseServiceId()).getName();
     }
 
     private static final class AnalyzedSpan {
@@ -423,6 +430,7 @@ class TALDocScriptsTest {
     private static final class Harness {
         private final List<String> accepted = new ArrayList<>();
         private final List<String> aliases = new ArrayList<>();
+        private final List<Object> sources = new ArrayList<>();
         private final Set<String> gateways = new HashSet<>();
         private final Map<String, TalExpression> loaded = new HashMap<>();
         private final FilterSpec filterSpec;
@@ -452,6 +460,7 @@ class TALDocScriptsTest {
             ApdexFunction.setDICT(name -> 500);
             final SourceReceiver sourceReceiver = mock(SourceReceiver.class);
             doAnswer(invocation -> {
+                sources.add(invocation.getArgument(0));
                 if (invocation.getArgument(0) instanceof NetworkAddressAliasSetup) {
                     final NetworkAddressAliasSetup setup = invocation.getArgument(0);
                     setup.prepare();
@@ -462,9 +471,13 @@ class TALDocScriptsTest {
             }).when(sourceReceiver).receive(any());
             final ServerClusterConfig serverClusters = new ServerClusterConfig(mock(ModuleProvider.class), 70);
             serverClusters.notify(new ConfigChangeEvent(clusters, EventType.MODIFY));
-            filterSpec = new FilterSpec(moduleManager(serverClusters, namingControl), new TraceAnalyzerModuleConfig(),
-                meterSystem, namingControl, sourceReceiver);
-            filterSpec.getSpanPairing().getAliasRegistrar().setGateways(gateways::contains);
+            // TraceAnalyzerModuleProvider#start sets the pairing's registrar before the first rule compiles.
+            final SpanPairing spanPairing = new SpanPairing();
+            spanPairing.setAliasRegistrar(new AliasRegistrar(sourceReceiver, namingControl));
+            spanPairing.getAliasRegistrar().setGateways(gateways::contains);
+            filterSpec = new FilterSpec(
+                moduleManager(serverClusters, namingControl, meterSystem, sourceReceiver, spanPairing),
+                new TraceAnalyzerModuleConfig());
         }
 
         /**
@@ -490,15 +503,25 @@ class TALDocScriptsTest {
     }
 
     /**
-     * The class the manifest names for the rule, instantiated as the runtime {@code TalDSL} would load it.
+     * The class the manifest names for the rule, instantiated and given its function objects by the manifest's keys,
+     * as the runtime {@code TalDSL} loads it.
      */
     private static TalExpression load(final String file, final String rule) {
         for (int i = 0; MANIFEST.getProperty("rule." + i + ".class") != null; i++) {
-            if (("tal/" + file).equals(MANIFEST.getProperty("rule." + i + ".source"))
-                && rule.equals(MANIFEST.getProperty("rule." + i + ".name"))) {
+            final String prefix = "rule." + i + ".";
+            if (("tal/" + file).equals(MANIFEST.getProperty(prefix + "source"))
+                && rule.equals(MANIFEST.getProperty(prefix + "name"))) {
                 try {
-                    return (TalExpression) Class.forName(MANIFEST.getProperty("rule." + i + ".class"))
-                                                .getDeclaredConstructor().newInstance();
+                    final TalExpression expression = (TalExpression) Class.forName(MANIFEST.getProperty(prefix + "class"))
+                                                                          .getDeclaredConstructor().newInstance();
+                    for (int f = 0; MANIFEST.getProperty(prefix + "function." + f + ".field") != null; f++) {
+                        final Field field = expression.getClass().getDeclaredField(
+                            MANIFEST.getProperty(prefix + "function." + f + ".field"));
+                        field.setAccessible(true);
+                        field.set(expression, TALFunctionRegistry.defaults().instance(
+                            MANIFEST.getProperty(prefix + "function." + f + ".key")));
+                    }
+                    return expression;
                 } catch (final ReflectiveOperationException e) {
                     throw new IllegalStateException(e);
                 }
@@ -508,7 +531,8 @@ class TALDocScriptsTest {
     }
 
     private static ModuleManager moduleManager(final ServerClusterConfig serverClusters,
-                                               final NamingControl namingControl) {
+                                               final NamingControl namingControl, final MeterSystem meterSystem,
+                                               final SourceReceiver sourceReceiver, final SpanPairing spanPairing) {
         final IComponentLibraryCatalogService catalog = mock(IComponentLibraryCatalogService.class);
         when(catalog.getComponentIdIgnoreCase(anyString())).thenReturn(49);
         final ModuleServiceHolder core = mock(ModuleServiceHolder.class);
@@ -516,10 +540,18 @@ class TALDocScriptsTest {
         when(core.getService(NetworkAddressAliasCache.class)).thenReturn(mock(NetworkAddressAliasCache.class));
         when(core.getService(ServerClusterConfig.class)).thenReturn(serverClusters);
         when(core.getService(NamingControl.class)).thenReturn(namingControl);
+        when(core.getService(MeterSystem.class)).thenReturn(meterSystem);
+        when(core.getService(SourceReceiver.class)).thenReturn(sourceReceiver);
         final ModuleProviderHolder coreModule = mock(ModuleProviderHolder.class);
         when(coreModule.provider()).thenReturn(core);
+        final ModuleServiceHolder analyzer = mock(ModuleServiceHolder.class);
+        when(analyzer.getService(SpanPairing.class)).thenReturn(spanPairing);
+        when(analyzer.getService(RateLimitingSamplers.class)).thenReturn(new RateLimitingSamplers());
+        final ModuleProviderHolder analyzerModule = mock(ModuleProviderHolder.class);
+        when(analyzerModule.provider()).thenReturn(analyzer);
         final ModuleManager moduleManager = mock(ModuleManager.class);
         when(moduleManager.find(CoreModule.NAME)).thenReturn(coreModule);
+        when(moduleManager.find(TraceAnalyzerModule.NAME)).thenReturn(analyzerModule);
         return moduleManager;
     }
 

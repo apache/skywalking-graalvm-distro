@@ -54,6 +54,8 @@ class TALPrecompileTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // `source DatabaseSlowStatement {}` resolves the scope as the precompiler's main pass declared it.
+        Precompiler.declareScopes();
         MeterSystem.setFunctionRegister(Precompiler.meterFunctionRegister(
             ClassPath.from(getClass().getClassLoader())
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
@@ -103,9 +105,19 @@ class TALPrecompileTest {
         final List<String> io = Files.readAllLines(out.resolve("META-INF/tal-io-classes.txt"));
         assertTrue(io.contains("org.apache.skywalking.oap.trace.analyzer.v2.spi.OtlpTALSourceTypeProvider"), io.toString());
         assertTrue(io.contains("io.opentelemetry.proto.trace.v1.Span"), io.toString());
-        assertTrue(io.contains(
-            "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder"),
-            io.toString());
+        assertTrue(io.contains(RT + "TalGeneralFunctions"), io.toString());
+        assertTrue(io.contains(RT + "TalConfigFunctions"), io.toString());
+
+        // The function objects upstream's generator set on the instance, by the registry key each is bound under.
+        final String slow = prefixOf(rules, "fleet-slow");
+        assertEquals("otlp", rules.getProperty(slow + "inputAlias"));
+        final List<String> keys = functionKeys(rules, slow);
+        assertTrue(keys.contains(RT + "TalConfigFunctions"), keys.toString());
+        for (int f = 0; f < keys.size(); f++) {
+            assertTrue(rules.getProperty(slow + "function." + f + ".field").startsWith("_fn"));
+            assertEquals(keys.get(f), rules.getProperty(slow + "function." + f + ".type"),
+                "the otlp input's objects are the first of their class, keyed by the class alone");
+        }
 
         // Every file, the rules-less one included: its layers are registered when the runtime loads it.
         final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
@@ -170,10 +182,29 @@ class TALPrecompileTest {
     }
 
     @Test
-    void anOutputTypeThatIsNoBuilderFailsTheBuild() {
+    void aNativeRuleIsCompiledAgainstTheNativeInputsFunctions() throws Exception {
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-native");
+
+        final Properties rules = load("tal-v2-rules.txt");
+        final String rule = prefixOf(rules, "native-alias");
+        assertEquals("org.apache.skywalking.apm.network.language.agent.v3.SpanObject",
+            rules.getProperty(rule + "inputType"));
+        assertEquals("sw-native", rules.getProperty(rule + "inputAlias"));
+        final List<String> keys = functionKeys(rules, rule);
+        assertTrue(keys.contains(RT + "TalConfigFunctions/sw-native"),
+            "a helper class the otlp input binds first is keyed by the class and the alias: " + keys);
+        assertTrue(Files.readAllLines(out.resolve("META-INF/tal-io-classes.txt"))
+                        .contains("org.apache.skywalking.apm.network.language.agent.v3.SpanObject"));
+        // Every file compiles at build time; the runtime TALConfigs skips it while a listed module is not loaded.
+        final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
+        assertEquals("fixture-module", configData.at("/native.yaml/requiredModules/0").asText());
+    }
+
+    @Test
+    void aFunctionOfAnotherInputFailsTheBuild() {
         final Exception e = assertThrows(Exception.class,
-            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-bad-output"));
-        assertTrue(e.getMessage().contains("is not a TALOutputBuilder"), e.getMessage());
+            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-wrong-input"));
+        assertTrue(rootMessage(e).contains("segmentLatency"), rootMessage(e));
     }
 
     @Test
@@ -201,6 +232,22 @@ class TALPrecompileTest {
         assertEquals(line(file, name), Integer.parseInt(rules.getProperty(prefix + "line")), name);
         assertEquals(className, rules.getProperty(prefix + "class"), name);
         assertEquals("io.opentelemetry.proto.trace.v1.Span", rules.getProperty(prefix + "inputType"), name);
+    }
+
+    private static List<String> functionKeys(final Properties rules, final String rulePrefix) {
+        final List<String> keys = new ArrayList<>();
+        for (int f = 0; rules.getProperty(rulePrefix + "function." + f + ".key") != null; f++) {
+            keys.add(rules.getProperty(rulePrefix + "function." + f + ".key"));
+        }
+        return keys;
+    }
+
+    private static String rootMessage(final Throwable e) {
+        final StringBuilder messages = new StringBuilder();
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            messages.append(t.getMessage()).append(" / ");
+        }
+        return messages.toString();
     }
 
     private static String prefixOf(final Properties rules, final String name) {

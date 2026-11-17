@@ -16,15 +16,27 @@
 # Extract SkyWalking version from submodule
 SW_VERSION := $(shell grep '<revision>' skywalking/pom.xml | head -1 | sed 's/.*<revision>\(.*\)<\/revision>.*/\1/')
 
-# Auto-detect GraalVM 25 JDK via sdkman if JAVA_HOME is not already set to one
+# The GraalVM release the native image is built with. CI pins the same `version` in setup-graalvm.
+GRAALVM_VERSION ?= 25.5
+# The Linux builder of native-image-macos; `25i5` is the GraalVM Community 25.5 innovation release.
+GRAALVM_IMAGE ?= ghcr.io/graalvm/native-image-community:25i5
+
+# The newest sdkman GraalVM $(GRAALVM_VERSION), Oracle before Community, then a GraalVM JAVA_HOME, then the
+# newest sdkman GraalVM 25. `make GRAAL_HOME=<dir>` overrides the pick.
+SDKMAN_JAVA := $(HOME)/.sdkman/candidates/java
 GRAAL_HOME := $(shell \
-	if echo "$$JAVA_HOME" | grep -qi graal 2>/dev/null; then \
-		echo "$$JAVA_HOME"; \
-	elif [ -d "$$HOME/.sdkman/candidates/java" ]; then \
-		find "$$HOME/.sdkman/candidates/java" -maxdepth 1 -name '*graal*' -name '*25*' -print -quit 2>/dev/null; \
-	fi)
-ifdef GRAAL_HOME
+	for p in '$(GRAALVM_VERSION).*-graal' '$(GRAALVM_VERSION).*-graalce'; do \
+		d=$$(ls -d $(SDKMAN_JAVA)/$$p 2>/dev/null | sort -V | tail -1); \
+		if [ -n "$$d" ]; then echo "$$d"; exit 0; fi; \
+	done; \
+	if echo "$$JAVA_HOME" | grep -qi graal; then echo "$$JAVA_HOME"; exit 0; fi; \
+	ls -d $(SDKMAN_JAVA)/*graal* 2>/dev/null | grep 25 | sort -V | tail -1)
+ifneq ($(GRAAL_HOME),)
   export JAVA_HOME := $(GRAAL_HOME)
+  GRAAL_HOME_VERSION := $(shell sed -n 's/^GRAALVM_VERSION="\(.*\)"/\1/p' "$(GRAAL_HOME)/release" 2>/dev/null)
+  ifeq ($(filter $(GRAALVM_VERSION).%,$(GRAAL_HOME_VERSION)),)
+    $(warning GraalVM at $(GRAAL_HOME) is $(or $(GRAAL_HOME_VERSION),of unknown version), not $(GRAALVM_VERSION). Install GraalVM $(GRAALVM_VERSION), e.g. through sdkman (`sdk list java`).)
+  endif
 endif
 
 MVN := ./mvnw
@@ -36,6 +48,8 @@ all: build
 
 info:
 	@echo "SkyWalking version: $(SW_VERSION)"
+	@echo "JAVA_HOME: $(JAVA_HOME)"
+	@"$(JAVA_HOME)/bin/native-image" --version 2>/dev/null || echo "native-image: not found under JAVA_HOME"
 
 # Initialize skywalking nested submodules (proto files, query protocol, etc.)
 init-submodules:
@@ -118,7 +132,7 @@ native-image-macos: compile
 		-v $(HOME)/.m2:/root/.m2 \
 		-v $(CURDIR):/workspace \
 		-w /workspace \
-		ghcr.io/graalvm/native-image-community:25 \
+		$(GRAALVM_IMAGE) \
 		./mvnw package -pl oap-graalvm-native -Pnative -DskipTests $(MVN_ARGS)
 
 # Run tracing agent to capture supplementary native-image metadata
