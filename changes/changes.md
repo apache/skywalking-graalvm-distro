@@ -2,6 +2,22 @@
 
 ## 0.6.0
 
+### Upstream Sync
+
+- Sync SkyWalking submodule to upstream master `ab9dceee9d` (11.2.0-SNAPSHOT), 22 commits past the v11.1.0 tag, the last one the alarm fix the distro's e2e found: an alarm window kept the layers of its entity's first metric, so when that first metadata lookup missed the new service, every alarm of the window was persisted without a layer and `queryAlarms(layer: ...)` never matched it (apache/skywalking#14246).
+- **Native trace analysis on TAL (SWIP-17).** Upstream moved the analysis of the segments SkyWalking agents send from the agent-analyzer listeners into seven `sw-native` TAL files (`tal/native-*.yaml`, run in the `nativeTalFiles` order by `SwNativeRuleRunner`) and added `tal/otlp-ai-evaluation.yaml` for OTLP spans. Including `otlp-general`, all nine files are pre-compiled into 14 expressions, and the configured file lists (`SW_TRACE_NATIVE_TAL_FILES`, `SW_TRACE_TAL_FILES`) match upstream; with the default modules the two AI-evaluation files are skipped, leaving two OTLP rules and ten native rules active. Generated TAL classes now call their functions through function-object fields that upstream sets from a `TALFunctionRegistry` after instantiating the class; the precompiler compiles each rule against a registry bound as `SpanFilterListener.Factory` binds its own and records every field's registry key in `tal-v2-rules.txt`, and the same-FQCN `TalDSL` sets the same objects from the factory's registry at boot (reflection metadata for the fields and the function classes is generated). `TALConfigs` honors `requiredModules` (a file whose modules are not loaded is skipped, and the trace analyzer starts them first) and `loadInOrder` (a listed native file that was not compiled fails the boot). The precompiler gains the `ai-evaluation` dependency, so its TAL functions and the new `GenAIEvaluationSample` dispatcher are compiled and registered.
+- Wire the new `query-server` module (GraphQL, the AI agent conversation API and `/status/config/ttl` mount on it; `SW_QUERY_SERVER_REST_PORT` moves them to a port of their own, with optional TLS), and adopt upstream's `simple/query-port` e2e case.
+- Adopt every rule file upstream changed: the LAL fallback rules in `lal/default.yaml` (`default-fallback`, `fallback: true`, carried through `lal.json`) and the `OTLP_GENERAL` log rule, the split `lal/miniprogram.yaml` error rules (19 LAL rules), and the TAL files above (9 files, 14 rules).
+- GraphQL query protocol `966fb2c` (nested `query-protocol` submodule): `TraceScopeCondition.otlpSpanId` queries the logs an OTLP or Zipkin span wrote (apache/skywalking#14213, which keeps the trace and span an OTLP log was written in, in the new `otlp_span_id` log column). The input type's reflection entry already grants every field, and the native image answers the query (`otlp-traces-native` now includes upstream's OTLP log cases).
+- Mirror the new `application.yml` options: `trace-analyzer.nativeTalFiles`, the `query-server` section and the alarm module's `grpcTimeout`.
+- Bump the e2e pins to upstream's: BanyanDB `88245d3965`, the e2e service images `b0a3065c6e` (the gRPC alarm hook server, now asserted by the so11y and alarm cases), the mini program simulators; include upstream's OTLP log cases in `otlp-traces-native`, and its `endTs` fix in `otlp-traces`.
+- The precompiler fails the build where upstream fails the boot: a MAL, Zabbix, LAL or hierarchy rule that does not load or compile, a LAL `inputType` / `outputType` that does not resolve, or a missing hierarchy definition or `auto-matching-rules` section. These used to be logged and left out of the image.
+- New `NativeTALComparisonTest` runs every native rule over upstream's native-trace checker fixtures through `SwNativeRuleRunner`, once with the pre-compiled classes and once with a fresh compile, and requires identical records, alias rows and failures.
+
+### Build
+
+- Build the native image with GraalVM 25.5 (`25.5.5.0.3`, on JDK `25.0.5.0.3`), up from 25.0.4: CI pins `version: '25.5'` on `setup-graalvm` (Oracle GraalVM), `make native-image-macos` runs `native-image-community:25i5`, and the Makefile picks the newest sdkman GraalVM 25.5 (`GRAALVM_VERSION`, `GRAAL_HOME` override) instead of the first GraalVM 25 it finds, warning when it falls back to another release.
+
 ### Documentation
 
 - Move the `version-mapping.md` dev row to `0.6.0-SNAPSHOT` and add `0.5.0` → `11.1.0`.

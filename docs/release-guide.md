@@ -9,7 +9,7 @@ The release manager needs the following tools installed locally:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| GraalVM JDK 25 | Build macOS native binary | [sdkman](https://sdkman.io/): `sdk install java 25-graal` |
+| GraalVM 25.5 | Build macOS native binary | [sdkman](https://sdkman.io/): `sdk install java 25.5.5.0+3-graal` |
 | GPG | Sign release artifacts | `brew install gnupg` |
 | git | Version control | `brew install git` |
 | gh | GitHub CLI (download CI artifacts, create PRs) | `brew install gh` |

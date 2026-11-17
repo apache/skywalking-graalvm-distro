@@ -18,6 +18,7 @@
 package org.apache.skywalking.oap.server.graalvm.tal;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -29,7 +30,9 @@ import org.apache.skywalking.oap.server.core.dsl.DslClassNaming;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
+import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALClassGenerator;
+import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricDeclaration;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalDSL;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfig;
@@ -41,6 +44,7 @@ import org.mockito.invocation.Invocation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -78,10 +82,39 @@ class TALPrecompiledRuleTest {
             assertEquals(raw.get("dsl"), rule.getDsl(), rule.getName());
             assertEquals(raw.get("layer"), rule.getLayer(), rule.getName());
             assertEquals(raw.get("inputType"), rule.getInputType(), rule.getName());
-            assertEquals(raw.get("outputType"), rule.getOutputType(), rule.getName());
             assertEquals(TALTestSupport.fileYaml(TALTestSupport.fileOf(rule)).get("metricPrefix"), rule.getMetricPrefix(),
                 rule.getName());
         }
+    }
+
+    @Test
+    void theConfigDataKeepsEachFilesRequiredModulesAndListedOrder() throws Exception {
+        final List<String> withRules = new ArrayList<>();
+        final ModuleManager noModules = mock(ModuleManager.class);
+        for (final String file : TALTestSupport.ruleFiles()) {
+            final String stem = TALTestSupport.stemOf(file);
+            final Map<String, Object> yaml = TALTestSupport.fileYaml(file);
+            final Object required = yaml.get("requiredModules");
+            assertEquals(required == null ? List.of() : required,
+                new ArrayList<>(TALConfigs.requiredModulesOf("tal", List.of(stem))), file);
+            final boolean hasRules = yaml.get("rules") instanceof List && !((List<?>) yaml.get("rules")).isEmpty();
+            if (hasRules) {
+                withRules.add(stem);
+            }
+            // Skipped, as upstream skips it, while a module it requires is not loaded.
+            assertEquals(hasRules && required == null ? 1 : 0, TALConfigs.load("tal", List.of(stem), noModules).size(),
+                file);
+        }
+        // nativeTalFiles' contract: the files come back as listed, whichever order that is.
+        Collections.reverse(withRules);
+        final List<String> loaded = new ArrayList<>();
+        for (final TALConfigs configs : TALConfigs.loadInOrder("tal", withRules, null)) {
+            final String sourceName = configs.getRules().get(0).getSourceName();
+            loaded.add(sourceName.substring(0, sourceName.lastIndexOf('.')));
+        }
+        assertEquals(withRules, loaded);
+        assertThrows(ModuleStartException.class, () -> TALConfigs.loadInOrder("tal", List.of("no-such-tal-file"), null),
+            "a listed native file that was not compiled fails the boot, as upstream's missing file does");
     }
 
     @Test
@@ -89,7 +122,11 @@ class TALPrecompiledRuleTest {
         try (MockedStatic<MetricsStreamProcessor> processor = Mockito.mockStatic(MetricsStreamProcessor.class)) {
             processor.when(MetricsStreamProcessor::getInstance).thenReturn(mock(MetricsStreamProcessor.class));
             for (final TALConfig rule : TALTestSupport.precompiledRules()) {
-                final TALClassGenerator generator = TALTestSupport.freshGenerator(rule);
+                final MeterSystem[] meterSystem = new MeterSystem[1];
+                final ModuleManager moduleManager = TALTestSupport.moduleManager(
+                    meterSystem, mock(SourceReceiver.class), TALTestSupport.namingControl());
+                final TALFunctionRegistry functions = TALTestSupport.functionRegistry(moduleManager);
+                final TALClassGenerator generator = TALTestSupport.freshGenerator(rule, functions);
                 generator.compile((String) TALTestSupport.yamlRule(rule).get("dsl"));
                 final List<String> declared = new ArrayList<>();
                 for (final TALMetricDeclaration d : generator.getMetricDeclarations()) {
@@ -99,11 +136,8 @@ class TALPrecompiledRuleTest {
                     }
                 }
 
-                final MeterSystem[] meterSystem = new MeterSystem[1];
-                final ModuleManager moduleManager = TALTestSupport.moduleManager(
-                    meterSystem, mock(SourceReceiver.class), TALTestSupport.namingControl());
                 meterSystem[0] = spy(new MeterSystem(moduleManager));
-                final TalDSL dsl = TALTestSupport.loadPrecompiled(rule, moduleManager);
+                final TalDSL dsl = TALTestSupport.loadPrecompiled(rule, moduleManager, functions);
 
                 assertEquals(declared, meterCalls(meterSystem[0]), rule.getName());
                 assertEquals(rule.getName(), dsl.getRuleName());

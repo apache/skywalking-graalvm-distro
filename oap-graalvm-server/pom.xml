@@ -354,6 +354,10 @@
         <!-- Query -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
+            <artifactId>query-server-plugin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
             <artifactId>query-graphql-plugin</artifactId>
         </dependency>
         <dependency>
@@ -465,6 +469,52 @@
                         -Dnet.bytebuddy.experimental=true
                     </argLine>
                 </configuration>
+            </plugin>
+            <!-- NativeTALComparisonTest replays the segments of upstream's native-trace checker; its two fixture files
+                 are copied from the submodule at build time, so the corpus follows upstream. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-native-trace-checker-fixtures</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/generated-test-sources/native-trace-checker</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../skywalking/test/script-cases/trace-analysis-v1-v2-checker/src/test/java</directory>
+                                    <includes>
+                                        <include>org/apache/skywalking/oap/trace/analysis/checker/CheckerFixtures.java</include>
+                                        <include>org/apache/skywalking/oap/trace/analysis/checker/CheckerDifference.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <id>add-native-trace-checker-fixtures</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.build.directory}/generated-test-sources/native-trace-checker</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <!-- Generate VERSION file with pom version + git commit ID -->
             <plugin>

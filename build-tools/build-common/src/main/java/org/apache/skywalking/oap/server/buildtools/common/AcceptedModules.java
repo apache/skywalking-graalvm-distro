@@ -87,6 +87,7 @@ public final class AcceptedModules {
         new ModuleProviderPair("kafka-fetcher", "default"),
         new ModuleProviderPair("cilium-fetcher", "default"),
         // Query
+        new ModuleProviderPair("query-server", "default"),
         new ModuleProviderPair("query", "graphql"),
         new ModuleProviderPair("query-zipkin", "default"),
         new ModuleProviderPair("promql", "default"),

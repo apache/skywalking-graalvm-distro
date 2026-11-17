@@ -34,8 +34,8 @@
         <maven.compiler.release>25</maven.compiler.release>
         <!-- Injected by Makefile from skywalking submodule's <revision> property.
              Do not hardcode — always build via `make`. -->
-        <skywalking.version>11.1.0</skywalking.version>
-        <graalvm.version>25.0.0</graalvm.version>
+        <skywalking.version>11.2.0-SNAPSHOT</skywalking.version>
+        <graalvm.version>25.5.5.0.3</graalvm.version>
         <graalvm.buildtools.version>0.10.4</graalvm.buildtools.version>
         <lombok.version>1.18.40</lombok.version>
         <maven-checkstyle-plugin.version>3.1.0</maven-checkstyle-plugin.version>
@@ -310,6 +310,11 @@
             </dependency>
 
             <!-- Query -->
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>query-server-plugin</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>query-graphql-plugin</artifactId>

@@ -32,19 +32,23 @@ import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationModule;
+import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationSamplingConfig;
 import org.apache.skywalking.oap.server.core.CoreModule;
+import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.core.config.IComponentLibraryCatalogService;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.server.core.dsl.DslYamlLineIndex;
+import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
-import org.apache.skywalking.oap.server.core.source.TALOutputBuilder;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleProviderHolder;
 import org.apache.skywalking.oap.server.library.module.ModuleServiceHolder;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALClassGenerator;
+import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricShapes;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalDSL;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalExpression;
@@ -53,6 +57,7 @@ import org.apache.skywalking.oap.trace.analyzer.v2.module.TraceAnalyzerModule;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfig;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleConfig;
+import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.AliasRegistrar;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.SpanPairing;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.TALSourceTypeProvider;
 import org.mockito.Mockito;
@@ -118,7 +123,7 @@ final class TALTestSupport {
         final Map<JsonNode, String> fileBySignature = new HashMap<>();
         final List<String> stems = new ArrayList<>();
         for (final String file : ruleFiles()) {
-            final String stem = file.contains(".") ? file.substring(0, file.lastIndexOf('.')) : file;
+            final String stem = stemOf(file);
             stems.add(stem);
             for (final TALConfigs configs : TALConfigs.load("tal", List.of(stem))) {
                 fileBySignature.put(signature(configs), file);
@@ -133,6 +138,13 @@ final class TALTestSupport {
             }
         }
         return rules;
+    }
+
+    /**
+     * @return the name talFiles selects a rule file by: the file name without its extension
+     */
+    static String stemOf(final String file) {
+        return file.contains(".") ? file.substring(0, file.lastIndexOf('.')) : file;
     }
 
     private static JsonNode signature(final TALConfigs configs) {
@@ -182,15 +194,32 @@ final class TALTestSupport {
     }
 
     /**
-     * The upstream boot path minus the class loading: TALClassGenerator on the rule text, types and prefix of the
+     * The function registry as {@code SpanFilterListener.Factory} binds its own: every input provider in
+     * ServiceLoader order, then the module providers the manager has. The fresh and pre-compiled paths of a test share
+     * one, so both call the very same function objects.
+     */
+    static TALFunctionRegistry functionRegistry(final ModuleManager moduleManager) {
+        final List<TALSourceTypeProvider> inputs = new ArrayList<>();
+        ServiceLoader.load(TALSourceTypeProvider.class).forEach(inputs::add);
+        final TALFunctionRegistry registry = TALFunctionRegistry.discover();
+        registry.bind(moduleManager, inputs);
+        return registry;
+    }
+
+    /**
+     * The upstream boot path minus the class loading: TALClassGenerator on the rule text, input and prefix of the
      * submodule's YAML, resolved as {@code SpanFilterListener.Factory} resolves them. The hint differs from the rule
      * name so the fresh class never shadows the pre-compiled one.
      */
-    static TALClassGenerator freshGenerator(final TALConfig rule) throws Exception {
+    static TALClassGenerator freshGenerator(final TALConfig rule, final TALFunctionRegistry functions)
+        throws Exception {
+        declareScopes();
         final Map<String, Object> raw = yamlRule(rule);
+        final TALSourceTypeProvider input = inputProvider(inputTypeOf((String) raw.get("inputType")));
         final TALClassGenerator generator = new TALClassGenerator();
-        generator.setInputType(inputProvider(inputTypeOf((String) raw.get("inputType"))).inputType());
-        generator.setOutputType(outputType((String) raw.get("outputType")));
+        generator.setInputType(input.inputType());
+        generator.setInputAlias(input.alias());
+        generator.setFunctionRegistry(functions);
         generator.setClassNameHint("fresh_" + rule.getName());
         generator.setSourceRef(DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo()));
         generator.setMetricPrefix((String) fileYaml(fileOf(rule)).get("metricPrefix"));
@@ -198,8 +227,9 @@ final class TALTestSupport {
         return generator;
     }
 
-    static TalExpression freshCompile(final TALConfig rule, final MeterSystem meterSystem) throws Exception {
-        final TALClassGenerator generator = freshGenerator(rule);
+    static TalExpression freshCompile(final TALConfig rule, final MeterSystem meterSystem,
+                                      final TALFunctionRegistry functions) throws Exception {
+        final TALClassGenerator generator = freshGenerator(rule, functions);
         final TalExpression expression = generator.compile((String) yamlRule(rule).get("dsl"));
         generator.createMetrics(meterSystem);
         return expression;
@@ -209,11 +239,26 @@ final class TALTestSupport {
      * The distro boot path: the same-FQCN {@code TalDSL.of}, which loads the pre-compiled class and creates the
      * metrics from the manifest.
      */
-    static TalDSL loadPrecompiled(final TALConfig rule, final ModuleManager moduleManager) throws Exception {
-        return TalDSL.of(moduleManager, new TraceAnalyzerModuleConfig(), rule.getDsl(),
-            inputProvider(inputTypeOf(rule.getInputType())).inputType(), outputType(rule.getOutputType()), rule.getName(),
-            rule.getMetricPrefix(), DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo()), new TALMetricShapes(),
-            null, null);
+    static TalDSL loadPrecompiled(final TALConfig rule, final ModuleManager moduleManager,
+                                  final TALFunctionRegistry functions) throws Exception {
+        final TALSourceTypeProvider input = inputProvider(inputTypeOf(rule.getInputType()));
+        return TalDSL.of(moduleManager, new TraceAnalyzerModuleConfig(), rule.getDsl(), input.inputType(),
+            input.alias(), functions, rule.getName(), rule.getMetricPrefix(),
+            DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo()), new TALMetricShapes(), null, null);
+    }
+
+    /**
+     * The scope registry a {@code source <Scope> {}} block compiles against, declared as the OAP's core declares it at
+     * boot (the replacement {@code AnnotationScan} reads the precompiler's manifest); once per JVM, as the registry
+     * rejects a scope declared twice.
+     */
+    static synchronized void declareScopes() throws Exception {
+        if (!DefaultScopeDefine.names().isEmpty()) {
+            return;
+        }
+        final AnnotationScan scan = new AnnotationScan();
+        scan.registerListener(new DefaultScopeDefine.Listener());
+        scan.scan();
     }
 
     /**
@@ -238,21 +283,11 @@ final class TALTestSupport {
         throw new IllegalStateException("no TALSourceTypeProvider claims " + declared);
     }
 
-    private static Class<?> outputType(final String declared) throws Exception {
-        if (declared == null || declared.isEmpty()) {
-            return null;
-        }
-        for (final TALOutputBuilder builder : ServiceLoader.load(TALOutputBuilder.class)) {
-            if (builder.name().equals(declared)) {
-                return builder.getClass();
-            }
-        }
-        return Class.forName(declared);
-    }
-
     /**
      * A module manager whose core module serves the given meter system, the naming control and the source
-     * receiver, and whose trace-analyzer module serves the pairing and samplers {@code TalDSL}'s FilterSpec reads.
+     * receiver, whose trace-analyzer module serves the pairing (with the alias registrar the module's start() sets)
+     * and samplers {@code TalDSL}'s FilterSpec reads, and whose ai-evaluation module samples every trace, so the
+     * AI-evaluation rules run their whole path.
      */
     static ModuleManager moduleManager(final MeterSystem[] meterSystem, final SourceReceiver sourceReceiver,
                                        final NamingControl namingControl) {
@@ -269,12 +304,21 @@ final class TALTestSupport {
         final ModuleProviderHolder coreModule = mock(ModuleProviderHolder.class);
         Mockito.when(coreModule.provider()).thenReturn(core);
         Mockito.when(moduleManager.find(CoreModule.NAME)).thenReturn(coreModule);
+        final SpanPairing spanPairing = new SpanPairing();
+        spanPairing.setAliasRegistrar(new AliasRegistrar(sourceReceiver, namingControl));
         final ModuleServiceHolder traceAnalyzer = mock(ModuleServiceHolder.class);
-        Mockito.when(traceAnalyzer.getService(SpanPairing.class)).thenReturn(new SpanPairing());
+        Mockito.when(traceAnalyzer.getService(SpanPairing.class)).thenReturn(spanPairing);
         Mockito.when(traceAnalyzer.getService(RateLimitingSamplers.class)).thenReturn(new RateLimitingSamplers());
         final ModuleProviderHolder traceAnalyzerModule = mock(ModuleProviderHolder.class);
         Mockito.when(traceAnalyzerModule.provider()).thenReturn(traceAnalyzer);
         Mockito.when(moduleManager.find(TraceAnalyzerModule.NAME)).thenReturn(traceAnalyzerModule);
+        final ModuleServiceHolder aiEvaluation = mock(ModuleServiceHolder.class);
+        Mockito.when(aiEvaluation.getService(AIEvaluationSamplingConfig.class))
+               .thenReturn(new AIEvaluationSamplingConfig(true, 1_000_000));
+        final ModuleProviderHolder aiEvaluationModule = mock(ModuleProviderHolder.class);
+        Mockito.when(aiEvaluationModule.provider()).thenReturn(aiEvaluation);
+        Mockito.when(moduleManager.has(AIEvaluationModule.NAME)).thenReturn(true);
+        Mockito.when(moduleManager.find(AIEvaluationModule.NAME)).thenReturn(aiEvaluationModule);
         return moduleManager;
     }
 

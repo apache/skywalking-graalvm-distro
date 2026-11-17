@@ -9,7 +9,7 @@ SkyWalking OAP uses five DSL compilers that generate Java bytecode at startup vi
 | **OAL** | Metrics aggregation rules | Metrics, Builder, Dispatcher classes | ~620 metrics + ~620 builders + ~45 dispatchers |
 | **MAL** | Meter expression rules | `MalExpression` | ~1250 expression classes |
 | **LAL** | Log analysis rules | `LalExpression` | ~10 expression classes (6 unique) |
-| **TAL** | Trace (OTLP span) analysis rules | `TalExpression` | 2 expression classes |
+| **TAL** | Trace analysis rules: OTLP spans and SkyWalking agent segments (`sw-native`) | `TalExpression` | 14 expression classes |
 | **Hierarchy** | Service hierarchy matching | `BiFunction<Service, Service, Boolean>` | ~4 rule classes |
 
 All five share the same pipeline (since upstream PR #13723; TAL since 11.1):
@@ -112,37 +112,56 @@ Uses one `TALClassGenerator` per rule with `setClassOutputDir()`, `setSourceRef(
 mirroring upstream `SpanFilterListener.Factory.compile` + `TalDSL.of`:
 
 ```
+registry = TALFunctionRegistry.discover(); registry.bind(null, input providers in ServiceLoader order)
 For each tal/*.yaml file (TALConfigs.load stamps sourcePath, line and the file's metricPrefix):
   For each rule:
-    a. input type  = the TALSourceTypeProvider claiming rule.inputType (`otlp` -> OTLP Span)
-       output type = the TALOutputBuilder named by rule.outputType (`SlowSQL` -> DatabaseSlowStatementBuilder)
+    a. input = the TALSourceTypeProvider claiming rule.inputType (`otlp` -> OTLP Span, `sw-native` -> SpanObject)
        Layer.valueOf(rule.layer)
-    b. TalExpression expr = generator.compile(dsl)       // .class + .java written to classOutputDir
-    c. TALMetricShapes.claim(sourceRef + "#" + rule, generator.getMetricDeclarations())
-    d. generator.createMetrics(meterSystem)              // the build-time MeterSystem MAL uses
+    b. generator.setInputAlias(input.alias()); generator.setFunctionRegistry(registry)
+       TalExpression expr = generator.compile(dsl)       // .class + .java written to classOutputDir
+    c. record each function-object field of expr with the registry key of the object in it
+    d. TALMetricShapes.claim(sourceRef + "#" + rule, generator.getMetricDeclarations())
+    e. generator.createMetrics(meterSystem)              // the build-time MeterSystem MAL uses
 ```
 
-| File | Rules | Metrics |
-|------|-------|---------|
-| `otlp-general.yaml` | 2 (`otlp-general`, `otlp-slow-sql`) | 28 `otlp_*` |
+| File | Input | Rules | Metrics |
+|------|-------|-------|---------|
+| `otlp-general.yaml` | `otlp` | 2 (`otlp-general`, `otlp-slow-sql`) | 28 `otlp_*` |
+| `otlp-ai-evaluation.yaml` | `otlp` | 1 | 0 |
+| `native-rpc.yaml` | `sw-native` | 3 | 0 |
+| `native-virtual-service.yaml` | `sw-native` | 3 | 0 |
+| `native-endpoint-cross-thread.yaml`, `native-network-alias.yaml`, `native-segment.yaml`, `native-virtual-genai.yaml`, `native-ai-evaluation.yaml` | `sw-native` | 1 each | 0 |
+
+Since SWIP-17 (11.2) a generated class calls the functions it uses (`isGateway`, `formatServiceName`,
+`evaluationActive`, ...) through private function-object fields, which upstream's generator sets by reflection from
+the `TALFunctionRegistry` right after instantiating the class: the input providers, the helper objects each input
+hands over (`TalGeneralFunctions`, `TalConfigFunctions`) and the module providers (`AIEvaluationTALFunctions`), bound
+to the booted OAP's services. Those objects cannot be built at build time, so the manifest records, per field, the
+registry key of the object the build-time generator put there (the owner's class name, or `class/alias` for a second
+object of the same class); the runtime registry is discovered and bound in the same ServiceLoader order, so it holds
+the same keys. `requiredModules` is carried in `tal.json`; every file compiles at build time, and the runtime skips a
+file whose modules are not loaded, as upstream does.
 
 Every file is loaded before any rule compiles, as upstream's `loadStaticRules` does, so a layer one file declares
-under `layerDefinitions` serves the rules of every file. A rule that does not compile, or that names an unknown
-layer, input type or output type, fails the build with upstream's boot-time message. Upstream's TAL compiler emits
+under `layerDefinitions` serves the rules of every file. A rule that does not compile (a construct or function of
+another input included), or that names an unknown layer or input type, fails the build with upstream's boot-time
+message. Upstream's TAL compiler emits
 no debug probes, so TAL rules are not live-debuggable.
 
-Nothing in the pass is specific to the shipped file: input providers and output builders come from the SPIs
-(recorded in `tal-io-classes.txt` for reflection, with the input types and any builder a rule names by class), every declaration shape is carried (`buckets`, `ranks`,
+Nothing in the pass is specific to the shipped files: input providers and function providers come from the SPIs
+(recorded in `tal-io-classes.txt` for reflection, with the input types and every function object), every declaration shape is carried (`buckets`, `ranks`,
 `labelLimit`), the input types join the protobuf reflection roots as LAL's do, and `tal.json` is keyed by each file's
 own name (every file, as upstream takes any file `talFiles` names by its stem; two files sharing a stem fail the
 build). The manifest is written with `Properties#store`'s escapes in UTF-8 and read back the same way, so any rule or
-file name round-trips, and records every input a class was compiled from (coordinates, name, DSL digest, input and
-output type, metric prefix): two rules can share a line in flow-style YAML, and the runtime `TalDSL` loads only the
-class compiled from exactly the inputs it is given. The files are installed in upstream's order (by stem through the
-`HashMap` `RuleSetMerger.merge` returns), which decides which rule runs first on a span. `TALPrecompileTest` compiles operator-style fixtures (every metric function, labeled metrics with a label
-limit, percentile buckets and ranks, alias and FQCN input/output types, a `.yml` file, a rules-less file declaring a
-layer another file uses) and the build failures; `TALDocScriptsTest` extracts the scripts of upstream's
-`tal.md` and of the practice pages (`otlp-trace-practices/gateway-{overview,canary,nginx}.md`, `database-and-cache.md`,
+file name round-trips, and records every input a class was compiled from (coordinates, name, DSL digest, input type
+and alias, metric prefix): two rules can share a line in flow-style YAML, and the runtime `TalDSL` loads only the
+class compiled from exactly the inputs it is given. The files are installed in upstream's order, which decides which
+rule runs first: `talFiles` (OTLP) by stem through the `HashMap` `RuleSetMerger.merge` returns, `nativeTalFiles` in the
+order the list names them. `TALPrecompileTest` compiles operator-style fixtures (every metric function, labeled metrics with a label
+limit, percentile buckets and ranks, alias and FQCN input types, a `source DatabaseSlowStatement {}` record, a
+`sw-native` rule in a file with `requiredModules`, a `.yml` file, a rules-less file declaring a layer another file
+uses) and the build failures; `TALDocScriptsTest` extracts the scripts of upstream's `tal-otlp.md` and of the
+practice pages (`otlp-trace-practices/gateway-{overview,canary,nginx}.md`, `database-and-cache.md`,
 `message-queue.md`), splices or substitutes each practice into a copy of the shipped file where the page says, compiles them through the same pass and runs the classes the manifest names against spans each practice is
 about.
 
@@ -232,7 +251,7 @@ return new Expression(metricName, expression, malExpr);
 **Upstream**: `analyzer/trace-analyzer/.../v2/dsl/TalDSL.java`, `.../v2/provider/TALConfigs.java`
 **Replacement**: `oap-libs-for-graalvm/trace-analyzer-for-graalvm/`
 
-`TALConfigs.load` reads `META-INF/config-data/tal.json` (keyed by file name, with extension) and re-stamps sourceName/sourcePath/metricPrefix and inline layers as upstream does, so the upstream `SpanFilterListener.Factory` builds the same `DslSourceRef`. `TalDSL.of(...)` looks the rule up by those coordinates (`tal/<file>.yaml:<line>`, never by name alone) in `META-INF/tal-v2-rules.txt`, fails if the rule name or the input type differs from the one the class was compiled for, instantiates the class, then claims and creates the metric declarations recorded in the manifest (`meterSystem.create` + `limitLabels`), exactly the calls upstream's `createMetrics` makes. `TALRecordedTraceComparisonTest` runs the shipped rules over upstream's recorded OTel Demo trace through a fresh compile and through the pre-compiled classes and requires identical metrics, traffic, alias rows and slow-statement records.
+`TALConfigs.load` / `loadInOrder` read `META-INF/config-data/tal.json` (keyed by file name, with extension), skip a file whose `requiredModules` are not all loaded before its inline layers register, and re-stamp sourceName/sourcePath/metricPrefix as upstream does, so the upstream `SpanFilterListener.Factory` builds the same `DslSourceRef`; `loadInOrder` (the `nativeTalFiles` list) returns the files as listed and fails on one that was not compiled, and `requiredModulesOf` reads the same JSON, so the trace analyzer still starts the modules the rules need first. `TalDSL.of(...)` looks the rule up by those coordinates (`tal/<file>.yaml:<line>`, never by name alone) in `META-INF/tal-v2-rules.txt`, fails if the rule name, DSL, input type, input alias or metric prefix differs from those the class was compiled for, instantiates the class, sets each function-object field from the registry it is given by the recorded key (failing the boot when the registry holds another class there), then claims and creates the metric declarations recorded in the manifest (`meterSystem.create` + `limitLabels`), exactly the calls upstream's `createMetrics` makes. `TALRecordedTraceComparisonTest` runs the OTLP rules over upstream's recorded OTel Demo trace through a fresh compile and through the pre-compiled classes and requires identical metrics, traffic, alias rows and source records; `NativeTALComparisonTest` runs every `nativeTalFiles` rule over upstream's native-trace checker fixtures (copied from the submodule at build time) through upstream's `SwNativeRuleRunner`, once with the classes the factory loads and once with fresh compiles against the same registry, in a cold and a warm pass, and requires identical records, alias rows and failures.
 
 ### Hierarchy: `HierarchyDefinitionService`
 
@@ -276,9 +295,9 @@ All manifests are in `META-INF/` within the precompiler output JAR:
 | `lal-v2-classes.txt` | FQCN per line | Reflection config for LAL expression classes |
 | `lal-v2-rules.txt` | Properties (`rule.N.source/line/name/class/inputType`) | Runtime LAL lookup by source coordinates + effective input type |
 | `tal-v2-classes.txt` | FQCN per line | Reflection config for TAL expression classes |
-| `tal-v2-rules.txt` | Escaped UTF-8 properties (`rule.N.source/line/name/class/inputType/outputType/metricPrefix/dslSha256`, `rule.N.metric.M.fullName/function/scopeType/declaredName/buckets/ranks/labelLimit`) | Runtime TAL lookup by the inputs each class was compiled from + the metrics each rule creates |
+| `tal-v2-rules.txt` | Escaped UTF-8 properties (`rule.N.source/line/name/class/inputType/inputAlias/metricPrefix/dslSha256`, `rule.N.function.K.field/key/type`, `rule.N.metric.M.fullName/function/scopeType/declaredName/buckets/ranks/labelLimit`) | Runtime TAL lookup by the inputs each class was compiled from, the function objects it is wired with + the metrics each rule creates |
 | `tal-meter-classes.txt` | `name=FQCN` | Meter classes generated for TAL metrics |
-| `tal-io-classes.txt` | FQCN per line | TAL input types, `TALSourceTypeProvider` / `TALOutputBuilder` implementations and class-named builders, for reflection |
+| `tal-io-classes.txt` | FQCN per line | TAL input types, `TALSourceTypeProvider` / `TALFunctionProvider` implementations and helper function classes, for reflection (their methods are listed when the registry binds) |
 | `hierarchy-v2-classes.txt` | FQCN per line | Reflection config for hierarchy rule classes |
 | `hierarchy-v2-rules.txt` | `ruleName=FQCN` | Runtime hierarchy rule lookup |
 | `mal-meter-classes.txt` | `name\|scopeId\|func\|type\|FQCN` | MeterSystem pre-generated classes |

@@ -134,7 +134,8 @@ When upstream adds an e2e case for a new rule set, adopt it if it is compose-onl
 ### E2E test environment
 
 - [ ] Update `test/e2e/script/env`:
-  - `SW_UPSTREAM_COMMIT` — submodule HEAD
+  - `SW_UPSTREAM_COMMIT` — NOT the submodule HEAD: the UI image pin for istio-als, kept at the last commit whose
+    `ghcr.io/apache/skywalking/ui` image exists (11.0.0 dropped the bundled UI); see the comment in the env file
   - `SW_E2E_SERVICE_COMMIT` — last commit touching `test/e2e-v2/java-test-service/`
   - `SW_BANYANDB_COMMIT` — match upstream `test/e2e-v2/script/env`
   - `SW_AGENT_JAVA_COMMIT` — match upstream
@@ -263,6 +264,13 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   (iOS `SpanListener`s, 11.0.0) was never bundled, and the iOS MAL/LAL rules kept the gap hidden until the
   `ios` e2e case was adopted in 11.1. Anything missing must be policy-excluded (cluster/configuration/storage
   plugins, `runtime-rule`) or added.
+- **Generated TAL classes hold function objects** (since SWIP-17, 11.2): upstream's `TALClassGenerator.compile` sets
+  private `_fnN` fields from a `TALFunctionRegistry` after `newInstance()`, so a pre-compiled class loaded by name has
+  them null and every rule NPEs on its first function call. The precompiler records each field's registry key (the
+  owner's class name, or `class/alias` for the second object of a class, so the key depends on the ServiceLoader order
+  of `TALSourceTypeProvider`) and `TalDSL.of` sets the objects from the factory's registry. When upstream adds a
+  `TALFunctionProvider` module, add it to the precompiler's dependencies or the rules calling it fail to compile.
+  `NativeTALComparisonTest` and `TALRecordedTraceComparisonTest` catch a broken wiring.
 - **TAL rules are user-editable**: keep the precompiler pass and the `TalDSL` / `TALConfigs` replacements free of
   shipped-rule assumptions. `TALPrecompileTest` (fixtures) and `TALDocScriptsTest` (upstream's documented scripts,
   extracted from the docs and spliced where the practices page says) guard that; when upstream's docs move a

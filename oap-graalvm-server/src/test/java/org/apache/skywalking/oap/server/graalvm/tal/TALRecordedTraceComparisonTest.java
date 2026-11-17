@@ -17,6 +17,7 @@
 
 package org.apache.skywalking.oap.server.graalvm.tal;
 
+import com.google.gson.Gson;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.util.JsonFormat;
 import io.opentelemetry.proto.common.v1.AnyValue;
@@ -57,6 +58,7 @@ import org.apache.skywalking.oap.server.receiver.otel.otlp.OTLPValues;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.ExecutionContext;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalDSL;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.TalExpression;
+import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.spec.FilterSpec;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfig;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleConfig;
@@ -82,12 +84,13 @@ import static org.mockito.Mockito.spy;
  * server clusters listing the MySQL, Kafka and Redis addresses, twice:
  * through a fresh {@code TALClassGenerator} compile of the submodule's YAML, as the JVM OAP boots, and through the
  * classes the precompiler emitted, loaded by the same-FQCN {@code TalDSL}. Every metric value, traffic row, alias
- * row, output record and span vote must be identical.
+ * row, record a rule sends as a source and span vote must be identical.
  *
  * <p>Each run makes a cold pass, where the pairing learns each caller and peer, and a warm pass with the first
  * pass's alias rows in the cache, as upstream's {@code ShippedRuleOverRecordedTraceTest} does.
  */
 class TALRecordedTraceComparisonTest {
+    private static final Gson GSON = new Gson();
     private static final Path FIXTURE = Path.of(System.getProperty("user.dir")).getParent().resolve(
         "skywalking/oap-server/server-receiver-plugin/otel-receiver-plugin/src/test/resources/tal/"
             + "otlp-trace-get-api-cart.json");
@@ -129,6 +132,8 @@ class TALRecordedTraceComparisonTest {
 
         assertTrue(fresh.stream().anyMatch(line -> line.startsWith("rule ")),
             "no rule ran over the recorded trace, so the comparison would prove nothing:\n" + String.join("\n", fresh));
+        assertTrue(fresh.stream().anyMatch(line -> line.startsWith("source ")),
+            "no rule sent a source record over the trace, so the records' comparison would prove nothing");
         final String all = String.join("\n", fresh);
         for (final String cluster : List.of("shop-db", "orders-kafka", "session-cache")) {
             assertTrue(all.contains(cluster), cluster + " was never named, so the cluster lookup ran on neither path:\n"
@@ -154,6 +159,7 @@ class TALRecordedTraceComparisonTest {
         private final NamingControl namingControl = TALTestSupport.namingControl();
         private final SourceReceiver sourceReceiver = mock(SourceReceiver.class);
         private final ModuleManager moduleManager;
+        private final TALFunctionRegistry functions;
 
         private Run() {
             doAnswer(invocation -> {
@@ -161,6 +167,9 @@ class TALRecordedTraceComparisonTest {
                 source.prepare();
                 if (source instanceof NetworkAddressAliasSetup) {
                     aliases.add((NetworkAddressAliasSetup) source);
+                } else {
+                    // A rule's `source <Scope> {}` record, field by field.
+                    out.add("source " + source.getClass().getName() + " " + GSON.toJson(source));
                 }
                 return null;
             }).when(sourceReceiver).receive(any());
@@ -169,6 +178,7 @@ class TALRecordedTraceComparisonTest {
             serverClusters.notify(new ConfigChangeEvent(SERVER_CLUSTERS, EventType.MODIFY));
             Mockito.when(moduleManager.find(CoreModule.NAME).provider().getService(ServerClusterConfig.class))
                    .thenReturn(serverClusters);
+            functions = TALTestSupport.functionRegistry(moduleManager);
             meterSystem[0] = spy(new MeterSystem(moduleManager));
             doAnswer(invocation -> {
                 final Object value = invocation.getArgument(0);
@@ -179,11 +189,11 @@ class TALRecordedTraceComparisonTest {
         }
 
         private TalExpression fresh(final TALConfig rule) throws Exception {
-            return TALTestSupport.freshCompile(rule, meterSystem[0]);
+            return TALTestSupport.freshCompile(rule, meterSystem[0], functions);
         }
 
         private TalExpression precompiled(final TALConfig rule) throws Exception {
-            final TalDSL dsl = TALTestSupport.loadPrecompiled(rule, moduleManager);
+            final TalDSL dsl = TALTestSupport.loadPrecompiled(rule, moduleManager, functions);
             assertTrue(dsl.getExpression().getClass().getName().contains("_L" + rule.getLineNo() + "_"),
                 "the pre-compiled class is named after its rule's line: " + dsl.getExpression().getClass());
             return dsl.getExpression();
@@ -200,8 +210,7 @@ class TALRecordedTraceComparisonTest {
                    .put(rule.getName(), new Bound(rule.getName(), loader.load(path, rule),
                        TALTestSupport.inputProvider(TALTestSupport.inputTypeOf(rule.getInputType()))));
         }
-        final FilterSpec filterSpec = new FilterSpec(path.moduleManager, new TraceAnalyzerModuleConfig(),
-            path.meterSystem[0], path.namingControl, path.sourceReceiver);
+        final FilterSpec filterSpec = new FilterSpec(path.moduleManager, new TraceAnalyzerModuleConfig());
         // A matched pair is built under the address its callee's rule composes, as TraceAnalyzerModuleProvider wires.
         filterSpec.getSpanPairing().setAddressComposer((caller, callee) -> {
             final Bound rule = byLayer.getOrDefault(callee.getRuleLayer(), Map.of()).get(callee.getRuleName());
@@ -267,9 +276,6 @@ class TALRecordedTraceComparisonTest {
                     clientPeer = ctx.getNetworkAliasPeer();
                     clientMeta = ruleMeta;
                 }
-                if (ctx.outputAsBuilder() != null && ctx.isSinkKept()) {
-                    path.out.add("record " + ctx.outputAsBuilder().outputToJson());
-                }
             }
             if (clientPeer != null) {
                 filterSpec.getSpanPairing().clientSeen(clientMeta, clientPeer);
@@ -318,6 +324,7 @@ class TALRecordedTraceComparisonTest {
                            .parentLocation(meta.getParentLocation())
                            .scopeName(meta.getScopeName())
                            .scopeVersion(meta.getScopeVersion())
+                           .traceStorage(meta.getTraceStorage())
                            .build();
     }
 

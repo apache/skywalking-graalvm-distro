@@ -31,6 +31,7 @@ import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleConfi
 import org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig;
 import org.apache.skywalking.oap.query.logql.LogQLConfig;
 import org.apache.skywalking.oap.query.promql.PromQLConfig;
+import org.apache.skywalking.oap.query.server.QueryServerConfig;
 import org.apache.skywalking.oap.query.traceql.TraceQLConfig;
 import org.apache.skywalking.oap.query.zipkin.ZipkinQueryConfig;
 import org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModuleConfig;
@@ -141,6 +142,8 @@ public class YamlConfigLoaderUtils {
             copyToClusterModuleKubernetesConfig((ClusterModuleKubernetesConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof SharingServerConfig) {
             copyToSharingServerConfig((SharingServerConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof TraceAnalyzerModuleConfig) {
+            copyToTraceAnalyzerModuleConfig((TraceAnalyzerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ZipkinReceiverConfig) {
             copyToZipkinReceiverConfig((ZipkinReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ZipkinQueryConfig) {
@@ -149,8 +152,6 @@ public class YamlConfigLoaderUtils {
             copyToEnvoyMetricReceiverConfig((EnvoyMetricReceiverConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof OtelMetricReceiverConfig) {
             copyToOtelMetricReceiverConfig((OtelMetricReceiverConfig) dest, src, moduleName, providerName);
-        } else if (dest instanceof TraceAnalyzerModuleConfig) {
-            copyToTraceAnalyzerModuleConfig((TraceAnalyzerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof BrowserServiceModuleConfig) {
             copyToBrowserServiceModuleConfig((BrowserServiceModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof ConfigurationDiscoveryModuleConfig) {
@@ -197,6 +198,8 @@ public class YamlConfigLoaderUtils {
             copyToAdminServerModuleConfig((AdminServerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof StatusModuleConfig) {
             copyToStatusModuleConfig((StatusModuleConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof QueryServerConfig) {
+            copyToQueryServerConfig((QueryServerConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof InspectModuleConfig) {
             // InspectModuleConfig has no configurable fields; nothing to copy.
         } else if (dest instanceof UIManagementModuleConfig) {
@@ -733,6 +736,42 @@ public class YamlConfigLoaderUtils {
     }
 
     @SuppressWarnings("unchecked")
+    private static void copyToTraceAnalyzerModuleConfig(
+            final TraceAnalyzerModuleConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "talPath":
+                    cfg.setTalPath((String) value);
+                    break;
+                case "talFiles":
+                    cfg.setTalFiles((String) value);
+                    break;
+                case "nativeTalFiles":
+                    cfg.setNativeTalFiles((String) value);
+                    break;
+                case "dedupWindow":
+                    cfg.setDedupWindow(((Number) value).intValue());
+                    break;
+                case "dedupCapacity":
+                    cfg.setDedupCapacity(((Number) value).intValue());
+                    break;
+                case "pairingSamplePercent":
+                    cfg.setPairingSamplePercent(((Number) value).intValue());
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private static void copyToZipkinReceiverConfig(
             final ZipkinReceiverConfig cfg, final Properties src,
             final String moduleName, final String providerName) {
@@ -975,39 +1014,6 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "otlpServiceGroupKeys":
                     cfg.setOtlpServiceGroupKeys((String) value);
-                    break;
-                default:
-                    log.warn("{} setting is not supported in {} provider of {} module",
-                        key, providerName, moduleName);
-                    break;
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void copyToTraceAnalyzerModuleConfig(
-            final TraceAnalyzerModuleConfig cfg, final Properties src,
-            final String moduleName, final String providerName) {
-        final Enumeration<?> propertyNames = src.propertyNames();
-        while (propertyNames.hasMoreElements()) {
-            final String key = (String) propertyNames.nextElement();
-            final Object value = src.get(key);
-            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
-            switch (key) {
-                case "talPath":
-                    cfg.setTalPath((String) value);
-                    break;
-                case "talFiles":
-                    cfg.setTalFiles((String) value);
-                    break;
-                case "dedupWindow":
-                    cfg.setDedupWindow(((Number) value).intValue());
-                    break;
-                case "dedupCapacity":
-                    cfg.setDedupCapacity(((Number) value).intValue());
-                    break;
-                case "pairingSamplePercent":
-                    cfg.setPairingSamplePercent(((Number) value).intValue());
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
@@ -1702,6 +1708,9 @@ public class YamlConfigLoaderUtils {
                 case "httpTimeout":
                     cfg.setHttpTimeout(((Number) value).longValue());
                     break;
+                case "grpcTimeout":
+                    cfg.setGrpcTimeout(((Number) value).longValue());
+                    break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",
                         key, providerName, moduleName);
@@ -1911,6 +1920,51 @@ public class YamlConfigLoaderUtils {
             switch (key) {
                 case "keywords4MaskingSecretsOfConfig":
                     cfg.setKeywords4MaskingSecretsOfConfig((String) value);
+                    break;
+                default:
+                    log.warn("{} setting is not supported in {} provider of {} module",
+                        key, providerName, moduleName);
+                    break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void copyToQueryServerConfig(
+            final QueryServerConfig cfg, final Properties src,
+            final String moduleName, final String providerName) {
+        final Enumeration<?> propertyNames = src.propertyNames();
+        while (propertyNames.hasMoreElements()) {
+            final String key = (String) propertyNames.nextElement();
+            final Object value = src.get(key);
+            log.debug("{}.{} config: {} = {}", moduleName, providerName, key, value);
+            switch (key) {
+                case "restHost":
+                    cfg.setRestHost((String) value);
+                    break;
+                case "restPort":
+                    cfg.setRestPort(((Number) value).intValue());
+                    break;
+                case "restContextPath":
+                    cfg.setRestContextPath((String) value);
+                    break;
+                case "restIdleTimeOut":
+                    cfg.setRestIdleTimeOut(((Number) value).longValue());
+                    break;
+                case "restAcceptQueueSize":
+                    cfg.setRestAcceptQueueSize(((Number) value).intValue());
+                    break;
+                case "httpMaxRequestHeaderSize":
+                    cfg.setHttpMaxRequestHeaderSize(((Number) value).intValue());
+                    break;
+                case "restSSLEnabled":
+                    cfg.setRestSSLEnabled((boolean) value);
+                    break;
+                case "restSSLKeyPath":
+                    cfg.setRestSSLKeyPath((String) value);
+                    break;
+                case "restSSLCertChainPath":
+                    cfg.setRestSSLCertChainPath((String) value);
                     break;
                 default:
                     log.warn("{} setting is not supported in {} provider of {} module",

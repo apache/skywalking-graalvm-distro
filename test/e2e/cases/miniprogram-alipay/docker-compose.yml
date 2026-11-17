@@ -52,7 +52,7 @@ services:
   # The SkyAPM mini-program-monitor simulator (published image): OTLP logs + metrics and SkyWalking native
   # segments against the OAP for 60 s, then it exits.
   sim-alipay:
-    image: ghcr.io/skyapm/mini-program-monitor/sim-alipay:v0.4.1
+    image: ghcr.io/skyapm/mini-program-monitor/sim-alipay:9f59eb574addad78ffd2b84b8fc1de99c3071224
     depends_on:
       oap:
         condition: service_healthy

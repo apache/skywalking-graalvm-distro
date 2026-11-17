@@ -113,10 +113,14 @@ log-analyzer:
     malFiles: ${SW_LOG_MAL_FILES:"nginx,miniprogram-wechat,miniprogram-alipay"}
 
 trace-analyzer:
-  # `-` removes the module; the OTLP trace receiver then stores the spans without analysis.
+  # Analyzes OTLP spans with `talFiles` and the segments SkyWalking agents send with `nativeTalFiles`. `-` removes
+  # the module, which fails the boot while the native trace receiver or the Kafka fetcher is loaded, as both require
+  # it. Every rule is pre-compiled at build time: these lists pick among the bundled rule files.
   selector: ${SW_TRACE_ANALYZER:default}
   default:
-    talFiles: ${SW_TRACE_TAL_FILES:otlp-general}
+    # In the order their rules run; a listed file that was not pre-compiled fails the boot.
+    nativeTalFiles: ${SW_TRACE_NATIVE_TAL_FILES:native-rpc,native-endpoint-cross-thread,native-network-alias,native-segment,native-virtual-service,native-virtual-genai,native-ai-evaluation}
+    talFiles: ${SW_TRACE_TAL_FILES:otlp-general,otlp-ai-evaluation}
     dedupWindow: ${SW_TRACE_TAL_DEDUP_WINDOW:0}
     dedupCapacity: ${SW_TRACE_TAL_DEDUP_CAPACITY:1000000}
     pairingSamplePercent: ${SW_TRACE_TAL_PAIRING_SAMPLE_PERCENT:25}
@@ -310,6 +314,24 @@ receiver-log:
   selector: ${SW_RECEIVER_LOG:default}
   default:
 
+# The HTTP server of the native query APIs: GraphQL (/graphql), the AI agent conversation view and
+# files (/ai-agent/conversations/*), and /status/config/ttl. With restPort 0 they stay on the core
+# REST server (core/restPort). A port above 0 moves them to a server of their own, so the query APIs
+# can be bound, firewalled and given TLS apart from the ports agents report to.
+query-server:
+  selector: ${SW_QUERY_SERVER:default}
+  default:
+    restHost: ${SW_QUERY_SERVER_REST_HOST:0.0.0.0}
+    restPort: ${SW_QUERY_SERVER_REST_PORT:0}
+    restContextPath: ${SW_QUERY_SERVER_REST_CONTEXT_PATH:/}
+    restIdleTimeOut: ${SW_QUERY_SERVER_REST_IDLE_TIMEOUT:30000}
+    restAcceptQueueSize: ${SW_QUERY_SERVER_REST_QUEUE_SIZE:0}
+    httpMaxRequestHeaderSize: ${SW_QUERY_SERVER_HTTP_MAX_REQUEST_HEADER_SIZE:8192}
+    # TLS for the query server; the cert and key are reloaded on rotation without a restart.
+    restSSLEnabled: ${SW_QUERY_SERVER_REST_SSL_ENABLED:false}
+    restSSLKeyPath: ${SW_QUERY_SERVER_REST_SSL_KEY_PATH:""}
+    restSSLCertChainPath: ${SW_QUERY_SERVER_REST_SSL_CERT_CHAIN_PATH:""}
+
 query:
   selector: ${SW_QUERY:graphql}
   graphql:
@@ -388,6 +410,8 @@ alarm:
   selector: ${SW_ALARM:default}
   default:
     httpTimeout: ${SW_ALARM_HTTP_TIMEOUT:12}
+    # gRPC alarm/recovery stream deadline (seconds); <= 0 falls back to 10
+    grpcTimeout: ${SW_ALARM_GRPC_TIMEOUT:10}
 
 telemetry:
   selector: ${SW_TELEMETRY:prometheus}
@@ -428,8 +452,9 @@ health-checker:
 # Admin server family (11.0.0+). admin-server hosts the operator REST surface
 # (default :17128) and the admin-internal gRPC bus (:17129). The Horizon UI loads
 # dashboard templates via ui-management, so the host stays enabled by default.
-# NOTE: runtime-rule and dsl-debugging are NOT available in the GraalVM native
-# distro (they need runtime DSL codegen); their endpoints return a friendly 501.
+# NOTE: runtime-rule is NOT available in the GraalVM native distro (it needs runtime
+# DSL codegen); its mutation endpoints return a friendly 501. dsl-debugging runs over
+# the bundled rules, whose debug probes are compiled in at build time.
 admin-server:
   selector: ${SW_ADMIN_SERVER:default}
   default:
@@ -456,8 +481,9 @@ admin-server:
     internalCommunicationTimeout: ${SW_ADMIN_SERVER_INTERNAL_COMM_TIMEOUT:5000}
 
 # Status feature module — cluster nodes / alarm runtime status / TTL config / debug
-# query trace endpoints. Mounts onto admin-server (default :17128). Relocated from
-# the 10.x status-query-plugin; URI and payload formats are unchanged.
+# query trace endpoints. Mounts onto admin-server (default :17128), except
+# /status/config/ttl, which is also bound next to /graphql on the query-server.
+# Relocated from the 10.x status-query-plugin; URI and payload formats are unchanged.
 status:
   selector: ${SW_STATUS:default}
   default:

@@ -60,7 +60,7 @@ All receivers are included:
 
 | API | Port | Notes |
 |-----|------|-------|
-| **GraphQL** | 12800 | Primary query API for SkyWalking UI |
+| **GraphQL** | 12800 | Primary query API for SkyWalking UI; served by `query-server`, which moves it (with the AI agent conversation API and `/status/config/ttl`) to a port of its own when `SW_QUERY_SERVER_REST_PORT` is set |
 | **PromQL** | 9090 | Prometheus-compatible query |
 | **LogQL** | 3100 | Loki-compatible log query |
 | **Zipkin** | 9412 | Zipkin v2 query API (disabled by default) |
@@ -75,7 +75,7 @@ All receivers are included:
 |----------|----------|
 | Agent Analyzer (SkyWalking agent traces and meters, MAL) | Yes |
 | Log Analyzer (LAL) | Yes |
-| Trace Analyzer (TAL: OTLP spans into services, topology, metrics and slow statements) | Yes — rules compiled at build time, see [Configuration](configuration.md#trace-analyzer) |
+| Trace Analyzer (TAL: OTLP spans and SkyWalking agent segments into services, topology, metrics and slow statements) | Yes — rules compiled at build time, see [Configuration](configuration.md#trace-analyzer) |
 | iOS / iPadOS span analysis (OpenTelemetry Swift SDK) | Yes |
 | GenAI Analyzer (virtual GenAI services from LLM-call spans) | Yes |
 | AI Evaluation (SWIP-16 LLM-as-judge) | Yes (disabled by default) |
@@ -120,8 +120,8 @@ These modules are disabled by default. Enable them with environment variables:
 | TraceQL | `SW_TRACEQL=default` (plus `SW_TRACEQL_ENABLE_DATASOURCE_OTLP=true` etc. per datasource) |
 | AI Evaluation | `SW_AI_EVALUATION=default` |
 
-The Trace Analyzer (TAL) is on by default; `SW_TRACE_ANALYZER=-` removes it, and OTLP spans are then stored without
-analysis.
+The Trace Analyzer (TAL) is on by default and analyzes the SkyWalking agents' segments as well as OTLP spans, so the
+native trace receiver and the Kafka fetcher require it; `SW_TRACE_ANALYZER=-` fails the boot while either is loaded.
 
 ## Known Limitations
 

@@ -64,7 +64,7 @@ verify:
         oap=$(docker ps -q --filter label=com.docker.compose.service=oap)
         docker exec $oap bash -c 'printf "user=admin\n" > /tmp/bydb-secrets.properties'
         docker logs $oap 2>&1 | grep -Fq "Applied incomplete credentials from /tmp/bydb-secrets.properties" \
-          && docker logs $oap 2>&1 | grep -Fq "UNAUTHENTICATED: Invalid credentials" \
+          && docker logs $oap 2>&1 | grep -Fq "UNAUTHENTICATED: unauthenticated" \
           && echo credentials-incomplete
       expected: ../../../../skywalking/test/e2e-v2/cases/storage/banyandb/auth-rotation/expected/credentials-incomplete.yml
 

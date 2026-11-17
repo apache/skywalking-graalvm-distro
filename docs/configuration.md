@@ -174,19 +174,25 @@ for details on those files.
 
 ### trace-analyzer
 
-**Selector**: `SW_TRACE_ANALYZER` (default: `default`; `-` removes the module)
+**Selector**: `SW_TRACE_ANALYZER` (default: `default`; `-` removes the module, which fails the boot while the native
+trace receiver or the Kafka fetcher is loaded, as both require it)
 
-TAL (Trace Analysis Language) rules over OTLP spans. A span is analyzed only by the rules of the layer its
-resource declares in `service.layer`; the bundled `tal/otlp-general.yaml` rules serve `OTLP_GENERAL`, so a
-service must send `service.layer=OTLP_GENERAL` to get its metrics, topology and slow statements, and a span
-without a registered layer is stored but not analyzed. The rules are compiled at build time; `talFiles`
-selects among pre-compiled files only, and an empty value keeps the module but analyzes nothing.
+TAL (Trace Analysis Language) rules over OTLP spans (`talFiles`) and over the segments SkyWalking agents send
+(`nativeTalFiles`, since SWIP-17 the whole agent trace analysis: RPC and endpoint traffic, segments, virtual
+database / cache / MQ / GenAI services, network aliases, AI evaluation samples). An OTLP span is analyzed only by the
+rules of the layer its resource declares in `service.layer`; the bundled `otlp-general` rules serve `OTLP_GENERAL`,
+so a service must send `service.layer=OTLP_GENERAL` to get its metrics, topology and slow statements, and a span
+without a registered layer is stored but not analyzed. The native rules run in the order `nativeTalFiles` lists
+them, which decides the order sources reach OAL. The rules are compiled at build time; both settings select among
+pre-compiled files only. An empty `talFiles` keeps the module but analyzes no OTLP span; a `nativeTalFiles` entry
+that was not compiled fails the boot, as upstream's missing file does. A file whose `requiredModules` are not all
+loaded (`ai-evaluation`, `gen-ai-analyzer`) is skipped, as upstream skips it.
 
 Upstream reads the rule files from `config/tal/` at boot. This distro has no `config/tal/`: to change what is
 measured, edit or add files under `skywalking/oap-server/server-starter/src/main/resources/tal/` and rebuild. The
 precompiler compiles every file there, whatever it contains, as long as the [TAL grammar](https://skywalking.apache.org/docs/main/next/en/concepts-and-designs/tal/)
-accepts it, and fails the build on a rule upstream would refuse at boot (an unknown layer, input or output type, or
-conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practice pages (nginx as a
+accepts it, and fails the build on a rule upstream would refuse at boot (an unknown layer or input type, a construct or
+function of another input, or conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practice pages (nginx as a
 one-span proxy, gateway peers, canaries, server clusters by kind) are compiled and run by the distro's own pipeline in
 `TALDocScriptsTest`.
 
@@ -200,7 +206,8 @@ one-span proxy, gateway peers, canaries, server clusters by kind) are compiled a
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
-| talFiles | `SW_TRACE_TAL_FILES` | `otlp-general` |
+| nativeTalFiles | `SW_TRACE_NATIVE_TAL_FILES` | `native-rpc,native-endpoint-cross-thread,native-network-alias,native-segment,native-virtual-service,native-virtual-genai,native-ai-evaluation` |
+| talFiles | `SW_TRACE_TAL_FILES` | `otlp-general,otlp-ai-evaluation` |
 | dedupWindow | `SW_TRACE_TAL_DEDUP_WINDOW` | `0` |
 | dedupCapacity | `SW_TRACE_TAL_DEDUP_CAPACITY` | `1000000` |
 | pairingSamplePercent | `SW_TRACE_TAL_PAIRING_SAMPLE_PERCENT` | `25` |
@@ -499,6 +506,29 @@ No additional settings.
 
 ---
 
+### query-server
+
+**Selector**: `SW_QUERY_SERVER` (default: `default`)
+
+The HTTP server of the native query APIs: GraphQL (`/graphql`), the AI agent conversation view and files
+(`/ai-agent/conversations/*`) and `/status/config/ttl`. With `restPort` 0 they stay on the core REST server
+(`core/restPort`, 12800); a port above 0 moves them to a server of their own, so the query APIs can be bound,
+firewalled and given TLS apart from the ports agents report to.
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| restHost | `SW_QUERY_SERVER_REST_HOST` | `0.0.0.0` |
+| restPort | `SW_QUERY_SERVER_REST_PORT` | `0` (the core REST server) |
+| restContextPath | `SW_QUERY_SERVER_REST_CONTEXT_PATH` | `/` |
+| restIdleTimeOut | `SW_QUERY_SERVER_REST_IDLE_TIMEOUT` | `30000` |
+| restAcceptQueueSize | `SW_QUERY_SERVER_REST_QUEUE_SIZE` | `0` |
+| httpMaxRequestHeaderSize | `SW_QUERY_SERVER_HTTP_MAX_REQUEST_HEADER_SIZE` | `8192` |
+| restSSLEnabled | `SW_QUERY_SERVER_REST_SSL_ENABLED` | `false` (cert and key reloaded on rotation) |
+| restSSLKeyPath | `SW_QUERY_SERVER_REST_SSL_KEY_PATH` | `""` |
+| restSSLCertChainPath | `SW_QUERY_SERVER_REST_SSL_CERT_CHAIN_PATH` | `""` |
+
+---
+
 ### query
 
 **Selector**: `SW_QUERY` (default: `graphql`)
@@ -603,6 +633,7 @@ Set `SW_QUERY_ZIPKIN=default` to enable.
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
 | httpTimeout | `SW_ALARM_HTTP_TIMEOUT` | `12` (seconds per HTTP hook request; `<= 0` falls back to 12) |
+| grpcTimeout | `SW_ALARM_GRPC_TIMEOUT` | `10` (seconds per gRPC alarm/recovery stream; `<= 0` falls back to 10) |
 
 Alarm rules are configured via `alarm-settings.yml`.
 
