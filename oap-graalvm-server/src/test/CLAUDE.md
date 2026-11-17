@@ -18,8 +18,8 @@ Each metric expression is run through two independent paths:
                    (formatExp)
                    /            \
           Path A (Fresh)      Path B (Pre-compiled)
-          MALClassGenerator    Class.forName() from
-          .compile() in-memory  manifest properties
+          MALClassGenerator    CompiledRules (the
+          .compile() in-memory  generated registry)
                 \                /
            new Expression(name, exp, malExpr)
                 \                /
@@ -32,9 +32,9 @@ Each metric expression is run through two independent paths:
 **Path A (Fresh)**: Compiles the expression at test time via `MALClassGenerator`
 (ANTLR4 + Javassist) — same engine used at build time.
 
-**Path B (Pre-compiled)**: Loads the `.class` file from per-file configs under
-`META-INF/mal-v2/` (mirroring original YAML directory structure) via
-`Class.forName()` using expression text as lookup key. Closure fields
+**Path B (Pre-compiled)**: Takes the class the precompiler compiled from the
+generated rule registry (`CompiledRules.malExpressions()`), using expression
+text as lookup key. Closure fields
 (TagFunction, ForEachFunction, PropertiesExtractor, DecorateFunction) are
 self-wired via companion classes in the `static {}` initializer — no external
 `LambdaMetafactory` wiring needed.

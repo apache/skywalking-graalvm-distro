@@ -61,8 +61,8 @@
                 <include>alarm-settings.yml</include>
             </includes>
         </fileSet>
-        <!-- config/ — upstream resource files loaded at runtime.
-             Same set as JVM distro: BanyanDB config, UI templates, rules, etc. -->
+        <!-- config/ — upstream resource files loaded at runtime, the same set as the JVM distro. No rule files:
+             the rules are compiled into the binary, and a rule file under config/ fails the boot. -->
         <fileSet>
             <directory>${project.basedir}/../skywalking/oap-server/server-starter/src/main/resources</directory>
             <outputDirectory>config</outputDirectory>
@@ -70,14 +70,11 @@
                 <include>bydb.yml</include>
                 <include>bydb-topn.yml</include>
                 <include>cilium-rules/**</include>
-                <include>telegraf-rules/**</include>
-                <include>zabbix-rules/**</include>
                 <include>openapi-definitions/**</include>
                 <include>component-libraries.yml</include>
                 <include>endpoint-name-grouping.yml</include>
                 <include>gateways.yml</include>
                 <include>server-clusters.yml</include>
-                <include>hierarchy-definition.yml</include>
                 <include>metadata-service-mapping.yaml</include>
                 <include>service-apdex-threshold.yml</include>
                 <include>trace-sampling-policy-settings.yml</include>

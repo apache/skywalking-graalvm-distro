@@ -18,22 +18,18 @@
 package org.apache.skywalking.oap.server.graalvm.mal;
 
 import com.google.common.collect.ImmutableMap;
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -52,6 +48,7 @@ import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterEntity;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DynamicTest;
@@ -77,9 +74,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 abstract class MALScriptComparisonBase {
 
-    /** expression text → FQCN, loaded from per-file MAL configs. */
-    private static Map<String, String> EXPRESSION_MAP;
-
     /** Counter for unique class names in fresh compilation (Path A). */
     private static final AtomicInteger FRESH_COUNTER = new AtomicInteger();
 
@@ -87,7 +81,6 @@ abstract class MALScriptComparisonBase {
     static void initMeterEntity() {
         MeterEntity.setNamingControl(
             new NamingControl(512, 512, 512, new EndpointNameGrouping()));
-        EXPRESSION_MAP = loadExpressionMap();
     }
 
     @AfterAll
@@ -275,7 +268,7 @@ abstract class MALScriptComparisonBase {
     }
 
     // ---------------------------------------------------------------
-    // Path B: Pre-compiled MalExpression from v2 manifest
+    // Path B: Pre-compiled MalExpression from the generated rule registry
     // ---------------------------------------------------------------
 
     private static Expression loadPrecompiled(final String yamlResource,
@@ -283,25 +276,14 @@ abstract class MALScriptComparisonBase {
                                               final String expression) {
         // Look up by expression text — each expression is globally unique
         // across all YAML files even when metric names overlap.
-        final String className = EXPRESSION_MAP.get(expression);
-
-        if (className == null) {
+        final Supplier<MalExpression> compiled = CompiledRules.malExpressions().get(expression);
+        if (compiled == null) {
             throw new AssertionError(
-                "manifest missing metric: " + metricName
+                "registry missing metric: " + metricName
                     + " (expression: " + expression
                     + ", yamlResource: " + yamlResource + ")");
         }
-
-        try {
-            Class<?> exprClass = Class.forName(className);
-            MalExpression malExpr =
-                (MalExpression) exprClass.getDeclaredConstructor().newInstance();
-            return new Expression(metricName, expression, malExpr);
-        } catch (Exception e) {
-            throw new AssertionError(
-                "Failed to load pre-compiled class for " + metricName
-                    + " (class: " + className + ")", e);
-        }
+        return new Expression(metricName, expression, compiled.get());
     }
 
     // ---------------------------------------------------------------
@@ -521,49 +503,5 @@ abstract class MALScriptComparisonBase {
         // Use the real formatExp so the composed text matches the precompiler's manifest key;
         // a hand-rolled replica drifts when upstream changes expPrefix injection.
         return MetricConvert.formatExp(expPrefix, expSuffix, exp);
-    }
-
-    // ---------------------------------------------------------------
-    // Per-file manifest loader
-    // ---------------------------------------------------------------
-
-    private static Map<String, String> loadExpressionMap() {
-        final Map<String, String> map = new HashMap<>();
-        final ClassLoader cl = MALScriptComparisonBase.class.getClassLoader();
-        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
-            if (mis == null) {
-                throw new AssertionError("META-INF/mal-v2.manifest not found");
-            }
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) {
-                        continue;
-                    }
-                    try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + line)) {
-                        if (cis == null) {
-                            continue;
-                        }
-                        Properties props = new Properties();
-                        props.load(cis);
-                        for (int i = 0; ; i++) {
-                            String exp = props.getProperty("rule." + i + ".exp");
-                            if (exp == null) {
-                                break;
-                            }
-                            String className = props.getProperty("rule." + i + ".class", "");
-                            if (!className.isEmpty()) {
-                                map.put(exp, className);
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            throw new AssertionError("Failed to load per-file MAL manifests", e);
-        }
-        return map;
     }
 }

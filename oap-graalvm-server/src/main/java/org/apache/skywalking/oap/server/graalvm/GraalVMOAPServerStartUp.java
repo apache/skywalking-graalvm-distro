@@ -183,6 +183,7 @@ public class GraalVMOAPServerStartUp {
         bootingParameters.addRow(new Row("Distro", "GraalVM"));
 
         try {
+            CompiledRulesCheck.verify();
             ApplicationConfiguration configuration = configLoader.load();
 
             // Register all modules with their fixed providers

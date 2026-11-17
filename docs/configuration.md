@@ -188,8 +188,10 @@ pre-compiled files only. An empty `talFiles` keeps the module but analyzes no OT
 that was not compiled fails the boot, as upstream's missing file does. A file whose `requiredModules` are not all
 loaded (`ai-evaluation`, `gen-ai-analyzer`) is skipped, as upstream skips it.
 
-Upstream reads the rule files from `config/tal/` at boot. This distro has no `config/tal/`: to change what is
-measured, edit or add files under `skywalking/oap-server/server-starter/src/main/resources/tal/` and rebuild. The
+Upstream reads the rule files from `config/tal/` at boot. This distro reads no rule file at runtime, and a rule file
+under `config/` (`tal/`, `otel-rules/`, `lal/`, `oal/`, `hierarchy-definition.yml`, `layer-extensions.yml`, …) fails the
+boot, as it would be ignored: to change what is measured, edit or add files under
+`skywalking/oap-server/server-starter/src/main/resources/tal/` and rebuild. The
 precompiler compiles every file there, whatever it contains, as long as the [TAL grammar](https://skywalking.apache.org/docs/main/next/en/concepts-and-designs/tal/)
 accepts it, and fails the build on a rule upstream would refuse at boot (an unknown layer or input type, a construct or
 function of another input, or conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practice pages (nginx as a

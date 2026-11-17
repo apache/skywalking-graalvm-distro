@@ -176,6 +176,11 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>skywalking-telegraf-receiver-plugin</artifactId>
         </dependency>
+        <!-- ZabbixConfigs: the registry holds the Zabbix configs upstream's loader reads -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>skywalking-zabbix-receiver-plugin</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>aws-firehose-receiver</artifactId>
@@ -224,6 +229,7 @@
                             <mainClass>org.apache.skywalking.oap.server.buildtools.precompiler.Precompiler</mainClass>
                             <arguments>
                                 <argument>${project.build.directory}/generated-classes</argument>
+                                <argument>${project.build.directory}/generated-registry</argument>
                             </arguments>
                             <!-- Load OAL/MAL/LAL scripts from skywalking submodule -->
                             <additionalClasspathElements>
@@ -267,6 +273,18 @@
                         <configuration>
                             <classesDirectory>${project.build.directory}/generated-classes</classesDirectory>
                             <classifier>generated</classifier>
+                            <!-- Build intermediates: the registry and reflect-config.json are generated from them, the
+                                 runtime reads the registry. -->
+                            <excludes>
+                                <exclude>META-INF/config-data/**</exclude>
+                                <exclude>META-INF/mal-v2/**</exclude>
+                                <exclude>META-INF/mal-v2.manifest</exclude>
+                                <exclude>META-INF/*-v2-classes.txt</exclude>
+                                <exclude>META-INF/*-v2-rules.txt</exclude>
+                                <exclude>META-INF/oal-*.txt</exclude>
+                                <exclude>META-INF/*-meter-classes.txt</exclude>
+                                <exclude>META-INF/tal-io-classes.txt</exclude>
+                            </excludes>
                         </configuration>
                     </execution>
                 </executions>

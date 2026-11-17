@@ -18,13 +18,8 @@
 package org.apache.skywalking.oap.server.graalvm;
 
 import com.google.common.collect.ImmutableMap;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
+import java.util.function.Supplier;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Expression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalExpression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Result;
@@ -34,6 +29,7 @@ import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterEntity;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -147,78 +143,32 @@ class PrecompiledMALExecutionTest {
 
     /**
      * Test loading ALL pre-compiled MalExpression classes into Expression objects.
-     * Verifies that every class in the per-file manifests can be instantiated.
+     * Verifies that every class in the generated rule registry can be instantiated.
      */
     @Test
-    void allPrecompiledExpressionsCanBeWrappedInExpression() throws Exception {
-        Map<String, String> manifest = loadExpressionMap();
-        assertFalse(manifest.isEmpty(), "V2 expression manifest should not be empty");
+    void allPrecompiledExpressionsCanBeWrappedInExpression() {
+        Map<String, Supplier<MalExpression>> registry = CompiledRules.malExpressions();
+        assertFalse(registry.isEmpty(), "The MAL expressions of the rule registry should not be empty");
 
         int successCount = 0;
-        for (Map.Entry<String, String> entry : manifest.entrySet()) {
-            String expression = entry.getKey();
-            String className = entry.getValue();
-
-            Class<?> exprClass = Class.forName(className);
-            MalExpression malExpr =
-                (MalExpression) exprClass.getDeclaredConstructor().newInstance();
-
-            Expression e = new Expression("test", expression, malExpr);
-            assertNotNull(e, "Expression wrapping should succeed for: " + className);
+        for (Map.Entry<String, Supplier<MalExpression>> entry : registry.entrySet()) {
+            MalExpression malExpr = entry.getValue().get();
+            Expression e = new Expression("test", entry.getKey(), malExpr);
+            assertNotNull(e, "Expression wrapping should succeed for: " + malExpr.getClass().getName());
             successCount++;
         }
 
-        assertTrue(successCount == manifest.size(),
-            "All " + manifest.size() + " pre-compiled expressions should wrap successfully, got " + successCount);
+        assertTrue(successCount == registry.size(),
+            "All " + registry.size() + " pre-compiled expressions should wrap successfully, got " + successCount);
     }
 
     /**
-     * Load a pre-compiled MalExpression from per-file manifest using expression text lookup.
+     * Load a pre-compiled MalExpression from the generated rule registry using expression text lookup.
      */
     private static Expression loadFromManifest(final String metricName,
-                                               final String expression) throws Exception {
-        Map<String, String> manifest = loadExpressionMap();
-        String className = manifest.get(expression);
-        assertNotNull(className, "Manifest missing expression for metric: " + metricName);
-
-        Class<?> exprClass = Class.forName(className);
-        MalExpression malExpr = (MalExpression) exprClass.getDeclaredConstructor().newInstance();
-        return new Expression(metricName, expression, malExpr);
-    }
-
-    private static Map<String, String> loadExpressionMap() throws Exception {
-        Map<String, String> map = new HashMap<>();
-        ClassLoader cl = PrecompiledMALExecutionTest.class.getClassLoader();
-        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
-            assertNotNull(mis, "META-INF/mal-v2.manifest not found");
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) {
-                        continue;
-                    }
-                    try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + line)) {
-                        if (cis == null) {
-                            continue;
-                        }
-                        Properties props = new Properties();
-                        props.load(cis);
-                        for (int i = 0; ; i++) {
-                            String exp = props.getProperty("rule." + i + ".exp");
-                            if (exp == null) {
-                                break;
-                            }
-                            String className = props.getProperty("rule." + i + ".class", "");
-                            if (!className.isEmpty()) {
-                                map.put(exp, className);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return map;
+                                               final String expression) {
+        Supplier<MalExpression> compiled = CompiledRules.malExpressions().get(expression);
+        assertNotNull(compiled, "The rule registry has no expression for metric: " + metricName);
+        return new Expression(metricName, expression, compiled.get());
     }
 }

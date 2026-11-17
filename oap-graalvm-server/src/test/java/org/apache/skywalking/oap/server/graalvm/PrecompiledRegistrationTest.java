@@ -31,9 +31,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.apache.skywalking.oap.server.core.analysis.ISourceDecorator;
 import org.apache.skywalking.oap.server.core.analysis.SourceDispatcher;
 import org.apache.skywalking.oap.server.core.analysis.Stream;
@@ -43,6 +44,11 @@ import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.ISource;
 import org.apache.skywalking.oap.server.core.source.ScopeDeclaration;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalExpression;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalFilter;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.LalRule;
+import org.apache.skywalking.oap.server.graalvm.rules.MalFile;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -200,7 +206,7 @@ class PrecompiledRegistrationTest {
 
     @Test
     void allOalMetricsClassesLoadAndHaveStreamAnnotation() throws Exception {
-        List<String> classes = readManifest("META-INF/oal-metrics-classes.txt");
+        List<String> classes = classNames(CompiledRules.oalMetrics());
         assertFalse(classes.isEmpty(), "OAL metrics manifest is empty");
         for (String className : classes) {
             Class<?> clazz = Class.forName(className);
@@ -211,7 +217,7 @@ class PrecompiledRegistrationTest {
 
     @Test
     void allOalDispatcherClassesLoadAndImplementInterface() throws Exception {
-        List<String> classes = readManifest("META-INF/oal-dispatcher-classes.txt");
+        List<String> classes = classNames(CompiledRules.oalDispatchers());
         assertFalse(classes.isEmpty(), "OAL dispatcher manifest is empty");
         for (String className : classes) {
             Class<?> clazz = Class.forName(className);
@@ -262,7 +268,7 @@ class PrecompiledRegistrationTest {
         }
 
         // Check OAL-generated @Stream classes
-        List<String> oalMetrics = readManifest("META-INF/oal-metrics-classes.txt");
+        List<String> oalMetrics = classNames(CompiledRules.oalMetrics());
         for (String className : oalMetrics) {
             Class<?> clazz = Class.forName(className);
             Stream stream = clazz.getAnnotation(Stream.class);
@@ -291,7 +297,7 @@ class PrecompiledRegistrationTest {
     @Test
     @SuppressWarnings("deprecation")
     void oalDispatchersHaveDeclaredSourceScopes() throws Exception {
-        List<String> dispatchers = readManifest("META-INF/oal-dispatcher-classes.txt");
+        List<String> dispatchers = classNames(CompiledRules.oalDispatchers());
         for (String className : dispatchers) {
             Class<?> clazz = Class.forName(className);
             Class<?> sourceType = extractSourceType(clazz);
@@ -343,159 +349,52 @@ class PrecompiledRegistrationTest {
     // =========================================================================
 
     @Test
-    void malMeterClassManifestExistsAndIsNotEmpty() throws Exception {
-        List<String> entries = readManifest("META-INF/mal-meter-classes.txt");
-        assertFalse(entries.isEmpty(), "MAL meter classes manifest should not be empty");
-        for (String entry : entries) {
-            assertTrue(entry.contains("="),
-                "MAL meter class entry should be in format name=FQCN: " + entry);
+    void malMeterClassManifestExistsAndIsNotEmpty() {
+        Map<String, Class<?>> meters = CompiledRules.meterClasses();
+        assertFalse(meters.isEmpty(), "The meter classes of the rule registry should not be empty");
+        for (Map.Entry<String, Class<?>> meter : meters.entrySet()) {
+            assertEquals(meter.getKey(), meter.getValue().getName(), "A meter class is keyed by its name");
         }
     }
 
     @Test
     void malMeterClassesAreLoadable() throws Exception {
-        List<String> entries = readManifest("META-INF/mal-meter-classes.txt");
-        for (String entry : entries) {
-            String[] parts = entry.split("=", 2);
-            String className = parts[1];
-            Class<?> clazz = Class.forName(className);
-            assertNotNull(clazz, "Should be able to load meter class: " + className);
-            // Verify it can be instantiated
+        for (Class<?> clazz : CompiledRules.meterClasses().values()) {
             Object instance = clazz.getDeclaredConstructor().newInstance();
-            assertNotNull(instance, "Should be able to instantiate: " + className);
+            assertNotNull(instance, "Should be able to instantiate: " + clazz.getName());
         }
     }
 
     @Test
-    void malV2ManifestExistsAndPerFileConfigsAreReadable() throws Exception {
-        ClassLoader cl = PrecompiledRegistrationTest.class.getClassLoader();
-        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
-            assertNotNull(mis, "MAL v2 manifest should exist");
-            List<String> configFiles = new ArrayList<>();
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (!line.isEmpty() && !line.startsWith("#")) {
-                        configFiles.add(line);
-                    }
-                }
+    void malV2ManifestExistsAndPerFileConfigsAreReadable() {
+        List<MalFile> files = CompiledRules.malFiles();
+        assertFalse(files.isEmpty(), "The rule registry should hold MAL rule files");
+        int totalExpressions = 0;
+        for (MalFile file : files) {
+            assertNotNull(file.getRule().getName(), "A MAL rule file has a name: " + file.getCatalog());
+            if (file.getRule().getMetricsRules() != null) {
+                totalExpressions += file.getRule().getMetricsRules().size();
             }
-            assertFalse(configFiles.isEmpty(), "MAL v2 manifest should list config files");
+        }
+        assertTrue(totalExpressions > 0, "The MAL rule files should contain expressions");
+    }
 
-            int totalExpressions = 0;
-            for (String configFile : configFiles) {
-                try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + configFile)) {
-                    assertNotNull(cis, "Per-file config should exist: " + configFile);
-                    Properties props = new Properties();
-                    props.load(cis);
-                    for (int i = 0; ; i++) {
-                        String exp = props.getProperty("rule." + i + ".exp");
-                        if (exp == null) {
-                            break;
-                        }
-                        totalExpressions++;
-                    }
-                }
-            }
-            assertTrue(totalExpressions > 0,
-                "Per-file configs should contain expression entries");
+    @Test
+    void malV2ExpressionsAreLoadable() {
+        Map<String, Supplier<MalExpression>> expressions = CompiledRules.malExpressions();
+        assertFalse(expressions.isEmpty(), "The MAL expressions of the rule registry should not be empty");
+        for (Map.Entry<String, Supplier<MalExpression>> entry : expressions.entrySet()) {
+            assertNotNull(entry.getValue().get(), "Should be able to instantiate the expression: " + entry.getKey());
         }
     }
 
     @Test
-    void malV2ExpressionsAreLoadable() throws Exception {
-        ClassLoader cl = PrecompiledRegistrationTest.class.getClassLoader();
-        Map<String, String> exprMap = loadMalV2ExpressionMap(cl);
-        assertFalse(exprMap.isEmpty(), "MAL v2 expression map should not be empty");
-        for (Map.Entry<String, String> entry : exprMap.entrySet()) {
-            String className = entry.getValue();
-            Class<?> clazz = Class.forName(className);
-            assertNotNull(clazz, "Should be able to load MAL v2 expression: " + className);
-            Object instance = clazz.getDeclaredConstructor().newInstance();
-            assertNotNull(instance, "Should be able to instantiate: " + className);
+    void malV2FiltersAreLoadable() {
+        Map<String, Supplier<MalFilter>> filters = CompiledRules.malFilters();
+        assertFalse(filters.isEmpty(), "The MAL filters of the rule registry should not be empty");
+        for (Map.Entry<String, Supplier<MalFilter>> entry : filters.entrySet()) {
+            assertNotNull(entry.getValue().get(), "Should be able to instantiate the filter: " + entry.getKey());
         }
-    }
-
-    @Test
-    void malV2FiltersAreLoadable() throws Exception {
-        ClassLoader cl = PrecompiledRegistrationTest.class.getClassLoader();
-        Map<String, String> filterMap = loadMalV2FilterMap(cl);
-        assertFalse(filterMap.isEmpty(), "MAL v2 filter map should not be empty");
-        for (String className : filterMap.values()) {
-            Class<?> clazz = Class.forName(className);
-            assertNotNull(clazz, "Should be able to load MAL v2 filter: " + className);
-        }
-    }
-
-    private static Map<String, String> loadMalV2ExpressionMap(ClassLoader cl) throws Exception {
-        Map<String, String> map = new HashMap<>();
-        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
-            if (mis == null) {
-                return map;
-            }
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) {
-                        continue;
-                    }
-                    try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + line)) {
-                        if (cis == null) {
-                            continue;
-                        }
-                        Properties props = new Properties();
-                        props.load(cis);
-                        for (int i = 0; ; i++) {
-                            String exp = props.getProperty("rule." + i + ".exp");
-                            if (exp == null) {
-                                break;
-                            }
-                            String className = props.getProperty("rule." + i + ".class", "");
-                            if (!className.isEmpty()) {
-                                map.put(exp, className);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return map;
-    }
-
-    private static Map<String, String> loadMalV2FilterMap(ClassLoader cl) throws Exception {
-        Map<String, String> map = new HashMap<>();
-        try (InputStream mis = cl.getResourceAsStream("META-INF/mal-v2.manifest")) {
-            if (mis == null) {
-                return map;
-            }
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(mis, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) {
-                        continue;
-                    }
-                    try (InputStream cis = cl.getResourceAsStream("META-INF/mal-v2/" + line)) {
-                        if (cis == null) {
-                            continue;
-                        }
-                        Properties props = new Properties();
-                        props.load(cis);
-                        String filterLiteral = props.getProperty("filter", "");
-                        String filterClass = props.getProperty("filter.class", "");
-                        if (!filterLiteral.isEmpty() && !filterClass.isEmpty()) {
-                            map.putIfAbsent(filterLiteral, filterClass);
-                        }
-                    }
-                }
-            }
-        }
-        return map;
     }
 
     // =========================================================================
@@ -503,24 +402,19 @@ class PrecompiledRegistrationTest {
     // =========================================================================
 
     @Test
-    void lalV2ManifestExistsAndIsNotEmpty() throws Exception {
-        List<String> entries = readManifest("META-INF/lal-v2-classes.txt");
-        assertFalse(entries.isEmpty(), "LAL v2 manifest should not be empty");
+    void lalV2ManifestExistsAndIsNotEmpty() {
+        assertFalse(CompiledRules.lalRules().isEmpty(), "The LAL rules of the rule registry should not be empty");
     }
 
     @Test
-    void lalV2ClassesAreLoadable() throws Exception {
-        List<String> entries = readManifest("META-INF/lal-v2-classes.txt");
-        for (String entry : entries) {
-            entry = entry.trim();
-            if (entry.isEmpty() || entry.startsWith("#")) {
-                continue;
-            }
-            Class<?> clazz = Class.forName(entry);
-            assertNotNull(clazz, "Should be able to load LAL v2 class: " + entry);
-            Object instance = clazz.getDeclaredConstructor().newInstance();
-            assertNotNull(instance, "Should be able to instantiate: " + entry);
+    void lalV2ClassesAreLoadable() {
+        for (LalRule rule : CompiledRules.lalRules()) {
+            assertNotNull(rule.getExpression().get(), "Should be able to instantiate LAL rule: " + rule.getName());
         }
+    }
+
+    private static List<String> classNames(List<Class<?>> classes) {
+        return classes.stream().map(Class::getName).collect(Collectors.toList());
     }
 
     // =========================================================================
@@ -541,7 +435,7 @@ class PrecompiledRegistrationTest {
 
         List<String> allDispatchers = new ArrayList<>();
         allDispatchers.addAll(readManifest("META-INF/annotation-scan/SourceDispatcher.txt"));
-        allDispatchers.addAll(readManifest("META-INF/oal-dispatcher-classes.txt"));
+        allDispatchers.addAll(classNames(CompiledRules.oalDispatchers()));
 
         for (String className : allDispatchers) {
             Class<?> clazz = Class.forName(className);
@@ -559,7 +453,7 @@ class PrecompiledRegistrationTest {
 
         List<String> allStreams = new ArrayList<>();
         allStreams.addAll(readManifest("META-INF/annotation-scan/Stream.txt"));
-        allStreams.addAll(readManifest("META-INF/oal-metrics-classes.txt"));
+        allStreams.addAll(classNames(CompiledRules.oalMetrics()));
 
         for (String className : allStreams) {
             Class<?> clazz = Class.forName(className);

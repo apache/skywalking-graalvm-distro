@@ -207,58 +207,97 @@ path-escaped, `oal%2Fcore.oal`, as swctl and Horizon send it).
 
 ## Runtime Loading via Same-FQCN Replacements
 
-At runtime (native image or JVM distro), same-FQCN replacement classes load pre-compiled classes instead of running Javassist.
+At runtime (native image or JVM distro), same-FQCN replacement classes take the pre-compiled classes from the
+generated rule registry instead of running Javassist, and read no rule file.
+
+### The static rule registry: `CompiledRules`
+
+After the engine passes, the precompiler's `RegistryGenerator` generates Java source, compiles it in process
+(`javax.tools`, against the precompiler's class path plus the generated classes) and puts the classes in the
+generated jar, next to the hand-written holder types of `org.apache.skywalking.oap.server.graalvm.rules`
+(`MalFile`, `LalFile`, `LalRule`, `TalFile`, `TalRule`, `HierarchyRules`):
+
+- **A class per rule file** holding, as code, what upstream's loader read from the file at build time and
+  constructing the classes compiled from it: `Mal_<catalog>_<file>` (the MAL `Rule` with
+  `expression → GeneratedExpr::new` and `filter literal → GeneratedFilter::new`), `Lal_<file>` (the `LALConfigs`
+  with every rule's coordinates, class and effective input type), `Tal_<file>` (the `TALConfigs` with every rule's
+  coordinates, class, input type and alias, metric prefix, DSL digest, function fields and metric declarations),
+  `Zabbix_<file>` (the `ZabbixConfig`) and `Oal_<script>` (the script's `OALDefine`, the metrics and dispatcher
+  classes it generated, the sources its `disable()` switched off). Each rule object is built by a factory method of
+  its own, so no method nears the 64 KB method-code limit.
+- **`HierarchyRegistry`** (the `hierarchy-definition.yml` data and a matcher per rule), **`LayerRegistry`** (the
+  `layer-extensions.yml` entries) and **`MeterRegistry`** (the generated meter classes by name).
+- **`CompiledRules`**, the index every replacement reads. Rule objects are built fresh on every call, as reading
+  the files did; the lookup maps are built once.
+
+The lookup key is what upstream code passes in: the expression text (MAL) or the rule's source coordinates (LAL,
+TAL). The classes are referenced directly, so the native image sees them as reachable. The registry is generated
+from the manifests the engine passes write (below), which stay build intermediates: the generated jar leaves them
+out. `RegistryParityTest` requires, for every bundled file, the registry data to equal what upstream's loaders
+return and every class to be the one the manifests record; `RegistryGeneratorTest` round-trips the string literals
+through javac. A rule file found where the configuration lookup would resolve it (`config/`, the working directory,
+the JVM distro's class path) fails the boot (`CompiledRulesCheck`): nothing would read it.
 
 ### OAL: `OALEngineLoaderService`
 
 **Upstream**: `server-core/.../oal/rt/OALEngineLoaderService.java`
 **Replacement**: `oap-libs-for-graalvm/server-core-for-graalvm/`
 
-On first `load()` call, reads manifests and registers all OAL classes:
-- `META-INF/oal-metrics-classes.txt` → `StreamAnnotationListener.notify()`
-- `META-INF/oal-dispatcher-classes.txt` → `DispatcherDetectorListener.addIfAsSourceDispatcher()`
-- `META-INF/oal-disabled-sources.txt` → `DisableRegister`
+On the first `load()` call, whichever define it is for, registers every OAL class from the registry:
+- the disabled sources → `DisableRegister`
+- the metrics classes → `StreamAnnotationListener.notify()`
+- the dispatcher classes → `DispatcherDetectorListener.addIfAsSourceDispatcher()`
 
-### MAL: `DSL` (v2)
+All of them run whichever provider loads its define, so `getLoadedDefines()`, which the read-only OAL catalog of the
+dsl-debugging module lists, holds every compiled script's define.
 
-**Upstream**: `analyzer/meter-analyzer/.../v2/dsl/DSL.java`
+### MAL: `DSL` (v2), `FilterExpression`, `Rules`
+
+**Upstream**: `analyzer/meter-analyzer/.../v2/dsl/DSL.java`, `FilterExpression.java`, `.../prometheus/rule/Rules.java`
 **Replacement**: `oap-libs-for-graalvm/meter-analyzer-for-graalvm/`
 
-`parse(metricName, expression)` loads per-file configs from `META-INF/mal-v2/`, looks up the pre-compiled class by expression text, and wires closure fields:
+`parse(metricName, expression)` takes the pre-compiled class of the expression text from the registry; since
+expressions are globally unique (different YAML files produce different expressions even for the same metric name),
+no hash or disambiguation is needed. `FilterExpression` does the same by filter literal. `Rules.loadRules` returns the
+enabled rule files of a catalog and registers their inline `layerDefinitions` as upstream does.
 
-```java
-// At startup: load META-INF/mal-v2.manifest → per-file configs → expression→FQCN map
-String className = expressionMap.get(expression);
-MalExpression malExpr = (MalExpression) Class.forName(className)
-    .getDeclaredConstructor().newInstance();
-wireClosures(malExpr.getClass(), malExpr);  // LambdaMetafactory wiring
-return new Expression(metricName, expression, malExpr);
-```
+**Closure fields**: pre-compiled `MalExpression` classes with functional-interface fields (`TagFunction`,
+`ForEachFunction`, `PropertiesExtractor`, `DecorateFunction`) instantiate their companion classes in their own static
+initializer, so no wiring is needed after instantiation.
 
-**Per-file manifests**: `META-INF/mal-v2/` mirrors the original YAML directory structure. Each config file (e.g., `otel-rules/vm.yaml`) contains rule names, full expressions, filter info, and compiled class FQCNs. `META-INF/mal-v2.manifest` lists all config files. Runtime builds an in-memory `expression → FQCN` map from all per-file configs. Since expressions are globally unique (different YAML files produce different expressions even for the same metric name), no hash or disambiguation is needed.
+### LAL: `DSL` (v2), `LALConfigs`
 
-**Closure wiring**: Pre-compiled `MalExpression` classes may have public fields typed as functional interfaces (`TagFunction`, `ForEachFunction`, `PropertiesExtractor`, `DecorateFunction`). At build time, `MALClassGenerator` wires these via `LambdaMetafactory` after class loading. At runtime, the replacement `DSL.java` replicates this wiring by scanning public fields and invoking `LambdaMetafactory.metafactory()` to create the functional interface wrapper from the corresponding method (e.g., field `_tag` → method `_tag_apply`).
-
-### LAL: `DSL` (v2)
-
-**Upstream**: `analyzer/log-analyzer/.../v2/dsl/DSL.java`
+**Upstream**: `analyzer/log-analyzer/.../v2/dsl/DSL.java`, `.../v2/provider/LALConfigs.java`
 **Replacement**: `oap-libs-for-graalvm/log-analyzer-for-graalvm/`
 
-`of(moduleManager, config, dsl, inputType, outputType, ruleName, sourceRef)` looks the rule up by its `DslSourceRef` coordinates (`lal/<file>.yaml:<line>`) in `META-INF/lal-v2-rules.txt` and loads via `Class.forName()`. The manifest also carries the effective input type the compiler resolved, which upstream `LogFilterListener` uses to route Envoy HTTP vs TCP access logs to the right rule.
+`of(moduleManager, config, dsl, inputType, outputType, ruleName, sourceRef)` looks the rule up by its `DslSourceRef`
+coordinates (`lal/<file>.yaml:<line>`) in the registry, falling back to the rule name. The registry also carries the
+effective input type the compiler resolved, which upstream `LogFilterListener` uses to route Envoy HTTP vs TCP access
+logs to the right rule. `LALConfigs.load` returns the listed rule files, registers their inline `layerDefinitions` and
+re-stamps sourceName/sourcePath as upstream does.
 
 ### TAL: `TalDSL` + `TALConfigs`
 
 **Upstream**: `analyzer/trace-analyzer/.../v2/dsl/TalDSL.java`, `.../v2/provider/TALConfigs.java`
 **Replacement**: `oap-libs-for-graalvm/trace-analyzer-for-graalvm/`
 
-`TALConfigs.load` / `loadInOrder` read `META-INF/config-data/tal.json` (keyed by file name, with extension), skip a file whose `requiredModules` are not all loaded before its inline layers register, and re-stamp sourceName/sourcePath/metricPrefix as upstream does, so the upstream `SpanFilterListener.Factory` builds the same `DslSourceRef`; `loadInOrder` (the `nativeTalFiles` list) returns the files as listed and fails on one that was not compiled, and `requiredModulesOf` reads the same JSON, so the trace analyzer still starts the modules the rules need first. `TalDSL.of(...)` looks the rule up by those coordinates (`tal/<file>.yaml:<line>`, never by name alone) in `META-INF/tal-v2-rules.txt`, fails if the rule name, DSL, input type, input alias or metric prefix differs from those the class was compiled for, instantiates the class, sets each function-object field from the registry it is given by the recorded key (failing the boot when the registry holds another class there), then claims and creates the metric declarations recorded in the manifest (`meterSystem.create` + `limitLabels`), exactly the calls upstream's `createMetrics` makes. `TALRecordedTraceComparisonTest` runs the OTLP rules over upstream's recorded OTel Demo trace through a fresh compile and through the pre-compiled classes and requires identical metrics, traffic, alias rows and source records; `NativeTALComparisonTest` runs every `nativeTalFiles` rule over upstream's native-trace checker fixtures (copied from the submodule at build time) through upstream's `SwNativeRuleRunner`, once with the classes the factory loads and once with fresh compiles against the same registry, in a cold and a warm pass, and requires identical records, alias rows and failures.
+`TALConfigs.load` / `loadInOrder` take the rule files from the registry (keyed by file name, with extension), skip a file whose `requiredModules` are not all loaded before its inline layers register, and re-stamp sourceName/sourcePath/metricPrefix as upstream does, so the upstream `SpanFilterListener.Factory` builds the same `DslSourceRef`; `loadInOrder` (the `nativeTalFiles` list) returns the files as listed and fails on one that was not compiled, and `requiredModulesOf` reads the same registry, so the trace analyzer still starts the modules the rules need first. `TalDSL.of(...)` looks the rule up by those coordinates (`tal/<file>.yaml:<line>`, never by name alone) in the registry, fails if the rule name, DSL, input type, input alias or metric prefix differs from those the class was compiled for, instantiates the class, sets each function-object field from the function registry it is given by the recorded key (failing the boot when the function registry holds another class there), then claims and creates the recorded metric declarations (`meterSystem.create` + `limitLabels`), exactly the calls upstream's `createMetrics` makes. `TALRecordedTraceComparisonTest` runs the OTLP rules over upstream's recorded OTel Demo trace through a fresh compile and through the pre-compiled classes and requires identical metrics, traffic, alias rows and source records; `NativeTALComparisonTest` runs every `nativeTalFiles` rule over upstream's native-trace checker fixtures (copied from the submodule at build time) through upstream's `SwNativeRuleRunner`, once with the classes the factory loads and once with fresh compiles against the same function registry, in a cold and a warm pass, and requires identical records, alias rows and failures.
 
 ### Hierarchy: `HierarchyDefinitionService`
 
 **Upstream**: `server-core/.../core/config/HierarchyDefinitionService.java`
 **Replacement**: `oap-libs-for-graalvm/server-core-for-graalvm/`
 
-Skips the upstream `HierarchyRuleProvider` SPI and loads pre-compiled `BiFunction` classes by rule name from `META-INF/hierarchy-v2-rules.txt`.
+Skips the upstream `HierarchyRuleProvider` SPI and the YAML: takes the hierarchy, the layer levels and the
+pre-compiled `BiFunction` of each matching rule from the registry, then validates the layers as upstream does.
+
+### Layers and Zabbix: `LayerExtensionLoader`, `ZabbixConfigs`
+
+**Replacement**: `oap-libs-for-graalvm/server-core-for-graalvm/`, `oap-libs-for-graalvm/zabbix-receiver-for-graalvm/`
+
+`LayerExtensionLoader.load()` registers the `layer-extensions.yml` entries from the registry, then runs the
+`LayerExtension` SPI as upstream does (it is compiled code). `ZabbixConfigs.loadConfigs` returns the configs upstream's
+loader read from `zabbix-rules/`; their expressions are compiled with MAL.
 
 ---
 
@@ -276,41 +315,44 @@ Guava `ClassPath.from()` is used in several places. All replaced with manifest-b
 
 ## MeterSystem Javassist (Unchanged)
 
-`MeterSystem.create()` generates one dynamic meter subclass per metric rule (~1530 for MAL, 28 for TAL) via Javassist. This is separate from MAL DSL compilation and is handled the same as before: run at build time, export `.class` files, load from manifests at runtime.
+`MeterSystem.create()` generates one dynamic meter subclass per metric rule (~1530 for MAL, 28 for TAL) via Javassist. This is separate from MAL DSL compilation and is handled the same as before: run at build time, export `.class` files; at runtime the `MeterSystem` replacement takes the class of a metric from the registry.
 
 ---
 
-## Manifest Files
+## Build Manifests
 
-All manifests are in `META-INF/` within the precompiler output JAR:
+The engine passes write these under `META-INF/` of the precompiler output directory. The registry and
+`reflect-config.json` are generated from them; the generated jar leaves them out (`maven-jar-plugin` excludes), except
+`annotation-scan/`, `rule-source/` and the `oal/*.oal` scripts, which the runtime reads.
 
 | Manifest | Format | Purpose |
 |---|---|---|
-| `oal-metrics-classes.txt` | FQCN per line | OAL metrics class registration |
-| `oal-dispatcher-classes.txt` | FQCN per line | OAL dispatcher class registration |
+| `oal-metrics-classes.txt` | FQCN per line | OAL metrics classes |
+| `oal-dispatcher-classes.txt` | FQCN per line | OAL dispatcher classes |
 | `oal-disabled-sources.txt` | Source name per line | OAL disabled sources |
+| `oal-scripts.txt` | Escaped UTF-8 properties (`script.N.define/file/metrics/dispatchers/disabled`) | What each OAL script generated, for the per-script registry classes |
 | `mal-v2.manifest` | File path per line | Lists all per-file MAL configs |
 | `mal-v2/{path}/{name}.yaml` | Properties | Per-file config: rule names, expressions, filter, class FQCNs |
-| `mal-v2-classes.txt` | FQCN per line | Reflection config for MAL expression classes |
-| `lal-v2-classes.txt` | FQCN per line | Reflection config for LAL expression classes |
-| `lal-v2-rules.txt` | Properties (`rule.N.source/line/name/class/inputType`) | Runtime LAL lookup by source coordinates + effective input type |
-| `tal-v2-classes.txt` | FQCN per line | Reflection config for TAL expression classes |
-| `tal-v2-rules.txt` | Escaped UTF-8 properties (`rule.N.source/line/name/class/inputType/inputAlias/metricPrefix/dslSha256`, `rule.N.function.K.field/key/type`, `rule.N.metric.M.fullName/function/scopeType/declaredName/buckets/ranks/labelLimit`) | Runtime TAL lookup by the inputs each class was compiled from, the function objects it is wired with + the metrics each rule creates |
+| `mal-v2-classes.txt` | FQCN per line | MAL expression classes |
+| `lal-v2-classes.txt` | FQCN per line | LAL expression classes |
+| `lal-v2-rules.txt` | Properties (`rule.N.source/line/name/class/inputType`) | LAL rules by source coordinates + effective input type |
+| `tal-v2-classes.txt` | FQCN per line | TAL expression classes |
+| `tal-v2-rules.txt` | Escaped UTF-8 properties (`rule.N.source/line/name/class/inputType/inputAlias/metricPrefix/dslSha256`, `rule.N.function.K.field/key/type`, `rule.N.metric.M.fullName/function/scopeType/declaredName/buckets/ranks/labelLimit`) | TAL rules by the inputs each class was compiled from, the function objects it is wired with + the metrics each rule creates |
 | `tal-meter-classes.txt` | `name=FQCN` | Meter classes generated for TAL metrics |
-| `tal-io-classes.txt` | FQCN per line | TAL input types, `TALSourceTypeProvider` / `TALFunctionProvider` implementations and helper function classes, for reflection (their methods are listed when the registry binds) |
-| `hierarchy-v2-classes.txt` | FQCN per line | Reflection config for hierarchy rule classes |
-| `hierarchy-v2-rules.txt` | `ruleName=FQCN` | Runtime hierarchy rule lookup |
-| `mal-meter-classes.txt` | `name\|scopeId\|func\|type\|FQCN` | MeterSystem pre-generated classes |
-| `annotation-scan/*.txt` | FQCN per line or `key=FQCN` | Annotation/interface scan replacements |
-| `config-data/*.json` | JSON | Serialized rule configs for runtime loaders |
-| `rule-source/**` | raw MAL/LAL YAML + `index.txt` | Read-only `/runtime/rule` catalog served by `BundledRuleCatalogHandler` |
-| `oal/*.oal` (jar root) | raw OAL scripts | `GET /runtime/oal/files/{name}` (upstream dsl-debugging handler) |
+| `tal-io-classes.txt` | FQCN per line | TAL input types, `TALSourceTypeProvider` / `TALFunctionProvider` implementations and helper function classes, for reflection (their methods are listed when the function registry binds) |
+| `hierarchy-v2-classes.txt` | FQCN per line | Hierarchy rule classes |
+| `hierarchy-v2-rules.txt` | `ruleName=FQCN` | Hierarchy rules by name |
+| `mal-meter-classes.txt` | `name=FQCN` | MeterSystem pre-generated classes |
+| `config-data/*.json` | JSON | The rule configs upstream's loaders returned |
+| `annotation-scan/*.txt` | FQCN per line or `key=FQCN` | Annotation/interface scan replacements (packaged, read at runtime) |
+| `rule-source/**` | raw MAL/LAL YAML + `index.txt` | Read-only `/runtime/rule` catalog served by `BundledRuleCatalogHandler` (packaged) |
+| `oal/*.oal` (jar root) | raw OAL scripts | `GET /runtime/oal/files/{name}` (upstream dsl-debugging handler, packaged) |
 
 ---
 
 ## Reflection Config Generation
 
-The precompiler auto-generates `reflect-config.json` from manifests:
+The precompiler auto-generates `reflect-config.json` from the build manifests:
 - OAL metrics/dispatchers: constructor-only access
 - MAL/LAL/TAL/Hierarchy expression classes and MAL/TAL meter classes: constructor-only access
 - TAL `PairingFact` and `SpanMetadata`: full access (`PairingFact` crosses OAP nodes as stream data and `RemoteHandleWorker` rebuilds it with `newInstance()`; both are what a rule's `pairing` / `meta` hand to `toJson()`, which serializes objects through Gson's reflective adapters)

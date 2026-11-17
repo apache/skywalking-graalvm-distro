@@ -101,6 +101,12 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
+                <artifactId>skywalking-zabbix-receiver-plugin</artifactId>
+                <version>${skywalking.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
                 <artifactId>skywalking-ebpf-receiver-plugin</artifactId>
                 <version>${skywalking.version}</version>
                 <scope>provided</scope>
@@ -334,7 +340,7 @@
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>skywalking-zabbix-receiver-plugin</artifactId>
+            <artifactId>zabbix-receiver-for-graalvm</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>

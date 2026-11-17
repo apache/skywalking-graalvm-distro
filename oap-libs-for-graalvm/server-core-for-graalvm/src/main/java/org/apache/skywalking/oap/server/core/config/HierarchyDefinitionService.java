@@ -17,85 +17,29 @@
 
 package org.apache.skywalking.oap.server.core.config;
 
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.function.Supplier;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.CoreModuleConfig;
-import org.apache.skywalking.oap.server.core.UnexpectedException;
 import org.apache.skywalking.oap.server.core.analysis.Layer;
 import org.apache.skywalking.oap.server.core.query.type.Service;
-import org.apache.skywalking.oap.server.library.util.ResourceUtils;
-import org.yaml.snakeyaml.Yaml;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.HierarchyRules;
 
 import static java.util.stream.Collectors.toMap;
 
 /**
  * Same-FQCN replacement of upstream HierarchyDefinitionService.
  *
- * <p>Loads pre-compiled hierarchy matching rule classes from the
- * {@code hierarchy-v2-rules.txt} manifest ({@code ruleName=FQCN}). These classes were
- * compiled at build time by the precompiler using the v2 ANTLR4 + Javassist engine, and
- * each implements {@code BiFunction<Service, Service, Boolean>}.
+ * <p>Takes the definition upstream reads from {@code hierarchy-definition.yml} from the generated
+ * {@link CompiledRules} registry, with each matching rule's class the precompiler compiled (a
+ * {@code BiFunction<Service, Service, Boolean>}), instead of parsing the YAML and compiling the rules at runtime.
  */
 @Slf4j
 public class HierarchyDefinitionService implements org.apache.skywalking.oap.server.library.module.Service {
-
-    private static final String MANIFEST_PATH = "META-INF/hierarchy-v2-rules.txt";
-    private static volatile Map<String, BiFunction<Service, Service, Boolean>> RULES;
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, BiFunction<Service, Service, Boolean>> loadPrecompiledRules() {
-        if (RULES != null) {
-            return RULES;
-        }
-        synchronized (HierarchyDefinitionService.class) {
-            if (RULES != null) {
-                return RULES;
-            }
-            final Map<String, BiFunction<Service, Service, Boolean>> rules = new HashMap<>();
-            try (InputStream is = HierarchyDefinitionService.class.getClassLoader()
-                    .getResourceAsStream(MANIFEST_PATH)) {
-                if (is == null) {
-                    log.warn("Hierarchy v2 manifest not found: {}", MANIFEST_PATH);
-                    RULES = rules;
-                    return rules;
-                }
-                try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        line = line.trim();
-                        final int eq = line.indexOf('=');
-                        if (line.isEmpty() || line.startsWith("#") || eq <= 0) {
-                            continue;
-                        }
-                        final String ruleName = line.substring(0, eq);
-                        final String fqcn = line.substring(eq + 1);
-                        try {
-                            rules.put(ruleName, (BiFunction<Service, Service, Boolean>) Class.forName(fqcn)
-                                .getDeclaredConstructor().newInstance());
-                            log.debug("Loaded pre-compiled hierarchy rule: {} -> {}", ruleName, fqcn);
-                        } catch (Exception e) {
-                            log.warn("Failed to load hierarchy rule class: {}", fqcn, e);
-                        }
-                    }
-                }
-            } catch (IOException e) {
-                throw new IllegalStateException("Failed to load hierarchy v2 manifest", e);
-            }
-            RULES = rules;
-            return rules;
-        }
-    }
 
     @Getter
     private final Map<String, Map<String, MatchingRule>> hierarchyDefinition;
@@ -112,29 +56,20 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
         }
     }
 
-    @SuppressWarnings("unchecked")
     private void init() {
-        try {
-            Reader applicationReader = ResourceUtils.read("hierarchy-definition.yml");
-            Yaml yaml = new Yaml();
-            Map<String, Map> config = yaml.loadAs(applicationReader, Map.class);
-            Map<String, Map<String, String>> hierarchy = (Map<String, Map<String, String>>) config.get("hierarchy");
-            Map<String, String> matchingRules = (Map<String, String>) config.get("auto-matching-rules");
-            this.layerLevels = (Map<String, Integer>) config.get("layer-levels");
-            this.matchingRules = matchingRules.entrySet().stream().map(entry -> {
-                MatchingRule matchingRule = new MatchingRule(entry.getKey(), entry.getValue());
-                return Map.entry(entry.getKey(), matchingRule);
-            }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
-            hierarchy.forEach((layer, lowerLayers) -> {
-                Map<String, MatchingRule> rules = new HashMap<>();
-                lowerLayers.forEach((lowerLayer, ruleName) -> {
-                    rules.put(lowerLayer, this.matchingRules.get(ruleName));
-                });
-                this.hierarchyDefinition.put(layer, rules);
+        final HierarchyRules definition = CompiledRules.hierarchy();
+        this.layerLevels = definition.getLayerLevels();
+        this.matchingRules = definition.getAutoMatchingRules().entrySet().stream().map(entry -> {
+            MatchingRule matchingRule = new MatchingRule(entry.getKey(), entry.getValue());
+            return Map.entry(entry.getKey(), matchingRule);
+        }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
+        definition.getHierarchy().forEach((layer, lowerLayers) -> {
+            Map<String, MatchingRule> rules = new HashMap<>();
+            lowerLayers.forEach((lowerLayer, ruleName) -> {
+                rules.put(lowerLayer, this.matchingRules.get(ruleName));
             });
-        } catch (FileNotFoundException e) {
-            throw new UnexpectedException("hierarchy-definition.yml not found.", e);
-        }
+            this.hierarchyDefinition.put(layer, rules);
+        });
     }
 
     private void checkLayers() {
@@ -174,13 +109,14 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
         public MatchingRule(final String name, final String expression) {
             this.name = name;
             this.expression = expression;
-            final Map<String, BiFunction<Service, Service, Boolean>> rules = loadPrecompiledRules();
-            this.matcher = rules.get(name);
-            if (this.matcher == null) {
+            final Supplier<BiFunction<Service, Service, Boolean>> compiled =
+                CompiledRules.hierarchy().getMatchers().get(name);
+            if (compiled == null) {
                 throw new IllegalArgumentException(
                     "Pre-compiled hierarchy matching rule not found: " + name
-                        + ". Available: " + rules.keySet());
+                        + ". Available: " + CompiledRules.hierarchy().getMatchers().keySet());
             }
+            this.matcher = compiled.get();
         }
     }
 }

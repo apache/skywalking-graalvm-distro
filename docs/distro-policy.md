@@ -67,29 +67,32 @@ Run all five v2 compilers at build time via their native exposed APIs (`setClass
 ### OAL
 - `OALEngineV2.start()` processes all 9 OAL defines at build time.
 - Exports ~640 metrics classes, ~640 builder classes, ~47 dispatchers.
-- 3 manifest files: `oal-metrics-classes.txt`, `oal-dispatcher-classes.txt`, `oal-disabled-sources.txt`.
-- Same-FQCN `OALEngineLoaderService` loads pre-compiled classes from manifests.
+- Same-FQCN `OALEngineLoaderService` registers the pre-compiled classes and disabled sources the rule registry lists.
 
 ### MAL
 - `MALClassGenerator` compiles ~1570 MAL expressions from 96 YAML rule files at build time.
 - Deterministic class naming via `DslSourceRef` (`{yaml}_L{line}_{metricName}`), the same names the JVM distro generates.
-- Same-FQCN v2 `DSL.java` loads pre-compiled `MalExpression` classes by computed name.
+- Same-FQCN v2 `DSL.java` takes the pre-compiled `MalExpression` of an expression from the rule registry.
 - `MeterSystem.create()` also runs at build time → exports ~1500 Javassist meter classes.
 
 ### LAL
 - `LALClassGenerator` compiles 19 LAL rules (12 YAML files) at build time.
 - Deterministic class naming via `DslSourceRef` (`{yaml}_L{line}_{ruleName}`).
-- Same-FQCN v2 `DSL.java` loads pre-compiled `LalExpression` classes by source coordinates from `META-INF/lal-v2-rules.txt`, which also records each rule's effective input type (upstream routes Envoy HTTP vs TCP access logs by it).
+- Same-FQCN v2 `DSL.java` takes the pre-compiled `LalExpression` by source coordinates from the rule registry, which also records each rule's effective input type (upstream routes Envoy HTTP vs TCP access logs by it).
 
 ### TAL
 - `TALClassGenerator` compiles every `tal/*.yaml` at build time (shipped: 9 files, 14 rules — `otlp-general.yaml` and `otlp-ai-evaluation.yaml` for OTLP spans, the seven `native-*.yaml` files that analyze SkyWalking agent segments since SWIP-17), resolving input / layer exactly as upstream `SpanFilterListener.Factory` does, against a function registry bound as the factory binds its own; a rule that does not compile fails the build. Nothing is specific to the shipped rules: an operator's own TAL files, and the scripts in upstream's TAL docs, go through the same pass (`TALPrecompileTest`, `TALDocScriptsTest`).
 - Deterministic class naming via `DslSourceRef` (`{yaml}_L{line}_{ruleName}`).
-- The precompiler runs `createMetrics` on the build-time `MeterSystem` it shares with MAL, so the 28 `otlp_*` meter classes are generated (`tal-meter-classes.txt`).
-- Same-FQCN `TalDSL` loads the pre-compiled `TalExpression` by source coordinates from `META-INF/tal-v2-rules.txt`, which also carries each rule's input type and alias, the registry key of every function object the class holds and its metric declarations; it sets those function objects from the factory's registry, then claims and creates the metrics (incl. `limitLabels`) as upstream does. Same-FQCN `TALConfigs` reads `META-INF/config-data/tal.json`, honoring `requiredModules` and the `nativeTalFiles` order.
+- The precompiler runs `createMetrics` on the build-time `MeterSystem` it shares with MAL, so the 28 `otlp_*` meter classes are generated.
+- Same-FQCN `TalDSL` takes the pre-compiled `TalExpression` by source coordinates from the rule registry, which also carries each rule's input type and alias, the function-registry key of every function object the class holds and its metric declarations; it sets those function objects from the factory's function registry, then claims and creates the metrics (incl. `limitLabels`) as upstream does. Same-FQCN `TALConfigs` takes the rule files from the same registry, honoring `requiredModules` and the `nativeTalFiles` order.
 
 ### Hierarchy
 - `HierarchyRuleClassGenerator` compiles 4 hierarchy matching rules at build time.
-- Same-FQCN `HierarchyDefinitionService` loads pre-compiled `BiFunction` classes by rule name from `META-INF/hierarchy-v2-rules.txt`.
+- Same-FQCN `HierarchyDefinitionService` takes the hierarchy, the layer levels and the pre-compiled `BiFunction` of each rule from the rule registry; `hierarchy-definition.yml` is not shipped.
+
+### Static rule registry
+- After the engine passes, the precompiler generates a Java class per rule file — what upstream's loader read from it, as code, constructing the classes compiled from it — plus the `CompiledRules` index, and compiles them into the generated jar. The runtime replacements (also `LayerExtensionLoader` and `ZabbixConfigs`) read only that: no rule YAML, JSON or manifest at runtime.
+- A rule file where the configuration lookup would resolve it (`config/`, the working directory, the JVM distro class path) fails the boot: nothing would read it. Runtime configuration (`application.yml`, `alarm-settings.yml` …) is not a rule file and stays editable.
 
 ### Upstream Changes & Simplification
 - **Groovy Removed**: Groovy was completely removed from upstream production code (PR #13723).
@@ -149,16 +152,17 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 
 ### Same-FQCN Replacement Classes
 
-**Non-trivial replacements (load pre-compiled assets from manifests):**
+**Non-trivial replacements (load pre-compiled assets from manifests or the rule registry):**
 
 | Module | Replacement Classes | Purpose |
 |---|---|---|
 | `library-module-for-graalvm` | `ModuleDefine` | Add `prepare()` overload for direct provider wiring (bypasses ServiceLoader) |
-| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService` | Load from manifests instead of Javassist/ClassPath; config with @Setter; pre-compiled hierarchy rules |
+| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService`, `LayerExtensionLoader` | OAL / meter classes, hierarchy and layer extensions from the rule registry, annotation scans from manifests, instead of Javassist/ClassPath/YAML; config with @Setter |
 | `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set config fields via setter instead of reflection |
-| `meter-analyzer-for-graalvm` | `DSL` (v2), `Rules` | Load pre-compiled v2 `MalExpression` classes; load rule data from JSON config-data manifests |
-| `log-analyzer-for-graalvm` | `DSL` (v2), `LogAnalyzerModuleConfig`, `LALConfigs` | Load pre-compiled v2 `LalExpression` classes; config with @Setter; load LAL config data from JSON config-data manifests |
-| `trace-analyzer-for-graalvm` | `TalDSL`, `TALConfigs` | Load pre-compiled v2 `TalExpression` classes and their metric declarations; load TAL config data from JSON config-data manifests |
+| `meter-analyzer-for-graalvm` | `DSL` (v2), `FilterExpression`, `Rules` | Pre-compiled v2 `MalExpression` / `MalFilter` classes and the rule files from the rule registry |
+| `log-analyzer-for-graalvm` | `DSL` (v2), `LogAnalyzerModuleConfig`, `LALConfigs` | Pre-compiled v2 `LalExpression` classes and the rule files from the rule registry; config with @Setter |
+| `trace-analyzer-for-graalvm` | `TalDSL`, `TALConfigs` | Pre-compiled v2 `TalExpression` classes, their metric declarations and the rule files from the rule registry |
+| `zabbix-receiver-for-graalvm` | `ZabbixConfigs` | The Zabbix configs from the rule registry instead of `zabbix-rules/*.yaml` |
 | `agent-analyzer-for-graalvm` | `AnalyzerModuleConfig` | Config with @Setter (meter-analyzer-config rules load through the shared `Rules` replacement since 11.0.0) |
 
 **Config-only replacements (add `@Setter` for reflection-free config):**
@@ -224,7 +228,6 @@ YAML parsing. No reflection involved — safe for GraalVM native image as-is.
 | `endpoint-name-grouping.yml` | 1 | `EndpointNameGroupingRuleWatcher` via `ResourceUtils.read()` | Endpoint grouping rules |
 | `gateways.yml` | 1 | `UninstrumentedGatewaysConfig` via `ResourceUtils.read()` | Gateway definitions |
 | `server-clusters.yml` | 1 | `ServerClusterConfig` via `ResourceUtils.read()` | Brokers, databases and caches named as one cluster by the trace analyses (empty by default) |
-| `hierarchy-definition.yml` | 1 | `HierarchyDefinitionService` via `ResourceUtils.read()` | Layer hierarchy |
 | `metadata-service-mapping.yaml` | 1 | `ResourceUtils.read()` | Metadata service mapping |
 | `service-apdex-threshold.yml` | 1 | `ApdexThresholdConfig` via `ResourceUtils.read()` | APDEX thresholds |
 | `trace-sampling-policy-settings.yml` | 1 | `TraceSamplingPolicyWatcher` via `ResourceUtils.read()` | Trace sampling |
@@ -233,7 +236,8 @@ YAML parsing. No reflection involved — safe for GraalVM native image as-is.
 | `cilium-rules/**` | 2 | `CiliumFetcherProvider` via `ResourceUtils.getPathFiles()` | Cilium flow rules |
 | `openapi-definitions/**` | 1 | `EndpointNameGrouping` via `ResourceUtils.getPathFiles()` | OpenAPI grouping definitions |
 
-**Total: 18 files** included in the distro `config/` directory. (Upstream 11.0.0 removed the
+**Total: 17 files** included in the distro `config/` directory. No rule file is: the rules are compiled into the
+image, and a rule file under `config/` fails the boot. (Upstream 11.0.0 removed the
 bundled `ui-initialized-templates/` + `UITemplateInitializer`; dashboard templates are now managed
 via the `ui-management` REST surface.)
 
@@ -258,11 +262,9 @@ packaged in JARs. The YAML source files are not needed at runtime.
 
 **Total: 129 files** consumed at build time, producing ~1330 OAL classes, ~1570 MAL expression classes, ~1560 meter classes, 19 LAL expression classes, 14 TAL expression classes, and 4 hierarchy rule classes.
 
-Additionally, the precompiler serializes parsed config POJOs as JSON manifests in
-`META-INF/config-data/` (8 JSON files for meter-analyzer-config, otel-rules,
-envoy-metrics-rules, log-mal-rules, telegraf-rules, zabbix-rules, lal, and tal). These
-provide the runtime "wiring" data (metric prefixes, rule names, expression lookup
-keys) that replacement loader classes use instead of filesystem YAML access.
+The rest of each rule file (metric prefixes, rule names, filters, the hierarchy, layer extensions, Zabbix entities)
+is generated into the static rule registry (`CompiledRules`), the code the replacement loaders read instead of
+filesystem YAML.
 
 ### Not Included (upstream-only)
 
@@ -284,19 +286,19 @@ keys) that replacement loader classes use instead of filesystem YAML access.
 
 All five DSL compilers (OAL/MAL/LAL/TAL/Hierarchy) use ANTLR4 + Javassist v2 engines. The unified precompiler (`build-tools/precompiler`) runs them all at build time, capturing generated `.class` files into the output JAR.
 
-**OAL**: OAL v2 engine exports `.class` files (10 defines, ~640 metrics, ~640 builders, ~47 dispatchers). 7 annotation/interface manifests. Same-FQCN `OALEngineLoaderService` loads from manifests.
+**OAL**: OAL v2 engine exports `.class` files (10 defines, ~640 metrics, ~640 builders, ~47 dispatchers). 7 annotation/interface manifests. Same-FQCN `OALEngineLoaderService` registers the classes the rule registry lists.
 
-**MAL**: MAL v2 compiler processes 96 YAML files → ~1570 `MalExpression` classes + ~1530 Javassist meter classes. Deterministic `DslSourceRef` class naming. Same-FQCN v2 `DSL.java` loads pre-compiled classes by expression text from per-file manifests.
+**MAL**: MAL v2 compiler processes 96 YAML files → ~1570 `MalExpression` classes + ~1530 Javassist meter classes. Deterministic `DslSourceRef` class naming. Same-FQCN v2 `DSL.java` takes pre-compiled classes by expression text from the rule registry.
 
-**LAL**: LAL v2 compiler processes 12 YAML files → 19 `LalExpression` classes. Deterministic `DslSourceRef` class naming. Same-FQCN v2 `DSL.java` loads pre-compiled classes by source coordinates.
+**LAL**: LAL v2 compiler processes 12 YAML files → 19 `LalExpression` classes. Deterministic `DslSourceRef` class naming. Same-FQCN v2 `DSL.java` takes pre-compiled classes by source coordinates from the rule registry.
 
-**TAL**: TAL v2 compiler processes 9 YAML files → 14 `TalExpression` classes + 28 meter classes. Same-FQCN `TalDSL` loads pre-compiled classes by source coordinates, wires their function objects by the recorded registry keys and creates the metrics recorded in the manifest.
+**TAL**: TAL v2 compiler processes 9 YAML files → 14 `TalExpression` classes + 28 meter classes. Same-FQCN `TalDSL` loads pre-compiled classes by source coordinates, wires their function objects by the recorded function-registry keys and creates the recorded metrics.
 
-**Hierarchy**: Hierarchy v2 compiler processes 4 rules → 4 `BiFunction` classes. Same-FQCN `HierarchyDefinitionService` loads pre-compiled rules by name.
+**Hierarchy**: Hierarchy v2 compiler processes 4 rules → 4 `BiFunction` classes. Same-FQCN `HierarchyDefinitionService` takes the definition and the pre-compiled rules from the rule registry.
 
 **Config initialization**: `ConfigInitializerGenerator` generates same-FQCN `YamlConfigLoaderUtils` using Lombok setters — zero `Field.setAccessible` at runtime.
 
-**Config data serialization**: Precompiler serializes parsed config POJOs to `META-INF/config-data/*.json` (8 JSON files). 3 same-FQCN replacement loaders (`Rules`, `LALConfigs`, `TALConfigs`) deserialize from JSON instead of filesystem YAML.
+**Static rule registry**: the precompiler generates a Java class per rule file (what upstream's loader read from it, as code) plus the `CompiledRules` index and compiles them into the generated jar; the replacement loaders (`Rules`, `LALConfigs`, `TALConfigs`, `ZabbixConfigs`, `HierarchyDefinitionService`, `LayerExtensionLoader`) read it instead of filesystem YAML. The `config-data/*.json` and rule manifests the engine passes write are build intermediates, left out of the jar.
 
 **Module system**: `ModuleDefine` replacement with direct `prepare()` overload (bypasses ServiceLoader). `GraalVMOAPServerStartUp` with `configuration.has()` guards for 6 optional modules.
 
@@ -305,7 +307,7 @@ All five DSL compilers (OAL/MAL/LAL/TAL/Hierarchy) use ANTLR4 + Javassist v2 eng
 ### Native Image Build
 
 - `native-maven-plugin` (GraalVM buildtools 0.10.4) in `oap-graalvm-native` with `-Pnative` profile
-- `reflect-config.json` auto-generated by precompiler from manifests (OAL, MAL, LAL, TAL, meter, HTTP handlers, GraphQL types)
+- `reflect-config.json` auto-generated by precompiler from the build manifests (OAL, MAL, LAL, TAL, meter, HTTP handlers, GraphQL types)
 - `log4j2-reflect-config.json` for Log4j2 plugin classes; console-only `log4j2.xml` with `SW_LOG_LEVEL` env var
 - gRPC/Netty/Protobuf/Armeria via GraalVM reachability metadata repository
 - Auto-scanned reflection metadata: Armeria HTTP handlers (~27, incl. admin-server/status/inspect/ui-management), GraphQL resolvers (~32), GraphQL types (~182), config POJOs (8)

@@ -14,9 +14,19 @@
 - The precompiler fails the build where upstream fails the boot: a MAL, Zabbix, LAL or hierarchy rule that does not load or compile, a LAL `inputType` / `outputType` that does not resolve, or a missing hierarchy definition or `auto-matching-rules` section. These used to be logged and left out of the image.
 - New `NativeTALComparisonTest` runs every native rule over upstream's native-trace checker fixtures through `SwNativeRuleRunner`, once with the pre-compiled classes and once with a fresh compile, and requires identical records, alias rows and failures.
 
+### Compiled Rules
+
+- **Static rule registry.** The precompiler now generates Java source for every rule file — what upstream's loader read from it (the MAL `Rule`, `LALConfigs`, `TALConfigs`, the Zabbix configs, `hierarchy-definition.yml`, `layer-extensions.yml`) as code, constructing the classes compiled from it — plus the `CompiledRules` index, and compiles it into the generated jar. The runtime replacements read only that: the lookup key is the expression text (MAL) or the rule's source coordinates (LAL, TAL), and no rule YAML, JSON or manifest is read at runtime. The `config-data/*.json` and rule manifests are build intermediates, left out of the jar.
+- `hierarchy-definition.yml`, `layer-extensions.yml` and `zabbix-rules/` are no longer read at boot: new same-FQCN `LayerExtensionLoader` (server-core) and `ZabbixConfigs` (new `zabbix-receiver-for-graalvm` module) replacements, and `HierarchyDefinitionService`, take them from the registry. Both distributions stop shipping `hierarchy-definition.yml`, `zabbix-rules/` and `telegraf-rules/`.
+- A rule file where the configuration lookup would resolve it (`config/`, the working directory, the JVM distro's class path) now fails the boot instead of being silently ignored. Runtime configuration (`application.yml`, `alarm-settings.yml`, …) stays editable.
+- The MAL `Rules` and LAL `LALConfigs` replacements register a rule file's inline `layerDefinitions`, as upstream does; they were dropped.
+- The read-only OAL catalog of the dsl-debugging module lists every compiled OAL script: all of them run, whichever provider loads them.
+- `RegistryParityTest` requires the registry to hold, for every bundled file, what upstream's loaders read from it and the classes the build compiled; `RegistryGeneratorTest` round-trips its string literals through javac.
+
 ### Build
 
 - Build the native image with GraalVM 25.5 (`25.5.5.0.3`, on JDK `25.0.5.0.3`), up from 25.0.4: CI pins `version: '25.5'` on `setup-graalvm` (Oracle GraalVM), `make native-image-macos` runs `native-image-community:25i5`, and the Makefile picks the newest sdkman GraalVM 25.5 (`GRAALVM_VERSION`, `GRAAL_HOME` override) instead of the first GraalVM 25 it finds, warning when it falls back to another release.
+- The `*-for-graalvm` libs compile against the precompiler's generated jar (the rule registry), so `make build-distro` installs the precompiler before them.
 
 ### Documentation
 

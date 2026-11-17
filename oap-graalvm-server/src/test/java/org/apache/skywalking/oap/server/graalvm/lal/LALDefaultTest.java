@@ -20,17 +20,19 @@ package org.apache.skywalking.oap.server.graalvm.lal;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.skywalking.oap.server.graalvm.rules.LalRule;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pre-compilation test for lal/default.yaml.
  *
  * <p>Verifies that the pre-compiled LAL class for the default rule
- * can be loaded from the manifest and instantiated.
+ * can be loaded from the generated rule registry and instantiated.
  */
 class LALDefaultTest extends LALScriptComparisonBase {
 
@@ -46,23 +48,23 @@ class LALDefaultTest extends LALScriptComparisonBase {
 
     @Test
     void fallbackFlagSurvivesTheConfigData() throws Exception {
-        // LogAnalyzer runs fallback rules only after the auto rules; dropped by lal.json, the rule would be an ordinary
-        // auto rule and claim every layerless log first.
+        // LogAnalyzer runs fallback rules only after the auto rules; dropped by the rule registry, the rule would be an
+        // ordinary auto rule and claim every layerless log first.
         for (final LALConfig rule : loadLALRules("default.yaml")) {
             assertEquals("default-fallback".equals(rule.getName()), rule.isFallback(), rule.getName());
         }
     }
 
     @Test
-    void manifestContainsDefaultRule() {
-        final Map<String, String> manifest = loadManifest();
+    void registryContainsDefaultRule() {
+        final Map<String, LalRule> registry = loadRegistry();
         boolean found = false;
-        for (final String key : manifest.keySet()) {
+        for (final String key : registry.keySet()) {
             if (key.contains("default")) {
                 found = true;
                 break;
             }
         }
-        assert found : "Manifest should contain 'default' rule";
+        assertTrue(found, "The rule registry should contain the 'default' rule");
     }
 }
