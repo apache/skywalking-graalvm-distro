@@ -153,6 +153,69 @@ jobs:
       - name: Build distribution
         run: make build-distro
 
+  # ── A rules overlay of every kind (add / override / exclude, all engines) compiles and checks out ──
+  rules-overlay:
+    name: Rules Overlay
+    runs-on: ubuntu-24.04
+    needs: init-skywalking
+    if: needs.init-skywalking.outputs.is-release == 'false'
+    timeout-minutes: 90
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.commit || github.ref }}
+          submodules: recursive
+
+      - name: Set up GraalVM 25.5
+        uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc  # v1.6.8
+        with:
+          version: '25.5'
+          java-version: '25'
+          distribution: 'graalvm'
+
+      - name: Restore Maven cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ needs.init-skywalking.outputs.cache-key }}
+
+      - name: Verify rules with the fixture overlay
+        run: make verify-rules RULES_OVERLAY=test/rules-overlay-fixture
+
+      - name: Check the compiled-rules record
+        run: |
+          r=build-tools/precompiler/target/rule-overlay/compiled-rules
+          test -f $r/rules-overlay.yaml
+          test -f $r/oal/fixture.oal
+          test -f $r/otel-rules/fixture/fixture-service.yaml
+          test ! -e $r/oal/tcp.oal
+          grep -q '^overlay.digest=sha256:' $r/BUILD-INFO
+
+      # A native image built with rules kept outside this checkout, as a downstream repository builds it, then the
+      # rules-overlay e2e case: its own MAL, LAL, TAL and OAL rules run, kept bundled rules run, excluded ones are gone.
+      - name: Build the native image with an external rules overlay
+        run: |
+          cp -r test/e2e/cases/rules-overlay/rules "$RUNNER_TEMP/rules"
+          make native-image RULES_OVERLAY="$RUNNER_TEMP/rules"
+          make docker-native
+          # The kept LAL and TAL files, exactly: the excluded ones have no metric the e2e case could miss.
+          r=build-tools/precompiler/target/rule-overlay/compiled-rules
+          test "$(ls $r/lal | tr '\n' ' ')" = "default.yaml overlay.yaml "
+          test "$(ls $r/tal | grep -v '^native-' | tr '\n' ' ')" = "otlp-general.yaml overlay.yaml "
+
+      - name: Run the rules overlay E2E test
+        uses: apache/skywalking-infra-e2e@56ac8befeb5f910f2dc9339e65d07cd18953f90e
+        with:
+          e2e-file: $GITHUB_WORKSPACE/test/e2e/cases/rules-overlay/e2e.yaml
+
+      - name: Upload E2E logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-logs-rules-overlay
+          path: "${{ env.SW_INFRA_E2E_LOG_DIR }}"
+
   # ── Native image build for Linux (per architecture) ──
   build-native-linux:
     name: Native Linux ${{ matrix.arch }}

@@ -22,6 +22,12 @@
 #   configuration -> k8s-configmap
 #   telemetry   -> prometheus
 #   query       -> graphql
+#
+# Rules are compiled into the image, and every compiled rule file is active: the settings that select rule files
+# (enabledOtelMetricsRules, meterAnalyzerActiveFiles, malFiles, lalFiles, talFiles, nativeTalFiles,
+# enabledEnvoyMetricsRules, the Telegraf and Zabbix activeFiles) are filled at boot with all of them, and setting one
+# here, by environment variable or by system property fails the boot. To change the rules, rebuild the image with a
+# rules overlay (make RULES_OVERLAY=<dir>: add / override / exclude in its rules-overlay.yaml).
 # =============================================================================
 
 cluster:
@@ -102,25 +108,19 @@ agent-analyzer:
     forceSampleErrorSegment: ${SW_FORCE_SAMPLE_ERROR_SEGMENT:true}
     segmentStatusAnalysisStrategy: ${SW_SEGMENT_STATUS_ANALYSIS_STRATEGY:FROM_SPAN_STATUS}
     noUpstreamRealAddressAgents: ${SW_NO_UPSTREAM_REAL_ADDRESS:6000,9000}
-    meterAnalyzerActiveFiles: ${SW_METER_ANALYZER_ACTIVE_FILES:datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime,php-runtime,nodejs-runtime,gen-ai-model}
     slowCacheReadThreshold: ${SW_SLOW_CACHE_SLOW_READ_THRESHOLD:default:20,redis:10}
     slowCacheWriteThreshold: ${SW_SLOW_CACHE_SLOW_WRITE_THRESHOLD:default:20,redis:10}
 
 log-analyzer:
   selector: ${SW_LOG_ANALYZER:default}
   default:
-    lalFiles: ${SW_LOG_LAL_FILES:envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,envoy-ai-gateway,miniprogram,ai-agent,default}
-    malFiles: ${SW_LOG_MAL_FILES:"nginx,miniprogram-wechat,miniprogram-alipay"}
 
 trace-analyzer:
-  # Analyzes OTLP spans with `talFiles` and the segments SkyWalking agents send with `nativeTalFiles`. `-` removes
-  # the module, which fails the boot while the native trace receiver or the Kafka fetcher is loaded, as both require
-  # it. Every rule is pre-compiled at build time: these lists pick among the bundled rule files.
+  # Analyzes OTLP spans and the segments SkyWalking agents send with every TAL file compiled into the image. `-`
+  # removes the module, which fails the boot while the native trace receiver or the Kafka fetcher is loaded, as both
+  # require it.
   selector: ${SW_TRACE_ANALYZER:default}
   default:
-    # In the order their rules run; a listed file that was not pre-compiled fails the boot.
-    nativeTalFiles: ${SW_TRACE_NATIVE_TAL_FILES:native-rpc,native-endpoint-cross-thread,native-network-alias,native-segment,native-virtual-service,native-virtual-genai,native-ai-evaluation}
-    talFiles: ${SW_TRACE_TAL_FILES:otlp-general,otlp-ai-evaluation}
     dedupWindow: ${SW_TRACE_TAL_DEDUP_WINDOW:0}
     dedupCapacity: ${SW_TRACE_TAL_DEDUP_CAPACITY:1000000}
     pairingSamplePercent: ${SW_TRACE_TAL_PAIRING_SAMPLE_PERCENT:25}
@@ -213,7 +213,6 @@ receiver-zabbix:
   default:
     port: ${SW_RECEIVER_ZABBIX_PORT:10051}
     host: ${SW_RECEIVER_ZABBIX_HOST:0.0.0.0}
-    activeFiles: ${SW_RECEIVER_ZABBIX_ACTIVE_FILES:agent}
 
 service-mesh:
   selector: ${SW_SERVICE_MESH:default}
@@ -223,7 +222,6 @@ envoy-metric:
   selector: ${SW_ENVOY_METRIC:default}
   default:
     acceptMetricsService: ${SW_ENVOY_METRIC_SERVICE:true}
-    enabledEnvoyMetricsRules: ${SW_ENVOY_METRIC_ENABLED_RULES:"envoy,envoy-svc-relation"}
     alsHTTPAnalysis: ${SW_ENVOY_METRIC_ALS_HTTP_ANALYSIS:""}
     alsTCPAnalysis: ${SW_ENVOY_METRIC_ALS_TCP_ANALYSIS:""}
     k8sServiceNameRule: ${K8S_SERVICE_NAME_RULE:"${pod.metadata.labels.(service.istio.io/canonical-name)}.${pod.metadata.namespace}"}
@@ -279,7 +277,6 @@ receiver-otel:
     otlpTraceSearchableTags: ${SW_OTEL_TRACE_SEARCHABLE_TAG_KEYS:resource.deployment.environment.name,resource.deployment.environment,resource.service.namespace,resource.service.version,resource.k8s.namespace.name,resource.k8s.cluster.name,span.http.request.method,span.http.response.status_code,span.url.path,span.rpc.method,span.rpc.grpc.status_code,span.db.system.name,span.db.namespace,span.messaging.system,span.messaging.destination.name,span.peer.service}
     otlpTraceSampleRate: ${SW_OTEL_TRACE_SAMPLE_RATE:10000}
     otlpTraceMaxSpansPerSecond: ${SW_OTEL_TRACE_MAX_SPANS_PER_SECOND:0}
-    enabledOtelMetricsRules: ${SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES:"apisix,nginx/*,k8s/*,istio-controlplane,vm,process-hostmetrics-linux,mysql/*,postgresql/*,oap,aws-eks/*,windows,process-hostmetrics-windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*,ai-agent/*"}
 
 receiver-zipkin:
   selector: ${SW_RECEIVER_ZIPKIN:-}
@@ -536,7 +533,6 @@ receiver-ebpf:
 receiver-telegraf:
   selector: ${SW_RECEIVER_TELEGRAF:default}
   default:
-    activeFiles: ${SW_RECEIVER_TELEGRAF_ACTIVE_FILES:vm}
 
 aws-firehose:
   selector: ${SW_RECEIVER_AWS_FIREHOSE:default}

@@ -184,7 +184,9 @@ public class GraalVMOAPServerStartUp {
 
         try {
             CompiledRulesCheck.verify();
+            CompiledRuleActivation.verify();
             ApplicationConfiguration configuration = configLoader.load();
+            CompiledRuleActivation.apply(configuration);
 
             // Register all modules with their fixed providers
             registerAllModules(manager, configuration);

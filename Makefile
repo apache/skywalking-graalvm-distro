@@ -40,9 +40,45 @@ ifneq ($(GRAAL_HOME),)
 endif
 
 MVN := ./mvnw
-MVN_ARGS := -Dskywalking.version=$(SW_VERSION)
+# Extra Maven arguments for every build, e.g. MVN_ARGS="-o". Appended to the arguments the targets need.
+MVN_ARGS ?=
+BASE_MVN_ARGS := -Dskywalking.version=$(SW_VERSION) $(MVN_ARGS)
+# The native-image-macos container only packages what the host compiled: no overlay, its own Maven repository mount.
+CONTAINER_MVN_ARGS := $(BASE_MVN_ARGS)
+HOST_MVN_ARGS := $(BASE_MVN_ARGS)
 
-.PHONY: all clean build init-submodules init-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-image-macos native-dist trace-agent docker-native
+# A rules overlay compiled into the image: a directory laid out like OAP's config/ with a rules-overlay.yaml
+# declaring what it adds, overrides and excludes (docs/rules-overlay.md).
+RULES_OVERLAY ?=
+ifneq ($(strip $(RULES_OVERLAY)),)
+  ifneq ($(words $(RULES_OVERLAY)),1)
+    $(error RULES_OVERLAY must be a path without spaces: "$(RULES_OVERLAY)")
+  endif
+  HOST_MVN_ARGS += -Drules.overlay="$(abspath $(RULES_OVERLAY))"
+endif
+
+# A local Maven repository to build with instead of ~/.m2/repository. Host builds get it as maven.repo.local, the
+# native-image-macos container mounted over its repository (with ~/.m2 for settings); unset, ~/.m2 is used as before.
+M2_REPO ?=
+ifneq ($(strip $(M2_REPO)),)
+  ifneq ($(words $(M2_REPO)),1)
+    $(error M2_REPO must be a path without spaces: "$(M2_REPO)")
+  endif
+  HOST_MVN_ARGS += -Dmaven.repo.local="$(abspath $(M2_REPO))"
+  # ~/.m2 for its settings and the wrapper's cache, the chosen repository over its repository.
+  M2_MOUNT := "$(HOME)/.m2":/root/.m2 -v "$(abspath $(M2_REPO))":/root/.m2/repository
+  # A localRepository in the mounted settings.xml must not move it elsewhere.
+  CONTAINER_MVN_ARGS += -Dmaven.repo.local=/root/.m2/repository
+else
+  M2_MOUNT := "$(HOME)/.m2":/root/.m2
+endif
+
+# The tests verify-rules runs: the precompiler's and the ones that read the compiled rules, not the ones pinned to
+# the bundled rule set.
+VERIFY_RULES_PRECOMPILER_TESTS := PrecompilerTest,PrecompileFailureTest,TALPrecompileTest,RegistryParityTest,RegistryGeneratorTest,RulesStagerTest,LalRegistrationCheckTest,LalConfigDataTest,TalActivationCheckTest,HierarchyCheckTest,ManifestEscapeTest
+VERIFY_RULES_SERVER_TESTS := TALPrecompiledRuleTest,TalDSLManifestTest,OverlayRuleTest,OverlayLalRuleTest,CompiledRuleActivationTest
+
+.PHONY: all clean build init-submodules init-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-image-macos native-dist trace-agent docker-native verify-rules
 
 all: build
 
@@ -58,21 +94,21 @@ init-submodules:
 # Init skywalking submodule and install artifacts to local Maven repo
 # flatten-maven-plugin resolves ${revision} in installed POMs so external projects can depend on them
 init-skywalking: init-submodules
-	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dgpg.skip=true
+	cd skywalking && ../mvnw flatten:flatten install -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dgpg.skip=true $(if $(strip $(M2_REPO)),-Dmaven.repo.local="$(abspath $(M2_REPO))") $(MVN_ARGS)
 
 # Compile + install to local repo (no tests).
 # Install is needed so standalone goals like javadoc:javadoc (which don't trigger the reactor
 # lifecycle) can resolve the precompiler-*-generated.jar from the local Maven repo.
 compile:
-	$(MVN) clean install -DskipTests $(MVN_ARGS)
+	$(MVN) clean install -DskipTests $(HOST_MVN_ARGS)
 
 # Run tests (includes compile)
 test:
-	$(MVN) clean test $(MVN_ARGS)
+	$(MVN) clean test $(HOST_MVN_ARGS)
 
 # Generate javadoc (validates javadoc correctness)
 javadoc:
-	$(MVN) javadoc:javadoc -DskipTests $(MVN_ARGS)
+	$(MVN) javadoc:javadoc -DskipTests $(HOST_MVN_ARGS)
 
 # Build the distro modules (package + assembly, no tests)
 # Phase 1: install the precompiler, whose generated jar (the compiled rule registry) the *-for-graalvm libs
@@ -81,10 +117,13 @@ javadoc:
 # Phase 2: package oap-graalvm-server and oap-graalvm-native with assembly.
 #           -am (also-make) automatically builds build-common, precompiler,
 #           and other dependencies in the reactor.
+# The exploded JVM distribution's compiled-rules/ is removed first: the assembly adds to an existing directory, so the
+# rule files another build compiled would stay in it.
 build-distro:
-	$(MVN) clean install -pl build-tools/precompiler,oap-libs-for-graalvm -am -DskipTests $(MVN_ARGS)
-	$(MVN) install -f oap-libs-for-graalvm -DskipTests $(MVN_ARGS)
-	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -am -DskipTests $(MVN_ARGS)
+	rm -rf oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/compiled-rules
+	$(MVN) clean install -pl build-tools/precompiler,oap-libs-for-graalvm -am -DskipTests $(HOST_MVN_ARGS)
+	$(MVN) install -f oap-libs-for-graalvm -DskipTests $(HOST_MVN_ARGS)
+	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -am -DskipTests $(HOST_MVN_ARGS)
 
 # Show the distribution directory
 dist: build-distro
@@ -102,8 +141,8 @@ native-dist: native-image
 build: init-skywalking build-distro
 
 clean:
-	$(MVN) clean $(MVN_ARGS)
-	cd skywalking && ../mvnw clean
+	$(MVN) clean $(HOST_MVN_ARGS)
+	cd skywalking && ../mvnw clean $(if $(strip $(M2_REPO)),-Dmaven.repo.local="$(abspath $(M2_REPO))") $(MVN_ARGS)
 
 # Start BanyanDB for local development
 docker-up:
@@ -120,9 +159,17 @@ docker-down:
 shutdown:
 	@oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/bin/oapServiceStop.sh 2>/dev/null || true
 
+# Compile the rules, RULES_OVERLAY merged in, and run the tests that check them, without building the native image:
+# the fast gate for a rules overlay. The same install order as build-distro, so the *-for-graalvm libs are built
+# against this build's rule registry.
+verify-rules:
+	$(MVN) clean install -pl build-tools/precompiler,oap-libs-for-graalvm -am -DskipTests $(HOST_MVN_ARGS)
+	$(MVN) install -f oap-libs-for-graalvm -DskipTests $(HOST_MVN_ARGS)
+	$(MVN) test -pl build-tools/precompiler,oap-graalvm-server -Dtest='$(VERIFY_RULES_PRECOMPILER_TESTS),$(VERIFY_RULES_SERVER_TESTS)' -Dsurefire.failIfNoSpecifiedTests=false $(HOST_MVN_ARGS)
+
 # Build native image (requires GraalVM JDK)
 native-image: compile
-	$(MVN) package -pl oap-graalvm-native -Pnative -DskipTests $(MVN_ARGS)
+	$(MVN) package -pl oap-graalvm-native -Pnative -DskipTests $(HOST_MVN_ARGS)
 
 # Build Linux native image from macOS using Docker.
 # Java compilation is platform-independent (already done on host via `compile`).
@@ -130,11 +177,11 @@ native-image: compile
 # with the host .m2 cache and project dir mounted.
 native-image-macos: compile
 	docker run --rm --entrypoint bash \
-		-v $(HOME)/.m2:/root/.m2 \
+		-v $(M2_MOUNT) \
 		-v $(CURDIR):/workspace \
 		-w /workspace \
 		$(GRAALVM_IMAGE) \
-		./mvnw package -pl oap-graalvm-native -Pnative -DskipTests $(MVN_ARGS)
+		./mvnw package -pl oap-graalvm-native -Pnative -DskipTests $(CONTAINER_MVN_ARGS)
 
 # Run tracing agent to capture supplementary native-image metadata
 # Merges with pre-generated reflect-config.json from the precompiler

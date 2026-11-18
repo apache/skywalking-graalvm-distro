@@ -36,11 +36,14 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -52,6 +55,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -79,6 +83,7 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfig;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.TALSourceTypeProvider;
 import org.apache.skywalking.oap.server.core.analysis.Layer;
+import org.apache.skywalking.oap.server.core.analysis.LayerExtensionLoader;
 import org.apache.skywalking.oap.server.core.source.TALFunctionProvider;
 import org.apache.skywalking.oap.server.core.config.v2.compiler.HierarchyRuleClassGenerator;
 import org.apache.skywalking.oap.server.core.dsl.debug.DSLDebugCodegenSwitch;
@@ -180,7 +185,8 @@ public class Precompiler {
         deleteRecursively(Path.of(outputDir));
 
         // Discover OALDefine subclasses from classpath and validate scripts
-        OALDefine[] oalDefines = discoverOALDefines();
+        final OverlayInventory overlay = OverlayInventory.read(System.getProperty(OverlayInventory.PROPERTY));
+        OALDefine[] oalDefines = effectiveOALDefines(discoverOALDefines(), overlay);
         validateOALScripts(oalDefines);
 
         declareScopes();
@@ -216,10 +222,22 @@ public class Precompiler {
             OALEngineV2 engine = new OALEngineV2(define);
             engine.getClassGeneratorV2().setOpenEngineDebug(true);
             engine.setStorageBuilderFactory(new StorageBuilderFactory.Default());
-            engine.start(Precompiler.class.getClassLoader());
+            try {
+                engine.start(Precompiler.class.getClassLoader());
+            } catch (Exception | LinkageError e) {
+                if (define instanceof OverlayOALDefine) {
+                    throw new IllegalStateException("The overlay OAL script " + define.getConfigFile() + " does not "
+                        + "compile. An overlay script may use the sources of " + OverlayOALDefine.SOURCE_PACKAGE
+                        + " only, and define no metric another script defines", e);
+                }
+                throw e;
+            }
             final String prefix = "script." + i + ".";
-            oalScripts.setProperty(prefix + "define", define.getClass().getName());
+            // An overlay's own script has no define class: the registry recreates its define from these.
+            oalScripts.setProperty(prefix + "define", define instanceof OverlayOALDefine ? "" : define.getClass().getName());
             oalScripts.setProperty(prefix + "file", define.getConfigFile());
+            oalScripts.setProperty(prefix + "sourcePackage", define.getSourcePackage());
+            oalScripts.setProperty(prefix + "dispatcherPackage", define.getDynamicDispatcherClassPackage());
             oalScripts.setProperty(prefix + "metrics",
                 added(metricsBefore, scanClassNames(outputDir, "metrics", METRICS_PACKAGE)));
             oalScripts.setProperty(prefix + "dispatchers",
@@ -230,6 +248,7 @@ public class Precompiler {
         // Scan generated .class files and build manifests
         List<String> metricsClasses = scanClassNames(outputDir, "metrics", METRICS_PACKAGE);
         List<String> dispatcherClasses = scanClassNames(outputDir, "dispatcher", DISPATCHER_PACKAGE);
+        List<String> builderClasses = scanClassNames(outputDir, "metrics/builder", BUILDER_PACKAGE);
         List<String> disabledSources = getDisabledSources();
 
         // Write manifest files
@@ -237,6 +256,7 @@ public class Precompiler {
         Files.createDirectories(metaInf);
         writeManifest(metaInf.resolve("oal-metrics-classes.txt"), metricsClasses);
         writeManifest(metaInf.resolve("oal-dispatcher-classes.txt"), dispatcherClasses);
+        writeManifest(metaInf.resolve("oal-builder-classes.txt"), builderClasses);
         writeManifest(metaInf.resolve("oal-disabled-sources.txt"), disabledSources);
         writeEscapedProperties(metaInf.resolve("oal-scripts.txt"), oalScripts);
 
@@ -289,6 +309,11 @@ public class Precompiler {
         writeManifest(annotationScanDir.resolve("QueryEntityClasses.txt"),
             scanQueryEntityClasses(allClasses));
 
+        // ---- layer-extensions.yml and the LayerExtension SPI, as Core registers them before any rule loads ----
+        LayerExtensionLoader.load();
+        // Core's hierarchy service checks the hierarchy now, before any rule file's own layers register.
+        checkHierarchy("hierarchy-definition.yml");
+
         // ---- MAL pre-compilation (v2 ANTLR4 + Javassist) ----
         MeterSystem meterSystem = compileMAL(outputDir, allClasses);
 
@@ -339,27 +364,27 @@ public class Precompiler {
         Map<String, List<Rule>> rulesByPath = new LinkedHashMap<>();
 
         // 1. Agent meter configs (meter-analyzer-config/*.yaml)
-        List<Rule> meterAnalyzerRules = loadAndCompileRules("meter-analyzer-config", List.of("*"), meterSystem);
+        List<Rule> meterAnalyzerRules = loadAndCompileRules("meter-analyzer-config", ruleNames("meter-analyzer-config"), meterSystem);
         totalRules += meterAnalyzerRules.size();
         rulesByPath.put("meter-analyzer-config", meterAnalyzerRules);
 
         // 2. OTel rules (otel-rules/*.yaml + otel-rules/**/*.yaml) — includes root-level files
-        List<Rule> otelRules = loadAndCompileRules("otel-rules", List.of("*", "**/*"), meterSystem);
+        List<Rule> otelRules = loadAndCompileRules("otel-rules", ruleNames("otel-rules"), meterSystem);
         totalRules += otelRules.size();
         rulesByPath.put("otel-rules", otelRules);
 
         // 3. Log MAL rules (log-mal-rules/*.yaml)
-        List<Rule> logMalRules = loadAndCompileRules("log-mal-rules", List.of("*"), meterSystem);
+        List<Rule> logMalRules = loadAndCompileRules("log-mal-rules", ruleNames("log-mal-rules"), meterSystem);
         totalRules += logMalRules.size();
         rulesByPath.put("log-mal-rules", logMalRules);
 
         // 4. Envoy metrics rules (envoy-metrics-rules/*.yaml)
-        List<Rule> envoyRules = loadAndCompileRules("envoy-metrics-rules", List.of("*"), meterSystem);
+        List<Rule> envoyRules = loadAndCompileRules("envoy-metrics-rules", ruleNames("envoy-metrics-rules"), meterSystem);
         totalRules += envoyRules.size();
         rulesByPath.put("envoy-metrics-rules", envoyRules);
 
         // 5. Telegraf rules (telegraf-rules/*.yaml)
-        List<Rule> telegrafRules = loadAndCompileRules("telegraf-rules", List.of("*"), meterSystem);
+        List<Rule> telegrafRules = loadAndCompileRules("telegraf-rules", ruleNames("telegraf-rules"), meterSystem);
         totalRules += telegrafRules.size();
         rulesByPath.put("telegraf-rules", telegrafRules);
 
@@ -393,6 +418,128 @@ public class Precompiler {
     }
 
     /**
+     * Every rule file of a MAL catalog by name (its path in the catalog without extension), enumerated so that a
+     * catalog an overlay emptied compiles to nothing: upstream's loader fails on a pattern that matches no file.
+     */
+    static List<String> ruleNames(final String catalog) throws IOException {
+        final Path dir = existingDirectory(catalog);
+        if (dir == null) {
+            return new ArrayList<>();
+        }
+        // Zabbix, as upstream, reads the directory itself; MAL reads it and below.
+        final boolean zabbix = "zabbix-rules".equals(catalog);
+        try (Stream<Path> files = Files.walk(dir, zabbix ? 1 : Integer.MAX_VALUE)) {
+            return files.filter(Files::isRegularFile)
+                        .map(p -> dir.relativize(p).toString().replace(File.separatorChar, '/'))
+                        .filter(rel -> !rel.startsWith(".") && (rel.endsWith(".yaml") || rel.endsWith(".yml")))
+                        .map(rel -> rel.substring(0, rel.lastIndexOf('.')))
+                        .sorted()
+                        .collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * @return the rule directory on the classpath, or null when there is none (an overlay excluded every file of it)
+     */
+    private static Path existingDirectory(final String path) throws IOException {
+        final URL url = Precompiler.class.getClassLoader().getResource(path);
+        if (url == null || !"file".equals(url.getProtocol())) {
+            return null;
+        }
+        try {
+            final Path dir = Path.of(url.toURI());
+            return Files.isDirectory(dir) ? dir : null;
+        } catch (URISyntaxException e) {
+            throw new IOException("Unreadable rule directory " + url, e);
+        }
+    }
+
+    private static File[] filesOf(final String path) throws IOException {
+        return existingDirectory(path) == null ? new File[0] : ResourceUtils.getPathFiles(path);
+    }
+
+    /**
+     * The OAL defines the build compiles: the discovered ones, minus those whose script the overlay excluded, plus one
+     * for every script the overlay added.
+     */
+    static OALDefine[] effectiveOALDefines(final OALDefine[] discovered, final OverlayInventory overlay) {
+        final List<OALDefine> defines = new ArrayList<>();
+        for (final OALDefine define : discovered) {
+            if (overlay.excluded().contains(define.getConfigFile())) {
+                log.info("OAL: {} excluded by the rules overlay", define.getConfigFile());
+            } else {
+                defines.add(define);
+            }
+        }
+        final Set<String> referenced = Arrays.stream(discovered).map(OALDefine::getConfigFile)
+                                             .collect(Collectors.toSet());
+        for (final String added : overlay.added()) {
+            if (added.startsWith("oal/") && !referenced.contains(added)) {
+                defines.add(new OverlayOALDefine(added));
+            }
+        }
+        // Bundled scripts share the default dispatcher package; an added script's must be its own.
+        final Map<String, String> dispatcherPackages = new HashMap<>();
+        for (final OALDefine define : defines) {
+            if (!(define instanceof OverlayOALDefine)) {
+                dispatcherPackages.putIfAbsent(define.getDynamicDispatcherClassPackage().toLowerCase(Locale.ROOT),
+                    define.getConfigFile());
+            }
+        }
+        for (final OALDefine define : defines) {
+            if (define instanceof OverlayOALDefine) {
+                // By case too: the dispatchers are class files, one file on a case-insensitive disk.
+                final String previous = dispatcherPackages.put(
+                    define.getDynamicDispatcherClassPackage().toLowerCase(Locale.ROOT), define.getConfigFile());
+                if (previous != null) {
+                    throw new IllegalStateException("The OAL scripts " + previous + " and " + define.getConfigFile()
+                        + " would name their dispatchers alike; rename the overlay script");
+                }
+            }
+        }
+        return defines.toArray(new OALDefine[0]);
+    }
+
+    /**
+     * The define of an OAL script the overlay adds: its dispatchers are named {@code Overlay<script>_<Source>Dispatcher},
+     * so they never clash with another script's dispatchers of the same source. The trailing separator keeps two
+     * scripts apart whose name and source run into each other ({@code fleet} + {@code CiliumService},
+     * {@code fleet-cilium} + {@code Service}).
+     */
+    static final class OverlayOALDefine extends OALDefine {
+        static final String SOURCE_PACKAGE = "org.apache.skywalking.oap.server.core.source";
+
+        OverlayOALDefine(final String configFile) {
+            super(configFile, SOURCE_PACKAGE, catalog(configFile));
+        }
+
+        static String catalog(final String configFile) {
+            final String name = configFile.substring(configFile.lastIndexOf('/') + 1, configFile.lastIndexOf('.'));
+            final StringBuilder catalog = new StringBuilder("Overlay");
+            // Letters and digits as they are, '_', '-' and '.' (all an overlay name has besides) as _u, _m and _p: two
+            // names stay two prefixes, and a dispatcher's class file name stays short. The 'D' of a "Dispatcher" as
+            // _d: the rule browser takes a dispatcher's source from its simple name up to the first "Dispatcher".
+            for (int i = 0; i < name.length(); i++) {
+                final char c = name.charAt(i);
+                if (name.startsWith("Dispatcher", i)) {
+                    catalog.append("_d");
+                } else if (c < 128 && Character.isLetterOrDigit(c)) {
+                    catalog.append(c);
+                } else if (c == '_') {
+                    catalog.append("_u");
+                } else if (c == '-') {
+                    catalog.append("_m");
+                } else if (c == '.') {
+                    catalog.append("_p");
+                } else {
+                    throw new IllegalStateException("OAL script " + configFile + " has a character the stager refuses");
+                }
+            }
+            return catalog.append('_').toString();
+        }
+    }
+
+    /**
      * The {@code @MeterFunction} classes by function name, as upstream {@code MeterSystem} registers them.
      */
     @SuppressWarnings("unchecked")
@@ -422,6 +569,10 @@ public class Precompiler {
      */
     static List<Rule> loadAndCompileRules(String path, List<String> enabledPatterns,
                                                   MeterSystem meterSystem) {
+        if (enabledPatterns.isEmpty()) {
+            log.info("MAL: no rule files under {}", path);
+            return new ArrayList<>();
+        }
         List<Rule> loadedRules;
         try {
             loadedRules = Rules.loadRules(path, enabledPatterns);
@@ -450,10 +601,10 @@ public class Precompiler {
         List<Rule> loadedRules = new ArrayList<>();
         int count = 0;
         try {
-            File[] files = ResourceUtils.getPathFiles(path);
+            File[] files = filesOf(path);
             for (File file : files) {
                 String name = file.getName();
-                if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
+                if (!file.isFile() || !name.endsWith(".yaml") && !name.endsWith(".yml")) {
                     continue;
                 }
                 String resourcePath = path + "/" + name;
@@ -463,6 +614,10 @@ public class Precompiler {
                         throw new IllegalStateException("Zabbix rule " + resourcePath + " is listed but not on the classpath");
                     }
                     Map<String, Object> yamlMap = new Yaml().load(is);
+                    if (yamlMap == null) {
+                        // An empty document holds no rule; upstream ZabbixConfigs skips it too.
+                        continue;
+                    }
                     Rule rule = new Rule();
                     rule.setName(name.substring(0, name.lastIndexOf('.')));
                     rule.setMetricPrefix((String) yamlMap.get("metricPrefix"));
@@ -495,6 +650,65 @@ public class Precompiler {
             throw new IllegalStateException("Failed to load Zabbix rules from " + path, e);
         }
         return loadedRules;
+    }
+
+    /**
+     * What Core's {@code HierarchyDefinitionService} checks at boot, before any rule file's own layers register: every
+     * layer of {@code layer-levels} is registered, and every layer of {@code hierarchy} has a level above each of its
+     * lower layers.
+     */
+    @SuppressWarnings("unchecked")
+    static void checkHierarchy(String definitionFile) throws Exception {
+        final Map<String, Object> definition;
+        try (InputStream is = Precompiler.class.getClassLoader().getResourceAsStream(definitionFile)) {
+            definition = new Yaml().load(is);
+        }
+        final Map<String, Object> levels = definition.get("layer-levels") instanceof Map
+            ? (Map<String, Object>) definition.get("layer-levels") : Map.of();
+        for (final Map.Entry<String, Object> level : levels.entrySet()) {
+            if (Layer.nameOf(level.getKey()) == Layer.UNDEFINED) {
+                throw new IllegalStateException(definitionFile + " layer-levels: " + level.getKey() + " is not a "
+                    + "registered layer; declare it in layer-extensions.yml");
+            }
+        }
+        final Map<String, Object> hierarchy = definition.get("hierarchy") instanceof Map
+            ? (Map<String, Object>) definition.get("hierarchy") : Map.of();
+        for (final Map.Entry<String, Object> upper : hierarchy.entrySet()) {
+            final Object upperLevel = levels.get(upper.getKey());
+            if (upperLevel == null) {
+                throw new IllegalStateException(definitionFile + " layer-levels: " + upper.getKey() + " is not defined");
+            }
+            // The hierarchy service reads the level of each layer here, upper or lower, as an integer.
+            if (!(upperLevel instanceof Integer)) {
+                throw new IllegalStateException(definitionFile + " layer-levels: " + upper.getKey()
+                    + " is not an integer level: " + upperLevel);
+            }
+            if (!(upper.getValue() instanceof Map)) {
+                throw new IllegalStateException(definitionFile + " hierarchy: " + upper.getKey()
+                    + " does not map its lower layers to matching rules");
+            }
+            final Map<String, Object> lowers = (Map<String, Object>) upper.getValue();
+            for (final Map.Entry<String, Object> lower : lowers.entrySet()) {
+                final Object lowerLevel = levels.get(lower.getKey());
+                if (lowerLevel == null) {
+                    throw new IllegalStateException(definitionFile + " layer-levels: " + lower.getKey()
+                        + " is not defined");
+                }
+                if (!(lowerLevel instanceof Integer)) {
+                    throw new IllegalStateException(definitionFile + " layer-levels: " + lower.getKey()
+                        + " is not an integer level: " + lowerLevel);
+                }
+                // A matching rule's name, or none: upstream relates the two layers without automatic matching then.
+                if (lower.getValue() != null && !(lower.getValue() instanceof String)) {
+                    throw new IllegalStateException(definitionFile + " hierarchy: " + upper.getKey() + "."
+                        + lower.getKey() + " does not name a matching rule: " + lower.getValue());
+                }
+                if ((Integer) upperLevel <= (Integer) lowerLevel) {
+                    throw new IllegalStateException(definitionFile + " hierarchy: " + upper.getKey()
+                        + " layer-level should be greater than " + lower.getKey() + " layer-level");
+                }
+            }
+        }
     }
 
     /**
@@ -533,6 +747,10 @@ public class Precompiler {
             for (Map.Entry<String, String> entry : autoMatchingRules.entrySet()) {
                 String ruleName = entry.getKey();
                 String expression = entry.getValue();
+                if (!ruleName.matches("[A-Za-z0-9._-]+")) {
+                    throw new IllegalStateException(definitionFile + " auto-matching-rules: the rule name '" + ruleName
+                        + "' is not of letters, digits, '.', '_' and '-', which the rule registry carries; rename it");
+                }
                 try {
                     final Integer line = ruleLines.get(ruleName);
                     hierarchyGenerator.setSourceRef(DslSourceRef.ofRule(
@@ -618,29 +836,36 @@ public class Precompiler {
         }
 
         // Enumerate all LAL YAML files from classpath
-        File[] lalFiles = ResourceUtils.getPathFiles(lalPath);
-        List<String> lalFileNames = new ArrayList<>();
+        File[] lalFiles = filesOf(lalPath);
         Map<String, File> lalFileMap = new LinkedHashMap<>();
         for (File f : lalFiles) {
             String name = f.getName();
-            if (name.endsWith(".yaml") || name.endsWith(".yml")) {
-                String key = name.substring(0, name.lastIndexOf('.'));
-                lalFileNames.add(key);
-                lalFileMap.put(key, f);
+            if (f.isFile() && (name.endsWith(".yaml") || name.endsWith(".yml"))) {
+                lalFileMap.put(name.substring(0, name.lastIndexOf('.')), f);
             }
         }
 
-        // Load all LAL configs and compile each rule
-        List<LALConfigs> allConfigs = LALConfigs.load(lalPath, lalFileNames);
+        // Loaded a file at a time, so each file's configs are kept by its name, a file of no rule too: its
+        // layerDefinitions are registered when the runtime loads it, as upstream does for every listed file.
+        Map<String, LALConfigs> configsByFile = new LinkedHashMap<>();
+        for (Map.Entry<String, File> file : lalFileMap.entrySet()) {
+            for (LALConfigs configs : LALConfigs.load(lalPath, List.of(file.getKey()))) {
+                configsByFile.put(file.getValue().getName(), configs);
+            }
+        }
+
         int totalRules = 0;
         // Properties-style manifest: source YAML + line + rule name -> class + effective input type.
         Properties lalRules = new Properties();
 
-        for (LALConfigs configs : allConfigs) {
+        final Set<String> registered = new HashSet<>();
+        for (Map.Entry<String, LALConfigs> file : configsByFile.entrySet()) {
+            LALConfigs configs = file.getValue();
             if (configs.getRules() == null) {
                 continue;
             }
             for (LALConfig rule : configs.getRules()) {
+                checkRegistration(rule, registered);
                 try {
                     // Same coordinates upstream LogFilterListener.Factory.compile passes, so class
                     // names ({yaml}_L{line}_{rule}) match the JVM distro.
@@ -696,6 +921,8 @@ public class Precompiler {
                     final Class<?> effectiveInputType = lalGenerator.getEffectiveInputType();
                     final int idx = totalRules++;
                     lalRules.setProperty("rule." + idx + ".source", rule.getSourcePath());
+                    // The file itself: two files can share a source, which stamps .yaml onto another extension.
+                    lalRules.setProperty("rule." + idx + ".file", file.getKey());
                     lalRules.setProperty("rule." + idx + ".line", String.valueOf(rule.getLineNo()));
                     lalRules.setProperty("rule." + idx + ".name", rule.getName());
                     lalRules.setProperty("rule." + idx + ".class", compiled.getClass().getName());
@@ -720,9 +947,36 @@ public class Precompiler {
             totalRules, lalV2Classes.size());
 
         // ---- Serialize LAL config data as JSON for runtime loader ----
-        serializeLALConfigData(outputDir, allConfigs);
+        serializeLALConfigData(outputDir, configsByFile);
     }
 
+
+    /**
+     * What upstream {@code LogFilterListener.Factory.loadStaticRules} refuses at boot, which fails the build instead:
+     * {@code fallback} off a {@code layer: auto} rule, two rules of one name in a layer (or among the auto rules). Two
+     * rules on one line fail too: the runtime finds a rule's class by its file and line. A rule of an unregistered
+     * layer is compiled, as upstream skips it at boot with a warning.
+     */
+    static void checkRegistration(final LALConfig rule, final Set<String> registered) {
+        final boolean auto = LALConfig.LAYER_AUTO.equalsIgnoreCase(rule.getLayer());
+        final String at = "LAL rule " + rule.getName() + " of " + rule.getSourcePath();
+        if (!registered.add("@" + rule.getSourcePath() + ":" + rule.getLineNo())) {
+            throw new IllegalStateException(at + " starts on line " + rule.getLineNo() + " with another rule; give "
+                + "each rule a line of its own");
+        }
+        // Upstream skips a rule of an unregistered layer before it checks the rest.
+        if (!auto && (rule.getLayer() == null || rule.getLayer().isEmpty()
+            || Layer.nameOf(rule.getLayer()) == Layer.UNDEFINED)) {
+            return;
+        }
+        if (rule.isFallback() && !auto) {
+            throw new IllegalStateException(at + " declares fallback: true, which only a layer: auto rule may");
+        }
+        if (!registered.add((auto ? "<auto>" : rule.getLayer()) + "|" + rule.getName())) {
+            throw new IllegalStateException(at + ": " + (auto ? "two auto-layer rules" : "two rules of layer "
+                + rule.getLayer()) + " are named " + rule.getName());
+        }
+    }
 
     /**
      * Initialize DefaultScopeDefine: scan the @ScopeDeclaration annotations on the source classes (Service, Endpoint,
@@ -771,7 +1025,7 @@ public class Precompiler {
         // keys the files by that stem, so two files sharing one would silently shadow each other: refuse them.
         // In listing order, which upstream's loader inserts the files in (see the runtime TALConfigs).
         Map<String, String> fileByStem = new LinkedHashMap<>();
-        for (File f : ResourceUtils.getPathFiles(talPath)) {
+        for (File f : filesOf(talPath)) {
             String name = f.getName();
             if (!f.isFile() || name.startsWith(".")) {
                 continue;
@@ -795,7 +1049,8 @@ public class Precompiler {
         Properties talRules = new Properties();
         Set<String> ioClasses = new TreeSet<>();
         int totalRules = 0;
-        for (TALConfigs configs : configsByFile.values()) {
+        for (Map.Entry<String, TALConfigs> file : configsByFile.entrySet()) {
+            TALConfigs configs = file.getValue();
             for (TALConfig rule : configs.getRules()) {
                 List<String> declaredInputs = rule.inputTypes();
                 if (declaredInputs.size() != 1) {
@@ -824,6 +1079,8 @@ public class Precompiler {
                 // the class was compiled from is recorded, and the runtime TalDSL requires all of them to match.
                 String prefix = "rule." + totalRules++ + ".";
                 talRules.setProperty(prefix + "source", rule.getSourcePath());
+                // The file itself: two files can share a source, which stamps .yaml onto another extension.
+                talRules.setProperty(prefix + "file", file.getKey());
                 talRules.setProperty(prefix + "line", String.valueOf(rule.getLineNo()));
                 talRules.setProperty(prefix + "name", rule.getName());
                 talRules.setProperty(prefix + "class", compiled.getClass().getName());
@@ -1554,11 +1811,15 @@ public class Precompiler {
         return totalExpressions;
     }
 
-    private static String escapePropertiesValue(String value) {
-        // Escape backslashes and newlines in property values
-        return value.replace("\\", "\\\\")
-                    .replace("\n", "\\n")
-                    .replace("\r", "\\r");
+    static String escapePropertiesValue(String value) {
+        // Escape what Properties.load would read otherwise: backslashes, line breaks, and leading whitespace (the
+        // registry looks an expression and a filter up by their exact text).
+        final String escaped = value.replace("\\", "\\\\")
+                                    .replace("\n", "\\n")
+                                    .replace("\r", "\\r")
+                                    .replace("\t", "\\t")
+                                    .replace("\f", "\\f");
+        return escaped.startsWith(" ") ? "\\" + escaped : escaped;
     }
 
     /**
@@ -1587,23 +1848,14 @@ public class Precompiler {
      * At runtime, the replacement LALConfigs.load() deserializes from this JSON file.
      */
     private static void serializeLALConfigData(String outputDir,
-                                               List<LALConfigs> allConfigs) throws Exception {
+                                               Map<String, LALConfigs> lalConfigMap) throws Exception {
         ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
         Path configDataDir = Path.of(outputDir, "META-INF", "config-data");
         Files.createDirectories(configDataDir);
 
-        // Keyed by YAML base name. These are the configs upstream LALConfigs.load stamped
-        // (sourceName/sourcePath/lineNo), so the runtime replacement hands LogFilterListener
-        // the same DslSourceRef the JVM distro would.
-        Map<String, LALConfigs> lalConfigMap = new LinkedHashMap<>();
-        for (LALConfigs config : allConfigs) {
-            if (config.getRules() == null || config.getRules().isEmpty()) {
-                continue;
-            }
-            final String sourceName = config.getRules().get(0).getSourceName();
-            lalConfigMap.put(sourceName.substring(0, sourceName.lastIndexOf('.')), config);
-        }
-
+        // Keyed by the file's own name (a stem would lose `.yml` and any dot in the name). These are the configs
+        // upstream LALConfigs.load stamped (sourceName/sourcePath/lineNo), so the runtime replacement hands
+        // LogFilterListener the same DslSourceRef the JVM distro would.
         mapper.writeValue(configDataDir.resolve("lal.json").toFile(), lalConfigMap);
         log.info("Serialized {} LALConfigs entries from lal to config-data JSON", lalConfigMap.size());
     }
@@ -1886,8 +2138,10 @@ public class Precompiler {
         // StorageBuilder classes — constructor-only (instantiated via getDeclaredConstructor().newInstance())
         addConstructorEntries(entries, annotationScanDir.resolve("StorageBuilders.txt"));
 
-        // OAL metrics and dispatchers — constructor-only
+        // OAL metrics, their storage builders and dispatchers — constructor-only. The builders are generated here
+        // too, so a rules overlay's OAL script gets them.
         addConstructorEntries(entries, metaInf.resolve("oal-metrics-classes.txt"));
+        addConstructorEntries(entries, metaInf.resolve("oal-builder-classes.txt"));
         addConstructorEntries(entries, metaInf.resolve("oal-dispatcher-classes.txt"));
 
         // MAL v2 expression classes — one FQCN per line, constructor-only

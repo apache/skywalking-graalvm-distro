@@ -88,11 +88,12 @@ Run all five v2 compilers at build time via their native exposed APIs (`setClass
 
 ### Hierarchy
 - `HierarchyRuleClassGenerator` compiles 4 hierarchy matching rules at build time.
-- Same-FQCN `HierarchyDefinitionService` takes the hierarchy, the layer levels and the pre-compiled `BiFunction` of each rule from the rule registry; `hierarchy-definition.yml` is not shipped.
+- Same-FQCN `HierarchyDefinitionService` takes the hierarchy, the layer levels and the pre-compiled `BiFunction` of each rule from the rule registry; `hierarchy-definition.yml` is not in `config/` (only in the `compiled-rules/` record).
 
 ### Static rule registry
 - After the engine passes, the precompiler generates a Java class per rule file — what upstream's loader read from it, as code, constructing the classes compiled from it — plus the `CompiledRules` index, and compiles them into the generated jar. The runtime replacements (also `LayerExtensionLoader` and `ZabbixConfigs`) read only that: no rule YAML, JSON or manifest at runtime.
 - A rule file where the configuration lookup would resolve it (`config/`, the working directory, the JVM distro class path) fails the boot: nothing would read it. Runtime configuration (`application.yml`, `alarm-settings.yml` …) is not a rule file and stays editable.
+- Every compiled rule file is active. The settings upstream selects rule files with (`enabledOtelMetricsRules`, `meterAnalyzerActiveFiles`, `malFiles`, `lalFiles`, `talFiles`, `nativeTalFiles`, `enabledEnvoyMetricsRules`, the Telegraf and Zabbix `activeFiles`) are filled at boot from the registry (`CompiledRuleActivation`); one set in `application.yml`, by environment variable or by system property fails the boot. The image compiles every bundled rule file unless built with a rules overlay that adds, overrides or excludes files ([Compiling Your Own Rules](rules-overlay.md)); `compiled-rules/` in the distribution records what was compiled.
 
 ### Upstream Changes & Simplification
 - **Groovy Removed**: Groovy was completely removed from upstream production code (PR #13723).

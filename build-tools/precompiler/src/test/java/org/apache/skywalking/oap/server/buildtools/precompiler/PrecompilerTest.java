@@ -23,10 +23,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.skywalking.oap.server.core.oal.rt.OALDefine;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,9 +50,11 @@ class PrecompilerTest {
     }
 
     @Test
-    void allDiscoveredOALScriptsShouldBeOnClasspath() {
+    void allDiscoveredOALScriptsShouldBeOnClasspath() throws Exception {
         ClassLoader cl = getClass().getClassLoader();
-        for (OALDefine define : Precompiler.discoverOALDefines()) {
+        // A script the rules overlay excluded is not compiled, so it is not there.
+        final OverlayInventory overlay = OverlayInventory.read(System.getProperty(OverlayInventory.PROPERTY));
+        for (OALDefine define : Precompiler.effectiveOALDefines(Precompiler.discoverOALDefines(), overlay)) {
             assertNotNull(
                 cl.getResource(define.getConfigFile()),
                 "OAL script not found on classpath: " + define.getConfigFile()
@@ -67,46 +71,21 @@ class PrecompilerTest {
         // Run the full export
         Precompiler.main(new String[] {outputDir});
 
-        // Verify metrics classes generated
-        Path metricsDir = tempDir.resolve(
-            "org/apache/skywalking/oap/server/core/source/oal/rt/metrics");
-        assertTrue(Files.isDirectory(metricsDir), "metrics directory should exist");
-
-        long metricsCount = Files.list(metricsDir)
-            .filter(p -> p.toString().endsWith(".class"))
-            .count();
-        assertTrue(metricsCount > 0, "Should generate metrics classes, got 0");
-
-        // Verify dispatcher classes generated
-        Path dispatcherDir = tempDir.resolve(
-            "org/apache/skywalking/oap/server/core/source/oal/rt/dispatcher");
-        assertTrue(Files.isDirectory(dispatcherDir), "dispatcher directory should exist");
-
-        long dispatcherCount = Files.list(dispatcherDir)
-            .filter(p -> p.toString().endsWith(".class"))
-            .count();
-        assertTrue(dispatcherCount > 0, "Should generate dispatcher classes, got 0");
-
-        // Verify builder classes generated
-        Path builderDir = tempDir.resolve(
-            "org/apache/skywalking/oap/server/core/source/oal/rt/metrics/builder");
-        assertTrue(Files.isDirectory(builderDir), "builder directory should exist");
-
-        long builderCount = Files.list(builderDir)
-            .filter(p -> p.toString().endsWith(".class"))
-            .count();
-        assertTrue(builderCount > 0, "Should generate builder classes, got 0");
-
-        // Verify manifest files
-        Path metricsManifest = tempDir.resolve("META-INF/oal-metrics-classes.txt");
-        assertTrue(Files.exists(metricsManifest), "metrics manifest should exist");
-        List<String> metricsLines = Files.readAllLines(metricsManifest);
-        assertFalse(metricsLines.isEmpty(), "metrics manifest should not be empty");
-
-        Path dispatcherManifest = tempDir.resolve("META-INF/oal-dispatcher-classes.txt");
-        assertTrue(Files.exists(dispatcherManifest), "dispatcher manifest should exist");
-        List<String> dispatcherLines = Files.readAllLines(dispatcherManifest);
-        assertFalse(dispatcherLines.isEmpty(), "dispatcher manifest should not be empty");
+        // The manifests reflect-config.json is generated from list every class generated, builders included, so an
+        // overlay's script has them. The bundled scripts generate some; an overlay's may generate none.
+        final OverlayInventory overlay = OverlayInventory.read(System.getProperty(OverlayInventory.PROPERTY));
+        final boolean bundledOal = Stream.of(overlay.added(), overlay.overridden(), overlay.excluded())
+                                         .flatMap(Set::stream).noneMatch(f -> f.startsWith("oal/"));
+        final Path oalRt = tempDir.resolve("org/apache/skywalking/oap/server/core/source/oal/rt");
+        final Path metaInf = tempDir.resolve("META-INF");
+        for (final String[] kind : new String[][] {
+            {"metrics", "oal-metrics-classes.txt"},
+            {"dispatcher", "oal-dispatcher-classes.txt"},
+            {"metrics/builder", "oal-builder-classes.txt"}}) {
+            final long generated = countClasses(oalRt.resolve(kind[0]));
+            assertEquals(generated, Files.readAllLines(metaInf.resolve(kind[1])).size(), kind[1]);
+            assertTrue(!bundledOal || generated > 0, "no " + kind[0] + " class generated");
+        }
 
         // Verify disabled sources manifest exists (may be empty when all disable() calls are commented out)
         Path disabledManifest = tempDir.resolve("META-INF/oal-disabled-sources.txt");
@@ -143,6 +122,15 @@ class PrecompilerTest {
             String[] parts = line.split("=", 2);
             assertFalse(parts[0].isEmpty(), "functionName should not be empty: " + line);
             assertFalse(parts[1].isEmpty(), "FQCN should not be empty: " + line);
+        }
+    }
+
+    private static long countClasses(final Path dir) throws Exception {
+        if (!Files.isDirectory(dir)) {
+            return 0;
+        }
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.filter(p -> p.toString().endsWith(".class")).count();
         }
     }
 

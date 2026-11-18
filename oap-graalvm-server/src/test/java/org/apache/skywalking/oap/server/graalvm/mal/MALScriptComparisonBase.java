@@ -18,6 +18,7 @@
 package org.apache.skywalking.oap.server.graalvm.mal;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +52,7 @@ import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DynamicTest;
 import org.yaml.snakeyaml.Yaml;
@@ -76,6 +79,13 @@ abstract class MALScriptComparisonBase {
 
     /** Counter for unique class names in fresh compilation (Path A). */
     private static final AtomicInteger FRESH_COUNTER = new AtomicInteger();
+
+    private static final Pattern HISTOGRAM_CALL = Pattern.compile("\\.\\s*histogram\\s*\\(");
+    private static final Pattern HISTOGRAM_LABEL =
+        Pattern.compile("\\.\\s*histogram\\s*\\(\\s*(['\"])([^'\"]+)\\1");
+
+    /** What {@code Expression.run} reports for an empty result, as opposed to an exception. */
+    private static final String EMPTY = "Parsed result is an EMPTY sample family";
 
     @BeforeAll
     static void initMeterEntity() {
@@ -107,7 +117,28 @@ abstract class MALScriptComparisonBase {
                 || fullExp.contains(".irate(");
 
             tests.add(DynamicTest.dynamicTest(metricName, () ->
-                compareWithAutoDiscovery(yamlResource, metricName, fullExp, needsWarmup)));
+                compareWithAutoDiscovery(yamlResource, metricName, fullExp, needsWarmup, false)));
+        }
+        return tests.stream();
+    }
+
+    /**
+     * Auto-discovery for rules this suite has no inputs for (a rules overlay's): an expression the generated inputs
+     * leave empty, or fail, alike on both paths is skipped and reported instead of failing; paths that differ fail.
+     */
+    protected Stream<DynamicTest> generateOverlayComparisonTests(final String yamlResource, final Rule rule) {
+        List<DynamicTest> tests = new ArrayList<>();
+        if (rule == null || rule.getMetricsRules() == null) {
+            return tests.stream();
+        }
+        for (MetricsRule mr : rule.getMetricsRules()) {
+            String metricName = rule.getMetricPrefix() + "_" + mr.getName();
+            String fullExp = formatExp(rule.getExpPrefix(), rule.getExpSuffix(), mr.getExp());
+            boolean needsWarmup = fullExp.contains(".increase(")
+                || fullExp.contains(".rate(")
+                || fullExp.contains(".irate(");
+            tests.add(DynamicTest.dynamicTest(yamlResource + " " + metricName, () ->
+                compareWithAutoDiscovery(yamlResource, metricName, fullExp, needsWarmup, true)));
         }
         return tests.stream();
     }
@@ -166,7 +197,8 @@ abstract class MALScriptComparisonBase {
     private void compareWithAutoDiscovery(final String yamlResource,
                                           final String metricName,
                                           final String expression,
-                                          final boolean needsWarmup) throws Exception {
+                                          final boolean needsWarmup,
+                                          final boolean generatedInputs) throws Exception {
         Expression freshExpr = compileFresh(metricName + "_fresh", expression);
 
         ExpressionMetadata metadata = freshExpr.parse();
@@ -181,18 +213,18 @@ abstract class MALScriptComparisonBase {
         // expression drop every sample and the test vacuous.
         requiredLabels.addAll(referencedLabels(expression));
         Map<String, List<String>> tagValues = tagEqualValues(expression);
-        boolean histogram = expression.contains(".histogram(");
+        String histogramLabel = histogramLabel(expression);
 
         ImmutableMap<String, SampleFamily> input1 = buildInputForSamples(
-            sampleNames, requiredLabels, tagValues, histogram, 100.0,
+            sampleNames, requiredLabels, tagValues, histogramLabel, 100.0,
             Instant.parse("2024-01-01T00:00:00Z").toEpochMilli());
         ImmutableMap<String, SampleFamily> input2 = buildInputForSamples(
-            sampleNames, requiredLabels, tagValues, histogram, 200.0,
+            sampleNames, requiredLabels, tagValues, histogramLabel, 200.0,
             Instant.parse("2024-01-01T00:00:10Z").toEpochMilli());
 
         Expression precompiledExpr = loadPrecompiled(yamlResource, metricName, expression);
         runAndCompare(metricName, freshExpr, precompiledExpr,
-            needsWarmup, input1, input2);
+            needsWarmup, input1, input2, generatedInputs);
     }
 
     // ---------------------------------------------------------------
@@ -209,7 +241,7 @@ abstract class MALScriptComparisonBase {
         Expression freshExpr = compileFresh(metricName + "_fresh", expression);
         Expression precompiledExpr = loadPrecompiled(yamlResource, metricName, expression);
         runAndCompare(metricName, freshExpr, precompiledExpr,
-            needsWarmup, input1, input2);
+            needsWarmup, input1, input2, false);
     }
 
     // ---------------------------------------------------------------
@@ -221,7 +253,8 @@ abstract class MALScriptComparisonBase {
                                       final Expression precompiledExpr,
                                       final boolean needsWarmup,
                                       final ImmutableMap<String, SampleFamily> input1,
-                                      final ImmutableMap<String, SampleFamily> input2) {
+                                      final ImmutableMap<String, SampleFamily> input2,
+                                      final boolean generatedInputs) {
         Result freshResult;
         Result precompiledResult;
 
@@ -247,6 +280,11 @@ abstract class MALScriptComparisonBase {
         if (freshResult.isSuccess()) {
             assertSamplesMatch(metricName,
                 freshResult.getData(), precompiledResult.getData());
+        } else if (generatedInputs && Objects.equals(freshResult.getError(), precompiledResult.getError())) {
+            // Generated inputs need not fit the rule (a label it reads as a number, say); both paths failing alike is
+            // the same behaviour, and upstream's build does not run a rule either.
+            Assumptions.abort(metricName + ": the generated inputs fail both paths alike, compared nothing: "
+                + freshResult.getError());
         } else {
             fail(metricName + ": both paths returned EMPTY — test input likely"
                 + " missing required tag values or labels"
@@ -301,6 +339,17 @@ abstract class MALScriptComparisonBase {
                                          final ImmutableMap<String, String> scope,
                                          final double scale,
                                          final long timestamp) {
+        return histogramSampleArray(name, scope, scale, timestamp, "le");
+    }
+
+    /**
+     * @param bucketLabel the label the bucket bounds go under, as the expression's {@code histogram('<label>')} names it
+     */
+    static Sample[] histogramSampleArray(final String name,
+                                         final ImmutableMap<String, String> scope,
+                                         final double scale,
+                                         final long timestamp,
+                                         final String bucketLabel) {
         String[] les = {
             "0.005", "0.01", "0.025", "0.05", "0.1", "0.25",
             "0.5", "1", "2.5", "5", "10"
@@ -310,8 +359,9 @@ abstract class MALScriptComparisonBase {
         for (int i = 0; i < les.length; i++) {
             samples[i] = Sample.builder()
                 .name(name)
+                // The bucket bound replaces a scope label of the same name.
                 .labels(ImmutableMap.<String, String>builder()
-                    .putAll(scope).put("le", les[i]).build())
+                    .putAll(Maps.filterKeys(scope, key -> !bucketLabel.equals(key))).put(bucketLabel, les[i]).build())
                 .value(vals[i] * scale)
                 .timestamp(timestamp)
                 .build();
@@ -354,11 +404,23 @@ abstract class MALScriptComparisonBase {
         return values;
     }
 
+    /**
+     * @return the label an expression's {@code histogram(...)} reads the bucket bounds from ({@code le} unless it names
+     * one), or null for an expression without one
+     */
+    static String histogramLabel(final String expression) {
+        if (!HISTOGRAM_CALL.matcher(expression).find()) {
+            return null;
+        }
+        final Matcher named = HISTOGRAM_LABEL.matcher(expression);
+        return named.find() ? named.group(2) : "le";
+    }
+
     private static ImmutableMap<String, SampleFamily> buildInputForSamples(
             final List<String> sampleNames,
             final Set<String> requiredLabels,
             final Map<String, List<String>> tagValues,
-            final boolean histogram,
+            final String histogramLabel,
             final double value,
             final long timestamp) {
         ImmutableMap.Builder<String, String> labelBuilder = ImmutableMap.builder();
@@ -366,7 +428,7 @@ abstract class MALScriptComparisonBase {
         labelBuilder.put("instance", "test-inst");
         for (String label : requiredLabels) {
             if ("service".equals(label) || "instance".equals(label)
-                || tagValues.containsKey(label) || (histogram && "le".equals(label))) {
+                || tagValues.containsKey(label) || label.equals(histogramLabel)) {
                 continue;
             }
             labelBuilder.put(label, "test-" + label);
@@ -391,9 +453,9 @@ abstract class MALScriptComparisonBase {
             List<Sample> samples = new ArrayList<>();
             for (Map<String, String> labelSet : labelSets) {
                 ImmutableMap<String, String> labels = ImmutableMap.copyOf(labelSet);
-                if (histogram) {
+                if (histogramLabel != null) {
                     samples.addAll(Arrays.asList(
-                        histogramSampleArray(sampleName, labels, value / 100.0, timestamp)));
+                        histogramSampleArray(sampleName, labels, value / 100.0, timestamp, histogramLabel)));
                 } else {
                     samples.add(Sample.builder()
                         .name(sampleName)

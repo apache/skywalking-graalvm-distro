@@ -22,6 +22,7 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | Istio ALS | `istio-als/` | Envoy ALS receiver, LAL input-type routing, K8s cluster |
 | Event | `event/` | `receiver-event` |
 | Alarm | `alarm/` | `alarm` module, webhook, admin `/status/alarm/*` (rules, rule detail, running context) |
+| Rules Overlay | `rules-overlay/` | A native image built with an external rules overlay (`rules-overlay/rules/`, copied out of the checkout): its own MAL / LAL / TAL rules under a custom layer and an OAL script over agent services, kept bundled `core.oal` and native TAL, excluded bundled rules absent. Runs in the `Rules Overlay` CI job, which builds that image |
 | Log | `log/` | `receiver-log`, LAL engine |
 | Meter | `meter/` | `receiver-meter`, MAL (`meter-analyzer-config`), virtual cache/DB |
 | Trace Profiling | `trace-profiling/` | Trace profiling lifecycle |

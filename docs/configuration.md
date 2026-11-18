@@ -46,6 +46,30 @@ requires it); `SW_AI_AGENT_CONVERSATION=none` turns it off.
 `trace-analyzer` (TAL) is on by default; `SW_TRACE_ANALYZER=-` removes it, and the OTLP trace
 receiver then stores spans without analysis.
 
+### Rules are compiled in
+
+Every rule (OAL, MAL, LAL, TAL, the hierarchy) is compiled into the image when it is built, and **every compiled rule
+file is active**. The settings upstream picks rule files with are filled at boot with all the files compiled for them,
+and are not in this `application.yml`:
+
+| Module | Setting | Upstream environment variable |
+|--------|---------|-------------------------------|
+| `receiver-otel` | `enabledOtelMetricsRules` | `SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES` |
+| `agent-analyzer` | `meterAnalyzerActiveFiles` | `SW_METER_ANALYZER_ACTIVE_FILES` |
+| `log-analyzer` | `malFiles`, `lalFiles` | `SW_LOG_MAL_FILES`, `SW_LOG_LAL_FILES` |
+| `trace-analyzer` | `talFiles`, `nativeTalFiles` | `SW_TRACE_TAL_FILES`, `SW_TRACE_NATIVE_TAL_FILES` |
+| `envoy-metric` | `enabledEnvoyMetricsRules` | `SW_ENVOY_METRIC_ENABLED_RULES` |
+| `receiver-telegraf` | `activeFiles` | `SW_RECEIVER_TELEGRAF_ACTIVE_FILES` |
+| `receiver-zabbix` | `activeFiles` | `SW_RECEIVER_ZABBIX_ACTIVE_FILES` |
+
+Setting one of them, in `application.yml` (under any provider), by environment variable or by system property
+(`-DSW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES=…` or `-Dreceiver-otel.default.enabledOtelMetricsRules=…`), fails the
+boot instead of being ignored. A rule file under
+`config/` (`otel-rules/`, `lal/`, `tal/`, `oal/`, `hierarchy-definition.yml`, `layer-extensions.yml`, …) fails the boot
+too. The image built from this repository compiles every rule file upstream bundles; to add, override or exclude rule
+files, build the image with a rules overlay ([Compiling Your Own Rules](rules-overlay.md)). Which modules run stays a
+runtime choice: a disabled module's rules stay compiled and unused.
+
 ## Module Configuration Reference
 
 Below is the complete list of modules, their fixed providers, and available settings.
@@ -155,7 +179,6 @@ for details on those files.
 | forceSampleErrorSegment | `SW_FORCE_SAMPLE_ERROR_SEGMENT` | `true` |
 | segmentStatusAnalysisStrategy | `SW_SEGMENT_STATUS_ANALYSIS_STRATEGY` | `FROM_SPAN_STATUS` |
 | noUpstreamRealAddressAgents | `SW_NO_UPSTREAM_REAL_ADDRESS` | `6000,9000` |
-| meterAnalyzerActiveFiles | `SW_METER_ANALYZER_ACTIVE_FILES` | `datasource,threadpool,satellite,go-runtime,python-runtime,continuous-profiling,java-agent,go-agent,ruby-runtime,php-runtime,nodejs-runtime,gen-ai-model` |
 | slowCacheReadThreshold | `SW_SLOW_CACHE_SLOW_READ_THRESHOLD` | `default:20,redis:10` |
 | slowCacheWriteThreshold | `SW_SLOW_CACHE_SLOW_WRITE_THRESHOLD` | `default:20,redis:10` |
 
@@ -165,10 +188,7 @@ for details on those files.
 
 **Selector**: `SW_LOG_ANALYZER` (default: `default`)
 
-| Setting | Environment Variable | Default |
-|---------|---------------------|---------|
-| lalFiles | `SW_LOG_LAL_FILES` | `envoy-als,mesh-dp,mysql-slowsql,pgsql-slowsql,redis-slowsql,k8s-service,nginx,envoy-ai-gateway,miniprogram,ai-agent,default` |
-| malFiles | `SW_LOG_MAL_FILES` | `nginx,miniprogram-wechat,miniprogram-alipay` |
+Its rule files (`malFiles`, `lalFiles`) are every compiled `log-mal-rules/` and `lal/` file; it has no other setting.
 
 ---
 
@@ -177,39 +197,25 @@ for details on those files.
 **Selector**: `SW_TRACE_ANALYZER` (default: `default`; `-` removes the module, which fails the boot while the native
 trace receiver or the Kafka fetcher is loaded, as both require it)
 
-TAL (Trace Analysis Language) rules over OTLP spans (`talFiles`) and over the segments SkyWalking agents send
-(`nativeTalFiles`, since SWIP-17 the whole agent trace analysis: RPC and endpoint traffic, segments, virtual
-database / cache / MQ / GenAI services, network aliases, AI evaluation samples). An OTLP span is analyzed only by the
-rules of the layer its resource declares in `service.layer`; the bundled `otlp-general` rules serve `OTLP_GENERAL`,
-so a service must send `service.layer=OTLP_GENERAL` to get its metrics, topology and slow statements, and a span
-without a registered layer is stored but not analyzed. The native rules run in the order `nativeTalFiles` lists
-them, which decides the order sources reach OAL. The rules are compiled at build time; both settings select among
-pre-compiled files only. An empty `talFiles` keeps the module but analyzes no OTLP span; a `nativeTalFiles` entry
-that was not compiled fails the boot, as upstream's missing file does. A file whose `requiredModules` are not all
-loaded (`ai-evaluation`, `gen-ai-analyzer`) is skipped, as upstream skips it.
+TAL (Trace Analysis Language) rules over OTLP spans and over the segments SkyWalking agents send (the `sw-native`
+rules, since SWIP-17 the whole agent trace analysis: RPC and endpoint traffic, segments, virtual database / cache / MQ /
+GenAI services, network aliases, AI evaluation samples). An OTLP span is analyzed only by the rules of the layer its
+resource declares in `service.layer`; the bundled `otlp-general` rules serve `OTLP_GENERAL`, so a service must send
+`service.layer=OTLP_GENERAL` to get its metrics, topology and slow statements, and a span without a registered layer is
+stored but not analyzed. A file whose `requiredModules` are not all loaded (`ai-evaluation`, `gen-ai-analyzer`) is
+skipped, as upstream skips it.
 
-Upstream reads the rule files from `config/tal/` at boot. This distro reads no rule file at runtime, and a rule file
-under `config/` (`tal/`, `otel-rules/`, `lal/`, `oal/`, `hierarchy-definition.yml`, `layer-extensions.yml`, …) fails the
-boot, as it would be ignored: to change what is measured, edit or add files under
-`skywalking/oap-server/server-starter/src/main/resources/tal/` and rebuild. The
-precompiler compiles every file there, whatever it contains, as long as the [TAL grammar](https://skywalking.apache.org/docs/main/next/en/concepts-and-designs/tal/)
-accepts it, and fails the build on a rule upstream would refuse at boot (an unknown layer or input type, a construct or
-function of another input, or conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practice pages (nginx as a
-one-span proxy, gateway peers, canaries, server clusters by kind) are compiled and run by the distro's own pipeline in
-`TALDocScriptsTest`.
-
-- Every file is compiled, not only those `talFiles` selects, so alternative files must agree on the shapes of the
-  metrics they share, and each must compile on its own.
-- Any file name works, as upstream takes any file whose name without extension `talFiles` lists; two files with the
-  same name and different extensions (`team.yaml`, `team.yml`) fail the build, since `talFiles` could not tell them
-  apart. A rule's source is stamped as upstream stamps it, `tal/<file>` with `.yaml` appended when the name ends in
-  neither `.yaml` nor `.yml`.
-- `talPath` is not read: the compiled rules come from `tal/` at build time.
+Every compiled TAL file is active (see [Rules are compiled in](#rules-are-compiled-in)): the files over OTLP spans fill
+`talFiles`, and the `sw-native` files fill `nativeTalFiles`, in upstream's listed order and then any others by name, as
+that order decides the order sources reach OAL. The precompiler compiles every file, whatever it contains, as long as
+the [TAL grammar](https://skywalking.apache.org/docs/main/next/en/concepts-and-designs/tal/) accepts it, and fails the
+build on a rule upstream would refuse at boot (an unknown layer or input type, a construct or function of another
+input, or conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practice pages
+(nginx as a one-span proxy, gateway peers, canaries, server clusters by kind) are compiled and run by the distro's own
+pipeline in `TALDocScriptsTest`. `talPath` is not read.
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
-| nativeTalFiles | `SW_TRACE_NATIVE_TAL_FILES` | `native-rpc,native-endpoint-cross-thread,native-network-alias,native-segment,native-virtual-service,native-virtual-genai,native-ai-evaluation` |
-| talFiles | `SW_TRACE_TAL_FILES` | `otlp-general,otlp-ai-evaluation` |
 | dedupWindow | `SW_TRACE_TAL_DEDUP_WINDOW` | `0` |
 | dedupCapacity | `SW_TRACE_TAL_DEDUP_CAPACITY` | `1000000` |
 | pairingSamplePercent | `SW_TRACE_TAL_PAIRING_SAMPLE_PERCENT` | `25` |
@@ -359,7 +365,6 @@ Set `SW_RECEIVER_ZABBIX=default` to enable.
 |---------|---------------------|---------|
 | port | `SW_RECEIVER_ZABBIX_PORT` | `10051` |
 | host | `SW_RECEIVER_ZABBIX_HOST` | `0.0.0.0` |
-| activeFiles | `SW_RECEIVER_ZABBIX_ACTIVE_FILES` | `agent` |
 
 ---
 
@@ -378,7 +383,6 @@ No additional settings.
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
 | acceptMetricsService | `SW_ENVOY_METRIC_SERVICE` | `true` |
-| enabledEnvoyMetricsRules | `SW_ENVOY_METRIC_ENABLED_RULES` | `envoy,envoy-svc-relation` |
 | alsHTTPAnalysis | `SW_ENVOY_METRIC_ALS_HTTP_ANALYSIS` | `""` |
 | alsTCPAnalysis | `SW_ENVOY_METRIC_ALS_TCP_ANALYSIS` | `""` |
 | k8sServiceNameRule | `K8S_SERVICE_NAME_RULE` | `${pod.metadata.labels.(service.istio.io/canonical-name)}.${pod.metadata.namespace}` |
@@ -455,7 +459,6 @@ No additional settings.
 | otlpTraceSearchableTags | `SW_OTEL_TRACE_SEARCHABLE_TAG_KEYS` | `resource.deployment.environment.name,...,span.peer.service` (see `application.yml`) |
 | otlpTraceSampleRate | `SW_OTEL_TRACE_SAMPLE_RATE` | `10000` |
 | otlpTraceMaxSpansPerSecond | `SW_OTEL_TRACE_MAX_SPANS_PER_SECOND` | `0` |
-| enabledOtelMetricsRules | `SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES` | `apisix,nginx/*,k8s/*,istio-controlplane,vm,process-hostmetrics-linux,mysql/*,postgresql/*,oap,aws-eks/*,windows,process-hostmetrics-windows,aws-s3/*,aws-dynamodb/*,aws-gateway/*,redis/*,elasticsearch/*,rabbitmq/*,mongodb/*,kafka/*,pulsar/*,bookkeeper/*,rocketmq/*,clickhouse/*,activemq/*,kong/*,flink/*,airflow/*,banyandb/*,envoy-ai-gateway/*,ios/*,miniprogram/*,ai-agent/*` |
 
 ---
 
@@ -821,9 +824,7 @@ No additional settings.
 
 **Selector**: `SW_RECEIVER_TELEGRAF` (default: `default`)
 
-| Setting | Environment Variable | Default |
-|---------|---------------------|---------|
-| activeFiles | `SW_RECEIVER_TELEGRAF_ACTIVE_FILES` | `vm` |
+Its rule files (`activeFiles`) are every compiled `telegraf-rules/` file; it has no other setting.
 
 ---
 

@@ -36,10 +36,8 @@ services:
       SW_CONFIGURATION: none
       SW_OTEL_RECEIVER: default
       SW_OTEL_RECEIVER_ENABLED_HANDLERS: "otlp-traces,otlp-logs"
-      SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES: "ios/ios-metrickit,ios/ios-metrickit-instance"
       SW_RECEIVER_ZIPKIN: default
       SW_QUERY_ZIPKIN: default
-      SW_LOG_LAL_FILES: "ios-metrickit"
       SW_LOG_ANALYZER: default
     depends_on:
       banyandb:

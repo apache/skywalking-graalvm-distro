@@ -211,6 +211,11 @@
         </dependency>
     </dependencies>
 
+    <properties>
+        <rules.staging.dir>${project.build.directory}/rule-resources</rules.staging.dir>
+        <rules.state.dir>${project.build.directory}/rule-overlay</rules.state.dir>
+    </properties>
+
     <build>
         <plugins>
             <!-- Run Precompiler at build time -->
@@ -219,6 +224,25 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
                 <executions>
+                    <!-- The rule tree every engine compiles: upstream's server-starter resources with the rules
+                         overlay (-Drules.overlay=<dir>, make RULES_OVERLAY=<dir>) merged in. Runs before precompile,
+                         both bound to process-classes. -->
+                    <execution>
+                        <id>stage-rules</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>org.apache.skywalking.oap.server.buildtools.precompiler.RulesStager</mainClass>
+                            <arguments>
+                                <argument>${project.basedir}/../../skywalking/oap-server/server-starter/src/main/resources</argument>
+                                <argument>${rules.staging.dir}</argument>
+                                <argument>${rules.state.dir}</argument>
+                                <argument>${rules.overlay}</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>precompile</id>
                         <phase>process-classes</phase>
@@ -231,9 +255,14 @@
                                 <argument>${project.build.directory}/generated-classes</argument>
                                 <argument>${project.build.directory}/generated-registry</argument>
                             </arguments>
-                            <!-- Load OAL/MAL/LAL scripts from skywalking submodule -->
+                            <systemProperties>
+                                <systemProperty>
+                                    <key>rules.overlay.inventory</key>
+                                    <value>${rules.state.dir}/overlay-inventory.txt</value>
+                                </systemProperty>
+                            </systemProperties>
                             <additionalClasspathElements>
-                                <additionalClasspathElement>${project.basedir}/../../skywalking/oap-server/server-starter/src/main/resources</additionalClasspathElement>
+                                <additionalClasspathElement>${rules.staging.dir}</additionalClasspathElement>
                             </additionalClasspathElements>
                         </configuration>
                     </execution>
@@ -247,8 +276,11 @@
                 <version>3.2.5</version>
                 <configuration>
                     <additionalClasspathElements>
-                        <additionalClasspathElement>${project.basedir}/../../skywalking/oap-server/server-starter/src/main/resources</additionalClasspathElement>
+                        <additionalClasspathElement>${rules.staging.dir}</additionalClasspathElement>
                     </additionalClasspathElements>
+                    <systemPropertyVariables>
+                        <rules.overlay.inventory>${rules.state.dir}/overlay-inventory.txt</rules.overlay.inventory>
+                    </systemPropertyVariables>
                     <!-- The precompiler runs once per JVM: the build-time MeterSystem and Javassist's default
                          ClassPool are JVM-wide, so each test class compiles rules into a JVM of its own. -->
                     <reuseForks>false</reuseForks>

@@ -17,10 +17,13 @@
 
 package org.apache.skywalking.oap.server.graalvm.tal;
 
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
@@ -43,7 +46,6 @@ import org.mockito.Mockito;
 import org.mockito.invocation.Invocation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -70,7 +72,8 @@ class TALPrecompiledRuleTest {
                     + ((Map<?, ?>) ((List<?>) fileRules).get(i)).get("name"));
             }
         }
-        assertFalse(expected.isEmpty(), "tal/ holds no rule");
+        // A rules overlay may exclude every TAL file: the staged directory stays, empty.
+        assertTrue(Files.isDirectory(TALTestSupport.TAL_DIR), "no staged tal/ at " + TALTestSupport.TAL_DIR);
         expected.sort(null);
         assertEquals(expected, rules.stream().map(r -> r.getSourceName() + ":" + r.getLineNo() + "#" + r.getName())
                                     .sorted().collect(Collectors.toList()),
@@ -95,26 +98,49 @@ class TALPrecompiledRuleTest {
             final String stem = TALTestSupport.stemOf(file);
             final Map<String, Object> yaml = TALTestSupport.fileYaml(file);
             final Object required = yaml.get("requiredModules");
-            assertEquals(required == null ? List.of() : required,
-                new ArrayList<>(TALConfigs.requiredModulesOf("tal", List.of(stem))), file);
+            // As sets: the loader keeps each module once, and skips a file without a rules list.
+            assertEquals(required == null || !(yaml.get("rules") instanceof List) ? Set.of()
+                    : new HashSet<>((List<?>) required),
+                new HashSet<>(TALConfigs.requiredModulesOf("tal", List.of(stem))), file);
             final boolean hasRules = yaml.get("rules") instanceof List && !((List<?>) yaml.get("rules")).isEmpty();
             if (hasRules) {
                 withRules.add(stem);
             }
-            // Skipped, as upstream skips it, while a module it requires is not loaded.
-            assertEquals(hasRules && required == null ? 1 : 0, TALConfigs.load("tal", List.of(stem), noModules).size(),
+            // Skipped, as upstream skips it, while a module it requires is not loaded; a file with a rules list, empty or
+            // not, that requires none is kept.
+            final boolean requiresNone = !(required instanceof List) || ((List<?>) required).isEmpty();
+            assertEquals(yaml.get("rules") instanceof List && requiresNone ? 1 : 0,
+                TALConfigs.load("tal", List.of(stem), noModules).size(),
                 file);
         }
         // nativeTalFiles' contract: the files come back as listed, whichever order that is.
         Collections.reverse(withRules);
-        final List<String> loaded = new ArrayList<>();
+        // Each file by its rules (name and line): the source name stamps .yaml onto another extension, so two files can
+        // share one.
+        final List<List<String>> loaded = new ArrayList<>();
         for (final TALConfigs configs : TALConfigs.loadInOrder("tal", withRules, null)) {
-            final String sourceName = configs.getRules().get(0).getSourceName();
-            loaded.add(sourceName.substring(0, sourceName.lastIndexOf('.')));
+            loaded.add(ruleIds(configs));
         }
-        assertEquals(withRules, loaded);
-        assertThrows(ModuleStartException.class, () -> TALConfigs.loadInOrder("tal", List.of("no-such-tal-file"), null),
+        final List<List<String>> expectedOrder = new ArrayList<>();
+        for (final String stem : withRules) {
+            expectedOrder.add(ruleIds(TALConfigs.load("tal", List.of(stem), null).get(0)));
+        }
+        assertEquals(expectedOrder, loaded);
+        // A stem no staged file has, whatever an overlay names its files.
+        final List<String> stems = TALTestSupport.ruleFiles().stream().map(TALTestSupport::stemOf)
+                                                 .collect(Collectors.toList());
+        String missing = "no-such-tal-file";
+        while (stems.contains(missing)) {
+            missing += "-x";
+        }
+        final List<String> listed = List.of(missing);
+        assertThrows(ModuleStartException.class, () -> TALConfigs.loadInOrder("tal", listed, null),
             "a listed native file that was not compiled fails the boot, as upstream's missing file does");
+    }
+
+    private static List<String> ruleIds(final TALConfigs configs) {
+        return configs.getRules().stream().map(rule -> rule.getName() + "@" + rule.getLineNo())
+                      .collect(Collectors.toList());
     }
 
     @Test
