@@ -36,6 +36,8 @@ import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationModule;
 import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationSamplingConfig;
 import org.apache.skywalking.oap.server.core.CoreModule;
 import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
+import org.apache.skywalking.oap.server.core.analysis.LayerDefinition;
+import org.apache.skywalking.oap.server.core.analysis.LayerExtensionLoader;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.core.config.IComponentLibraryCatalogService;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
@@ -44,6 +46,7 @@ import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.server.core.dsl.DslYamlLineIndex;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleProviderHolder;
 import org.apache.skywalking.oap.server.library.module.ModuleServiceHolder;
@@ -61,7 +64,13 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.AliasRegistrar;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.SpanPairing;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.TALSourceTypeProvider;
 import org.mockito.Mockito;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.Constructor;
+import org.yaml.snakeyaml.nodes.Tag;
+import org.yaml.snakeyaml.representer.Representer;
+import org.yaml.snakeyaml.resolver.Resolver;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -72,8 +81,27 @@ import static org.mockito.Mockito.mock;
  * {@code tal/} are covered as they are.
  */
 final class TALTestSupport {
-    static final Path TAL_DIR = Path.of(System.getProperty("user.dir")).getParent()
-        .resolve("skywalking/oap-server/server-starter/src/main/resources/tal");
+    /** The TAL files the precompiler compiled: upstream's with the rules overlay merged in. */
+    static final Path TAL_DIR = Path.of(System.getProperty("rules.staging.dir",
+        Path.of(System.getProperty("user.dir")).getParent()
+            .resolve("build-tools/precompiler/target/rule-resources").toString())).resolve("tal");
+
+    /**
+     * Reads every plain scalar as a string, as TAL's typed loader reads the rule fields: an unquoted ON is the layer
+     * ON, not a boolean. Null stays null, and a {@code <<} key still merges.
+     */
+    private static final Yaml STRINGS = new Yaml(
+        new Constructor(new LoaderOptions()), new Representer(new DumperOptions()), new DumperOptions(),
+        new LoaderOptions(), new Resolver() {
+            @Override
+            protected void addImplicitResolvers() {
+                addImplicitResolver(Tag.NULL, NULL, "~nN\0");
+                addImplicitResolver(Tag.NULL, EMPTY, null);
+                addImplicitResolver(Tag.MERGE, MERGE, "<");
+            }
+        });
+
+    private static boolean LAYERS_REGISTERED;
 
     private TALTestSupport() {
     }
@@ -156,7 +184,9 @@ final class TALTestSupport {
      */
     static Map<String, Object> fileYaml(final String fileName) throws Exception {
         try (InputStream in = Files.newInputStream(TAL_DIR.resolve(fileName))) {
-            return new Yaml().load(in);
+            // A document of comments only is no mapping.
+            final Map<String, Object> yaml = STRINGS.load(in);
+            return yaml == null ? Map.of() : yaml;
         }
     }
 
@@ -214,6 +244,7 @@ final class TALTestSupport {
     static TALClassGenerator freshGenerator(final TALConfig rule, final TALFunctionRegistry functions)
         throws Exception {
         declareScopes();
+        registerCompiledLayers();
         final Map<String, Object> raw = yamlRule(rule);
         final TALSourceTypeProvider input = inputProvider(inputTypeOf((String) raw.get("inputType")));
         final TALClassGenerator generator = new TALClassGenerator();
@@ -225,6 +256,27 @@ final class TALTestSupport {
         generator.setMetricPrefix((String) fileYaml(fileOf(rule)).get("metricPrefix"));
         generator.setContent((String) raw.get("dsl"));
         return generator;
+    }
+
+    /**
+     * The layers the build compiled the rules with: those of layer-extensions.yml and every rule file's own, so a rule
+     * compiles fresh against the layers it was compiled against.
+     */
+    static synchronized void registerCompiledLayers() {
+        if (LAYERS_REGISTERED) {
+            return;
+        }
+        LayerExtensionLoader.load();
+        CompiledRules.malFiles().forEach(file -> register(file.getRule().getLayerDefinitions()));
+        CompiledRules.lalFiles().forEach(file -> register(file.getConfigs().getLayerDefinitions()));
+        CompiledRules.talFiles().forEach(file -> register(file.getConfigs().getLayerDefinitions()));
+        LAYERS_REGISTERED = true;
+    }
+
+    private static void register(final List<LayerDefinition> definitions) {
+        if (definitions != null) {
+            definitions.forEach(LayerDefinition::register);
+        }
     }
 
     static TalExpression freshCompile(final TALConfig rule, final MeterSystem meterSystem,

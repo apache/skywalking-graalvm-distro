@@ -106,6 +106,12 @@
                 <include>ai-evaluation.yml</include>
             </includes>
         </fileSet>
+        <!-- compiled-rules/ — copies of the rule files compiled into this image (upstream's, the rules overlay merged
+             in), its rules-overlay.yaml and BUILD-INFO: a record only, nothing reads it at runtime. -->
+        <fileSet>
+            <directory>${project.basedir}/../build-tools/precompiler/target/rule-overlay/compiled-rules</directory>
+            <outputDirectory>compiled-rules</outputDirectory>
+        </fileSet>
         <!-- logs/ — empty directory for runtime logs -->
         <fileSet>
             <directory>.</directory>

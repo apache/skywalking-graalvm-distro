@@ -1,0 +1,46 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The rules the rules-overlay e2e case compiles into the native image, as a downstream repository does: one rule of
+# each DSL of its own, under a layer of its own, and only some of the bundled rules. CI copies this directory out of
+# the checkout and builds with RULES_OVERLAY pointing at the copy.
+add:
+  - otel-rules/overlay/overlay-service.yaml
+  - lal/overlay.yaml
+  - tal/overlay.yaml
+  - oal/overlay.oal
+override:
+  - layer-extensions.yml
+exclude:
+  # Every bundled MAL rule.
+  - "otel-rules/**"
+  - "meter-analyzer-config/*"
+  - "log-mal-rules/*"
+  - "envoy-metrics-rules/*"
+  - "telegraf-rules/*"
+  - "zabbix-rules/*"
+  # Every bundled LAL rule file but default.yaml.
+  - "lal/[!d]*.yaml"
+  # Every bundled OAL script but core.oal (which the bundled alarm rules use) and disable.oal.
+  - oal/browser.oal
+  - oal/cilium.oal
+  - oal/dotnet-agent.oal
+  - oal/ebpf.oal
+  - oal/java-agent.oal
+  - oal/mesh.oal
+  - oal/tcp.oal
+  - oal/virtual-gen-ai.oal
+  # The OTLP AI evaluation rules: otlp-general.yaml and the native files that analyze agent segments stay.
+  - tal/otlp-ai-evaluation.yaml

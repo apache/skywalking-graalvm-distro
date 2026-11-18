@@ -43,6 +43,7 @@ import org.apache.skywalking.oap.server.library.module.Service;
 public class OALEngineLoaderService implements Service {
 
     private final Set<OALDefine> oalDefineSet = new HashSet<>();
+    private final Set<OALDefine> compiledDefines = new HashSet<>();
     private final ModuleManager moduleManager;
     private boolean loaded;
 
@@ -62,10 +63,16 @@ public class OALEngineLoaderService implements Service {
         if (!loaded) {
             loadAllPrecompiledClasses();
             // Every compiled script runs, whichever provider loads it: the read-only OAL catalog lists them all.
-            oalDefineSet.addAll(CompiledRules.oalDefines());
+            compiledDefines.addAll(CompiledRules.oalDefines());
+            oalDefineSet.addAll(compiledDefines);
             loaded = true;
         }
 
+        if (!compiledDefines.contains(define)) {
+            // The rules overlay excluded the script at build time: nothing of it runs, and it is not listed.
+            log.info("OAL script {} was excluded from this image at build time", define.getConfigFile());
+            return;
+        }
         oalDefineSet.add(define);
     }
 

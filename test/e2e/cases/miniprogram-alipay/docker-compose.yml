@@ -36,9 +36,6 @@ services:
       SW_CONFIGURATION: none
       SW_OTEL_RECEIVER: default
       SW_OTEL_RECEIVER_ENABLED_HANDLERS: "otlp-traces,otlp-metrics,otlp-logs"
-      SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES: "miniprogram/alipay-mini-program,miniprogram/alipay-mini-program-instance"
-      SW_LOG_LAL_FILES: "miniprogram,default"
-      SW_LOG_MAL_FILES: "miniprogram-alipay"
       SW_LOG_ANALYZER: default
     depends_on:
       banyandb:

@@ -34,6 +34,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,6 +45,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.tools.DiagnosticCollector;
@@ -73,9 +77,29 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 final class RegistryGenerator {
     static final String PACKAGE = "org.apache.skywalking.oap.server.graalvm.rules";
+    private static final String NATIVE_ALIAS = "sw-native";
+    private static final String DISPATCHER_PACKAGE = "org.apache.skywalking.oap.server.core.source.oal.rt.dispatcher.";
     static final String[] MAL_CATALOGS = {
         "meter-analyzer-config", "otel-rules", "log-mal-rules", "envoy-metrics-rules", "telegraf-rules", "zabbix-rules"
     };
+    /**
+     * The setting that selects the rules of each catalog. Every compiled rule file is active: the setting is filled
+     * with them at boot, and set by hand is refused.
+     */
+    static final Map<String, String> MAL_SETTINGS = Map.of(
+        "otel-rules", "receiver-otel.default.enabledOtelMetricsRules",
+        "meter-analyzer-config", "agent-analyzer.default.meterAnalyzerActiveFiles",
+        "log-mal-rules", "log-analyzer.default.malFiles",
+        "envoy-metrics-rules", "envoy-metric.default.enabledEnvoyMetricsRules",
+        "telegraf-rules", "receiver-telegraf.default.activeFiles");
+    static final String ZABBIX_SETTING = "receiver-zabbix.default.activeFiles";
+    static final String LAL_SETTING = "log-analyzer.default.lalFiles";
+    static final String TAL_SETTING = "trace-analyzer.default.talFiles";
+    static final String NATIVE_TAL_SETTING = "trace-analyzer.default.nativeTalFiles";
+    static final List<String> SETTINGS = List.of(
+        "receiver-otel.default.enabledOtelMetricsRules", "agent-analyzer.default.meterAnalyzerActiveFiles",
+        "log-analyzer.default.malFiles", LAL_SETTING, TAL_SETTING, NATIVE_TAL_SETTING,
+        "envoy-metric.default.enabledEnvoyMetricsRules", "receiver-telegraf.default.activeFiles", ZABBIX_SETTING);
     // Below the class-file limit of 65535 UTF-8 bytes per string constant, at up to 6 bytes per escaped char.
     private static final int MAX_CONSTANT_CHARS = 8000;
     // Statements per generated method, far below the 64KB method-code limit.
@@ -89,6 +113,8 @@ final class RegistryGenerator {
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final Set<String> classNames = new HashSet<>();
     private final List<Path> sources = new ArrayList<>();
+    /** The rule-list settings, {@code module.provider.field}, each naming every rule file compiled for it. */
+    private final Map<String, List<String>> activation = new LinkedHashMap<>();
 
     private RegistryGenerator(final Path outputDir, final Path sourceDir) {
         this.outputDir = outputDir;
@@ -168,6 +194,10 @@ final class RegistryGenerator {
                 c.method("public static void filters(final Map<String, Supplier<MalFilter>> m)", filters);
                 c.write();
                 classes.add(c.name);
+                final String setting = MAL_SETTINGS.get(catalog);
+                if (setting != null) {
+                    activation.computeIfAbsent(setting, k -> new ArrayList<>()).add(rule.getName());
+                }
             }
         }
         return classes;
@@ -184,7 +214,7 @@ final class RegistryGenerator {
         for (int i = 0; rules.getProperty("rule." + i + ".class") != null; i++) {
             final String p = "rule." + i + ".";
             final String inputType = rules.getProperty(p + "inputType", "").trim();
-            rulesByFile.computeIfAbsent(stem(rules.getProperty(p + "source")), f -> new ArrayList<>()).add(
+            rulesByFile.computeIfAbsent(rules.getProperty(p + "file"), f -> new ArrayList<>()).add(
                 "l.add(new LalRule(" + literal(rules.getProperty(p + "source")) + ", "
                     + Integer.parseInt(rules.getProperty(p + "line")) + ", " + literal(rules.getProperty(p + "name"))
                     + ", " + classRef(rules.getProperty(p + "class")) + "::new, "
@@ -192,6 +222,8 @@ final class RegistryGenerator {
         }
         final List<String> classes = new ArrayList<>();
         for (final Map.Entry<String, LALConfigs> file : files.entrySet()) {
+            // Keyed by the file name: the loader stamps it as each rule's source, which the classes are found by.
+            activation.computeIfAbsent(LAL_SETTING, k -> new ArrayList<>()).add(stem(file.getKey()));
             final JavaClass c = new JavaClass(className("Lal", file.getKey()));
             c.imports("java.util.List");
             c.method("public static LalFile file()",
@@ -216,7 +248,9 @@ final class RegistryGenerator {
             metaInf.resolve("config-data/tal.json").toFile(), new TypeReference<LinkedHashMap<String, TALConfigs>>() {
             });
         final Properties rules = loadProperties(metaInf.resolve("tal-v2-rules.txt"));
+        checkTalActivation(rules);
         final Map<String, List<String>> rulesByFile = new LinkedHashMap<>();
+        final Set<String> nativeFiles = new HashSet<>();
         for (int i = 0; rules.getProperty("rule." + i + ".class") != null; i++) {
             final String p = "rule." + i + ".";
             final List<String> metrics = new ArrayList<>();
@@ -235,7 +269,10 @@ final class RegistryGenerator {
                     + literal(rules.getProperty(fp + "key")) + ", " + literal(rules.getProperty(fp + "type")) + ")");
             }
             final String source = rules.getProperty(p + "source");
-            rulesByFile.computeIfAbsent(source.substring(source.indexOf('/') + 1), f -> new ArrayList<>()).add(
+            if (NATIVE_ALIAS.equals(rules.getProperty(p + "inputAlias"))) {
+                nativeFiles.add(rules.getProperty(p + "file"));
+            }
+            rulesByFile.computeIfAbsent(rules.getProperty(p + "file"), f -> new ArrayList<>()).add(
                 "return new TalRule(" + literal(source) + ", " + Integer.parseInt(rules.getProperty(p + "line")) + ", "
                     + literal(rules.getProperty(p + "name")) + ", " + classRef(rules.getProperty(p + "class")) + "::new, "
                     + literal(rules.getProperty(p + "inputType", "")) + ", "
@@ -264,7 +301,60 @@ final class RegistryGenerator {
             throw new IllegalStateException("TAL rules compiled from files the TAL config data lacks: "
                 + rulesByFile.keySet());
         }
+        final List<String> otlp = new ArrayList<>();
+        final List<String> nativeTal = new ArrayList<>();
+        for (final String file : files.keySet()) {
+            (nativeFiles.contains(file) ? nativeTal : otlp).add(stem(file));
+        }
+        // The native files run in the listed order (loadInOrder): upstream's, then the others by name.
+        final List<String> upstreamOrder = upstreamNativeTalOrder();
+        nativeTal.sort(Comparator.comparingInt((String f) -> upstreamOrder.contains(f)
+            ? upstreamOrder.indexOf(f) : Integer.MAX_VALUE).thenComparing(f -> f));
+        activation.put(TAL_SETTING, otlp);
+        activation.put(NATIVE_TAL_SETTING, nativeTal);
         return classes;
+    }
+
+    /**
+     * Every compiled TAL file is active, in {@code nativeTalFiles} (its rules are {@code sw-native}) or in
+     * {@code talFiles}. Fails on a file that list would refuse, as upstream's boot does: a native file holding a rule of
+     * another input, and two native rules of one name.
+     *
+     * @param rules the {@code tal-v2-rules.txt} manifest of the TAL pass
+     */
+    static void checkTalActivation(final Properties rules) {
+        final Map<String, Boolean> nativeByFile = new HashMap<>();
+        final Map<String, String> sources = new HashMap<>();
+        for (int i = 0; rules.getProperty("rule." + i + ".class") != null; i++) {
+            final String p = "rule." + i + ".";
+            final String source = "tal/" + rules.getProperty(p + "file");
+            final String name = rules.getProperty(p + "name");
+            final boolean isNative = NATIVE_ALIAS.equals(rules.getProperty(p + "inputAlias"));
+            final Boolean fileIsNative = nativeByFile.putIfAbsent(source, isNative);
+            if (fileIsNative != null && fileIsNative != isNative) {
+                throw new IllegalStateException("TAL file " + source + " mixes " + NATIVE_ALIAS + " rules with rules "
+                    + "of another input; native rules and span rules of other inputs go in separate files");
+            }
+            final String previous = isNative ? sources.put(name, source) : null;
+            if (previous != null) {
+                throw new IllegalStateException("The TAL native rules of " + previous + " and " + source
+                    + " are both named " + name);
+            }
+        }
+    }
+
+    /**
+     * @return the native TAL files upstream's {@code application.yml} lists by default, in that order
+     */
+    private List<String> upstreamNativeTalOrder() throws Exception {
+        try (InputStream is = classLoader.getResourceAsStream("application.yml")) {
+            if (is == null) {
+                return List.of();
+            }
+            final String text = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            final Matcher m = Pattern.compile("nativeTalFiles:\\s*\\$\\{[A-Z_]+:([^}]*)}").matcher(text);
+            return m.find() ? List.of(m.group(1).replace("\"", "").trim().split("\\s*,\\s*")) : List.of();
+        }
     }
 
     // ---- Zabbix: a class per rule file, the config upstream's loader reads; its expressions are compiled with MAL ----
@@ -279,6 +369,7 @@ final class RegistryGenerator {
         }
         final List<String> classes = new ArrayList<>();
         for (final ZabbixConfig config : ZabbixConfigs.loadConfigs("zabbix-rules", stems)) {
+            activation.computeIfAbsent(ZABBIX_SETTING, k -> new ArrayList<>()).add(config.getSourceName());
             final JavaClass c = new JavaClass(className("Zabbix", config.getSourceName()));
             c.imports(ZabbixConfig.class.getName());
             c.method("public static ZabbixConfig config()", List.of("return " + c.bean(config) + ";"));
@@ -355,8 +446,14 @@ final class RegistryGenerator {
             final String p = "script." + i + ".";
             final JavaClass c = new JavaClass(className("Oal", stem(scripts.getProperty(p + "file"))));
             c.imports("java.util.List", "org.apache.skywalking.oap.server.core.oal.rt.OALDefine");
-            c.method("public static OALDefine define()",
-                List.of("return " + classRef(scripts.getProperty(p + "define")) + ".INSTANCE;"));
+            final String define = scripts.getProperty(p + "define");
+            // An overlay's own script has no define class: the define is recreated from the same inputs.
+            c.method("public static OALDefine define()", List.of(define.isEmpty()
+                ? "return new OALDefine(" + literal(scripts.getProperty(p + "file")) + ", "
+                    + literal(scripts.getProperty(p + "sourcePackage")) + ", "
+                    + literal(scripts.getProperty(p + "dispatcherPackage").substring(DISPATCHER_PACKAGE.length()))
+                    + ") {\n        };"
+                : "return " + classRef(define) + ".INSTANCE;"));
             c.chunkedMethod("public static void metrics(final List<Class<?>> l)", "l",
                 classLiterals("l.add(", csv(scripts.getProperty(p + "metrics")), ");"));
             c.chunkedMethod("public static void dispatchers(final List<Class<?>> l)", "l",
@@ -398,8 +495,6 @@ final class RegistryGenerator {
             "org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalExpression",
             "org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalFilter",
             "org.apache.skywalking.oap.server.core.oal.rt.OALDefine");
-        c.javadoc("The rules compiled into this image, read by the runtime replacements in place of rule files. Every "
-            + "call builds fresh rule objects, as reading the files did; the lookup maps are built once.");
         c.method("private CompiledRules()", List.of());
         c.method("public static List<MalFile> malFiles()", collect("MalFile", malClasses, ".file()"));
         c.method("public static Map<String, Supplier<MalExpression>> malExpressions()",
@@ -417,6 +512,17 @@ final class RegistryGenerator {
         c.method("public static List<Class<?>> oalDispatchers()", fill("Class<?>", oalClasses, ".dispatchers(l);"));
         c.method("public static List<String> oalDisabledSources()", fill("String", oalClasses, ".disabledSources());"));
         c.method("public static Map<String, Class<?>> meterClasses()", List.of("return MeterClasses.MAP;"));
+        final List<String> settings = new ArrayList<>();
+        for (final String setting : SETTINGS) {
+            settings.add(literal(setting));
+            settings.add(literal(String.join(",", activation.getOrDefault(setting, List.of()))));
+        }
+        c.javadoc("The rules compiled into this image, read by the runtime replacements in place of rule files. Every "
+            + "call builds fresh rule objects, as reading the files did; the lookup maps are built once. Every compiled "
+            + "rule file is active: activation() holds, for each setting that selects rule files "
+            + "(module.provider.field), all the files compiled for it.");
+        c.method("public static Map<String, String> activation()",
+            List.of("return RegistrySupport.map(" + String.join(", ", settings) + ");"));
         final StringBuilder holders = new StringBuilder();
         holders.append(holder("MalExpressions", "Map<String, Supplier<MalExpression>>",
             malClasses.stream().map(m -> m + ".expressions(m);").collect(Collectors.toList())));

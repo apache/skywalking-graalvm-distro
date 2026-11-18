@@ -458,15 +458,25 @@
         </dependency>
     </dependencies>
 
+    <properties>
+        <rules.staging.dir>${project.basedir}/../build-tools/precompiler/target/rule-resources</rules.staging.dir>
+        <rules.state.dir>${project.basedir}/../build-tools/precompiler/target/rule-overlay</rules.state.dir>
+    </properties>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!-- The rule tree the precompiler compiled, the rules overlay merged in -->
                     <additionalClasspathElements>
-                        <additionalClasspathElement>${project.basedir}/../skywalking/oap-server/server-starter/src/main/resources</additionalClasspathElement>
+                        <additionalClasspathElement>${rules.staging.dir}</additionalClasspathElement>
                     </additionalClasspathElements>
+                    <systemPropertyVariables>
+                        <rules.staging.dir>${rules.staging.dir}</rules.staging.dir>
+                        <rules.overlay.inventory>${rules.state.dir}/overlay-inventory.txt</rules.overlay.inventory>
+                    </systemPropertyVariables>
                     <argLine>
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED

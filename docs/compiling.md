@@ -181,6 +181,13 @@ This starts BanyanDB and the OAP native image together. Ports exposed:
 | `make docker-down` | Stop BanyanDB |
 | `make boot` | Build distro + start BanyanDB + boot OAP |
 | `make shutdown` | Stop a running OAP server |
+| `make verify-rules` | Compile the rules and run the tests that check them, without the native image |
+
+## Compiling Your Own Rules
+
+Every target that compiles takes `RULES_OVERLAY=<absolute path>`, a directory of your own rule files that is compiled
+into the image with the bundled ones, and `M2_REPO=<dir>` to build with a Maven repository other than `~/.m2`. Rules
+can't be selected or added at runtime. See [Compiling Your Own Rules](rules-overlay.md).
 
 ## CI Pipeline
 

@@ -72,7 +72,7 @@ cd skywalking && git log --oneline <old-commit>..<new-commit>
 ### OAL changes (if new .oal files or scopes)
 
 - [ ] New OAL files are auto-discovered via `OALDefine` SPI — verify in precompiler output
-- [ ] Add generated metrics + builder classes to `reachability-metadata.json` in `oap-graalvm-native`
+- [ ] Nothing to register by hand: the precompiler generates the constructor entries of the metrics, builder and dispatcher classes into `reflect-config.json`
 - [ ] Verify with: `jar tf build-tools/precompiler/target/precompiler-*-generated.jar | grep "oal/rt"`
 
 ### Rule adoption policy (OAL / MAL / LAL / TAL)
@@ -84,8 +84,12 @@ never trail upstream on bundled rules. Concretely, for each new or changed file:
       `envoy-metrics-rules/*`, `telegraf-rules/*`, `zabbix-rules/*`, `lal/*`, `tal/*`, `oal/*.oal` are all
       auto-discovered by the precompiler; verify the counts in its log (`MAL: compiled N rules from <dir>`,
       `LAL pre-compilation`, `TAL pre-compilation`, `Precompiler: N metrics`).
-- [ ] It is enabled by default exactly as upstream: mirror upstream `application.yml`
-      (`enabledOtelMetricsRules`, `meterAnalyzerActiveFiles`, `lalFiles`, `malFiles`, ...).
+- [ ] It is active: every compiled rule file is. The rule-list settings (`enabledOtelMetricsRules`,
+      `meterAnalyzerActiveFiles`, `lalFiles`, `malFiles`, `talFiles`, `nativeTalFiles`, ...) are NOT in the distro
+      `application.yml` (setting one fails the boot); check the new file is in `CompiledRules.activation()`
+      (`CompiledRuleActivationTest`, and the boot log line `Every compiled rule file is active`). A new
+      `nativeTalFiles` entry upstream lists keeps its place: the registry orders native files as upstream's
+      `application.yml` lists them.
 - [ ] `rule-file-inventory.properties` (+ section counts) and `precompiled-yaml-sha256.properties` cover it.
 - [ ] A MAL comparison test exists for every new MAL file (auto-discovery mode:
       `generateComparisonTests("<dir>/<file>.yaml")`); LAL tests for new LAL files.
@@ -116,8 +120,8 @@ When upstream adds an e2e case for a new rule set, adopt it if it is compose-onl
 ### MAL/LAL changes (if new rule files)
 
 - [ ] New MAL rules under `otel-rules/` with glob `**/*` are auto-compiled by precompiler
-- [ ] New LAL rules must be added to `lalFiles` in `application.yml`
-- [ ] Update `enabledOtelMetricsRules` in `application.yml` for new otel rule directories
+- [ ] Nothing to enable: new LAL and otel rule files are active once compiled (no `lalFiles` or
+      `enabledOtelMetricsRules` in the distro `application.yml`)
 - [ ] Create MAL comparison tests in `oap-graalvm-server/src/test/.../mal/`
 
 ### Inventory updates
@@ -287,5 +291,5 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
 - **Reflection errors at native image runtime**: New classes instantiated via `Class.forName().newInstance()` need entries in `reflect-config.json` or `reachability-metadata.json`
 - **Config loading failures**: New `ModuleConfig` subclasses need config-generator regeneration AND may need `@Setter` same-FQCN replacement
 - **Missing config files**: Runtime config files (non-DSL) must be in distribution assembly descriptors
-- **OAL builder registration**: OAL-generated builder classes need constructor entries in `reachability-metadata.json`
+- **OAL builder registration**: the precompiler generates constructor entries for every OAL metrics, builder and dispatcher class it compiled (incl. a rules overlay's scripts); the older hand-kept entries in `reachability-metadata.json` are redundant
 - **Config-generator runs against upstream classpath**: Setter checks see upstream classes (no `@Setter`), not our for-graalvm replacements — the generator trusts that for-graalvm modules will provide setters

@@ -20,7 +20,6 @@ package org.apache.skywalking.oap.server.buildtools.precompiler;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
@@ -50,7 +49,6 @@ import org.apache.skywalking.oap.server.graalvm.rules.LalRule;
 import org.apache.skywalking.oap.server.graalvm.rules.MalFile;
 import org.apache.skywalking.oap.server.graalvm.rules.TalFile;
 import org.apache.skywalking.oap.server.graalvm.rules.TalRule;
-import org.apache.skywalking.oap.server.library.util.ResourceUtils;
 import org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfigs;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs;
 import org.junit.jupiter.api.AfterAll;
@@ -59,7 +57,6 @@ import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -100,15 +97,16 @@ class RegistryParityTest {
             if ("zabbix-rules".equals(catalog)) {
                 continue;
             }
-            final List<String> patterns = "otel-rules".equals(catalog) ? List.of("*", "**/*") : List.of("*");
+            final List<String> names = Precompiler.ruleNames(catalog);
             final Map<String, JsonNode> upstream = new TreeMap<>();
-            for (final Rule rule : Rules.loadRules(catalog, patterns)) {
-                upstream.put(rule.getName(), MAPPER.valueToTree(rule));
+            if (!names.isEmpty()) {
+                for (final Rule rule : Rules.loadRules(catalog, names)) {
+                    upstream.put(rule.getName(), MAPPER.valueToTree(rule));
+                }
             }
             final Map<String, JsonNode> compiled = new TreeMap<>();
             files.stream().filter(f -> f.getCatalog().equals(catalog))
                  .forEach(f -> compiled.put(f.getRule().getName(), MAPPER.valueToTree(f.getRule())));
-            assertFalse(upstream.isEmpty(), catalog);
             assertEquals(upstream, compiled, catalog);
         }
     }
@@ -136,12 +134,8 @@ class RegistryParityTest {
 
     @Test
     void everyZabbixConfigIsWhatUpstreamsLoaderReads() throws Exception {
-        final List<String> stems = new ArrayList<>();
-        for (final File f : ResourceUtils.getPathFiles("zabbix-rules")) {
-            stems.add(f.getName().substring(0, f.getName().lastIndexOf('.')));
-        }
+        final List<String> stems = Precompiler.ruleNames("zabbix-rules");
         final List<Object> compiled = registry("zabbixConfigs");
-        assertFalse(compiled.isEmpty());
         assertEquals(MAPPER.valueToTree(ZabbixConfigs.loadConfigs("zabbix-rules", stems)), MAPPER.valueToTree(compiled));
     }
 
@@ -157,7 +151,6 @@ class RegistryParityTest {
 
         final List<LalRule> rules = registry("lalRules");
         final Properties props = properties("lal-v2-rules.txt");
-        assertFalse(rules.isEmpty());
         final Map<String, LalRule> byIdentity = new LinkedHashMap<>();
         rules.forEach(r -> byIdentity.put(r.getSource() + ":" + r.getLine() + ":" + r.getName(), r));
         assertEquals(rules.size(), byIdentity.size(), "two LAL rules share an identity");
@@ -189,7 +182,6 @@ class RegistryParityTest {
 
         final List<TalRule> rules = registry("talRules");
         final Properties props = properties("tal-v2-rules.txt");
-        assertFalse(rules.isEmpty());
         final Map<String, TalRule> byIdentity = new LinkedHashMap<>();
         rules.forEach(r -> byIdentity.put(r.getSource() + ":" + r.getLine() + ":" + r.getName(), r));
         assertEquals(rules.size(), byIdentity.size(), "two TAL rules share an identity");
@@ -249,14 +241,20 @@ class RegistryParityTest {
 
     @Test
     void theLayerExtensionsAreTheBundledFile() throws Exception {
-        final LayerExtensionLoader.LayerExtensionsFile file;
-        try (Reader reader = new InputStreamReader(
-            getClass().getClassLoader().getResourceAsStream("layer-extensions.yml"), StandardCharsets.UTF_8)) {
-            file = new Yaml().loadAs(reader, LayerExtensionLoader.LayerExtensionsFile.class);
+        // A rules overlay may exclude the file or leave it empty: no layer then.
+        List<?> layers = List.of();
+        final InputStream resource = getClass().getClassLoader().getResourceAsStream("layer-extensions.yml");
+        if (resource != null) {
+            try (Reader reader = new InputStreamReader(resource, StandardCharsets.UTF_8)) {
+                final LayerExtensionLoader.LayerExtensionsFile file =
+                    new Yaml().loadAs(reader, LayerExtensionLoader.LayerExtensionsFile.class);
+                if (file != null && file.getLayers() != null) {
+                    layers = file.getLayers();
+                }
+            }
         }
         final List<Object> compiled = registry("layerExtensions");
-        assertEquals(MAPPER.valueToTree(file.getLayers() == null ? List.of() : file.getLayers()),
-            MAPPER.valueToTree(compiled));
+        assertEquals(MAPPER.valueToTree(layers), MAPPER.valueToTree(compiled));
     }
 
     @Test
@@ -265,7 +263,9 @@ class RegistryParityTest {
         assertEquals(lines("oal-dispatcher-classes.txt"), sorted(names(registry("oalDispatchers"))));
         assertEquals(lines("oal-disabled-sources.txt"), sorted(registry("oalDisabledSources")));
         final List<OALDefine> defines = registry("oalDefines");
-        assertEquals(Arrays.stream(Precompiler.discoverOALDefines()).map(OALDefine::getConfigFile).sorted()
+        final OverlayInventory overlay = OverlayInventory.read(System.getProperty(OverlayInventory.PROPERTY));
+        assertEquals(Arrays.stream(Precompiler.effectiveOALDefines(Precompiler.discoverOALDefines(), overlay))
+                           .map(OALDefine::getConfigFile).sorted()
                            .collect(Collectors.toList()),
             defines.stream().map(OALDefine::getConfigFile).sorted().collect(Collectors.toList()));
         final Map<String, Class<?>> meters = registry("meterClasses");
@@ -276,7 +276,6 @@ class RegistryParityTest {
         assertEquals(expected.stream().sorted().collect(Collectors.toList()),
             meters.keySet().stream().sorted().collect(Collectors.toList()));
         meters.forEach((name, cls) -> assertEquals(name, cls.getName()));
-        assertNotNull(meters.values().iterator().next());
     }
 
     private static List<String> sorted(final List<String> values) {

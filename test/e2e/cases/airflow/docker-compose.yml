@@ -39,7 +39,6 @@ services:
       SW_HEALTH_CHECKER: default
       SW_STORAGE_BANYANDB_TARGETS: banyandb:17912
       SW_CONFIGURATION: none
-      SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES: "airflow/*"
     depends_on:
       banyandb:
         condition: service_healthy

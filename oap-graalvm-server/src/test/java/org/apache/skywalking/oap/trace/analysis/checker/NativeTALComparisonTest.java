@@ -75,6 +75,7 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.AliasRegistrar;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.SpanPairing;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.listener.SpanFilterListener;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.SwNativeTALSourceTypeProvider;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
@@ -99,7 +100,9 @@ import static org.mockito.Mockito.mock;
  */
 class NativeTALComparisonTest {
     private static final Path DISTRO = Path.of(System.getProperty("user.dir")).getParent();
-    private static final Path TAL_DIR = DISTRO.resolve("skywalking/oap-server/server-starter/src/main/resources/tal");
+    /** The TAL files the precompiler compiled: upstream's with the rules overlay merged in. */
+    private static final Path TAL_DIR = Path.of(System.getProperty("rules.staging.dir",
+        DISTRO.resolve("build-tools/precompiler/target/rule-resources").toString())).resolve("tal");
     private static final Gson GSON = new Gson();
 
     static Stream<Profile> profiles() {
@@ -253,7 +256,8 @@ class NativeTALComparisonTest {
             final TraceAnalyzerModuleConfig config = new TraceAnalyzerModuleConfig();
             config.setTalPath("tal");
             config.setTalFiles("");
-            config.setNativeTalFiles(setting("trace-analyzer", "nativeTalFiles"));
+            // Every compiled native file is active, in its order: the image fills the setting from the registry.
+            config.setNativeTalFiles(CompiledRules.activation().get("trace-analyzer.default.nativeTalFiles"));
             final SpanFilterListener.Factory factory = new SpanFilterListener.Factory(moduleManager, config);
             final List<TalDSL> rules = factory.compileNativeRules();
             assertEquals(config.nativeTalFiles().size(), TALConfigs.loadInOrder("tal", config.nativeTalFiles(),
