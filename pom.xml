@@ -437,11 +437,6 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
-                <artifactId>library-module-for-graalvm</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
                 <artifactId>library-server-for-graalvm</artifactId>
                 <version>${project.version}</version>
             </dependency>

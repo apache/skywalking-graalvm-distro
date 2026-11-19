@@ -18,138 +18,21 @@
 package org.apache.skywalking.oap.server.graalvm;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.skywalking.oap.server.core.version.Version;
 import org.apache.skywalking.oap.server.core.CoreModule;
-import org.apache.skywalking.oap.server.core.CoreModuleProvider;
 import org.apache.skywalking.oap.server.core.RunningMode;
-import org.apache.skywalking.oap.server.core.alarm.AlarmModule;
-import org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleProvider;
-import org.apache.skywalking.oap.server.core.cluster.ClusterModule;
-import org.apache.skywalking.oap.server.core.exporter.ExporterModule;
-import org.apache.skywalking.oap.server.core.query.QueryModule;
 import org.apache.skywalking.oap.server.core.status.ServerStatusService;
-import org.apache.skywalking.oap.server.core.storage.StorageModule;
+import org.apache.skywalking.oap.server.core.version.Version;
 import org.apache.skywalking.oap.server.library.module.ApplicationConfiguration;
-import org.apache.skywalking.oap.server.library.module.FixedModuleManager;
+import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.TerminalFriendlyTable;
 import org.apache.skywalking.oap.server.starter.config.ApplicationConfigLoader;
 
 import static org.apache.skywalking.oap.server.library.module.TerminalFriendlyTable.Row;
 
-// Storage
-import org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageProvider;
-// Cluster
-import org.apache.skywalking.oap.server.cluster.plugin.standalone.ClusterModuleStandaloneProvider;
-import org.apache.skywalking.oap.server.cluster.plugin.kubernetes.ClusterModuleKubernetesProvider;
-// Configuration
-import org.apache.skywalking.oap.server.configuration.api.ConfigurationModule;
-import org.apache.skywalking.oap.server.configuration.api.NoneConfigurationProvider;
-import org.apache.skywalking.oap.server.configuration.configmap.ConfigmapConfigurationProvider;
-// Telemetry
-import org.apache.skywalking.oap.server.telemetry.TelemetryModule;
-import org.apache.skywalking.oap.server.telemetry.prometheus.PrometheusTelemetryProvider;
-// Analyzers
-import org.apache.skywalking.oap.server.analyzer.module.AnalyzerModule;
-import org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleProvider;
-import org.apache.skywalking.oap.log.analyzer.v2.module.LogAnalyzerModule;
-import org.apache.skywalking.oap.log.analyzer.v2.provider.LogAnalyzerModuleProvider;
-import org.apache.skywalking.oap.trace.analyzer.v2.module.TraceAnalyzerModule;
-import org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleProvider;
-import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModule;
-import org.apache.skywalking.oap.server.analyzer.event.EventAnalyzerModuleProvider;
-import org.apache.skywalking.oap.analyzer.genai.module.GenAIAnalyzerModule;
-import org.apache.skywalking.oap.analyzer.genai.GenAIAnalyzerModuleProvider;
-import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationModule;
-import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationProvider;
-import org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationModule;
-import org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationProvider;
-import org.apache.skywalking.oap.server.ai.agent.conversation.NoneAIAgentConversationProvider;
-// Receivers
-import org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModule;
-import org.apache.skywalking.oap.server.receiver.sharing.server.SharingServerModuleProvider;
-import org.apache.skywalking.oap.server.receiver.register.module.RegisterModule;
-import org.apache.skywalking.oap.server.receiver.register.provider.RegisterModuleProvider;
-import org.apache.skywalking.oap.server.receiver.trace.module.TraceModule;
-import org.apache.skywalking.oap.server.receiver.trace.provider.TraceModuleProvider;
-import org.apache.skywalking.oap.server.receiver.jvm.module.JVMModule;
-import org.apache.skywalking.oap.server.receiver.jvm.provider.JVMModuleProvider;
-import org.apache.skywalking.oap.server.receiver.clr.module.CLRModule;
-import org.apache.skywalking.oap.server.receiver.clr.provider.CLRModuleProvider;
-import org.apache.skywalking.oap.server.receiver.profile.module.ProfileModule;
-import org.apache.skywalking.oap.server.receiver.profile.provider.ProfileModuleProvider;
-import org.apache.skywalking.oap.server.receiver.asyncprofiler.module.AsyncProfilerModule;
-import org.apache.skywalking.oap.server.receiver.asyncprofiler.provider.AsyncProfilerModuleProvider;
-import org.apache.skywalking.oap.server.receiver.pprof.module.PprofModule;
-import org.apache.skywalking.oap.server.receiver.pprof.provider.PprofModuleProvider;
-import org.apache.skywalking.oap.server.receiver.zabbix.module.ZabbixReceiverModule;
-import org.apache.skywalking.oap.server.receiver.zabbix.provider.ZabbixReceiverProvider;
-import org.apache.skywalking.aop.server.receiver.mesh.MeshReceiverModule;
-import org.apache.skywalking.aop.server.receiver.mesh.MeshReceiverProvider;
-import org.apache.skywalking.oap.server.receiver.envoy.EnvoyMetricReceiverModule;
-import org.apache.skywalking.oap.server.receiver.envoy.EnvoyMetricReceiverProvider;
-import org.apache.skywalking.oap.server.receiver.meter.module.MeterReceiverModule;
-import org.apache.skywalking.oap.server.receiver.meter.provider.MeterReceiverProvider;
-import org.apache.skywalking.oap.server.receiver.otel.OtelMetricReceiverModule;
-import org.apache.skywalking.oap.server.receiver.otel.OtelMetricReceiverProvider;
-import org.apache.skywalking.oap.server.receiver.zipkin.ZipkinReceiverModule;
-import org.apache.skywalking.oap.server.receiver.zipkin.ZipkinReceiverProvider;
-import org.apache.skywalking.oap.server.receiver.browser.module.BrowserModule;
-import org.apache.skywalking.oap.server.receiver.browser.provider.BrowserModuleProvider;
-import org.apache.skywalking.oap.server.receiver.log.module.LogModule;
-import org.apache.skywalking.oap.server.receiver.log.provider.LogModuleProvider;
-import org.apache.skywalking.oap.server.receiver.event.EventModule;
-import org.apache.skywalking.oap.server.receiver.event.EventModuleProvider;
-import org.apache.skywalking.oap.server.receiver.ebpf.module.EBPFReceiverModule;
-import org.apache.skywalking.oap.server.receiver.ebpf.provider.EBPFReceiverProvider;
-import org.apache.skywalking.oap.server.receiver.telegraf.module.TelegrafReceiverModule;
-import org.apache.skywalking.oap.server.receiver.telegraf.provider.TelegrafReceiverProvider;
-import org.apache.skywalking.oap.server.receiver.aws.firehose.AWSFirehoseReceiverModule;
-import org.apache.skywalking.oap.server.receiver.aws.firehose.AWSFirehoseReceiverModuleProvider;
-import org.apache.skywalking.oap.server.receiver.configuration.discovery.ConfigurationDiscoveryModule;
-import org.apache.skywalking.oap.server.receiver.configuration.discovery.ConfigurationDiscoveryProvider;
-// Fetchers
-import org.apache.skywalking.oap.server.analyzer.agent.kafka.module.KafkaFetcherModule;
-import org.apache.skywalking.oap.server.analyzer.agent.kafka.provider.KafkaFetcherProvider;
-import org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherModule;
-import org.apache.skywalking.oap.server.fetcher.cilium.CiliumFetcherProvider;
-// Query
-import org.apache.skywalking.oap.query.graphql.GraphQLQueryProvider;
-import org.apache.skywalking.oap.query.server.QueryServerModule;
-import org.apache.skywalking.oap.query.server.QueryServerModuleProvider;
-import org.apache.skywalking.oap.query.zipkin.ZipkinQueryModule;
-import org.apache.skywalking.oap.query.zipkin.ZipkinQueryProvider;
-import org.apache.skywalking.oap.query.promql.PromQLModule;
-import org.apache.skywalking.oap.query.promql.PromQLProvider;
-import org.apache.skywalking.oap.query.logql.LogQLModule;
-import org.apache.skywalking.oap.query.logql.LogQLProvider;
-import org.apache.skywalking.oap.query.traceql.TraceQLModule;
-import org.apache.skywalking.oap.query.traceql.TraceQLProvider;
-// Admin server family (11.0.0+)
-import org.apache.skywalking.oap.server.admin.server.module.AdminServerModule;
-import org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleProvider;
-import org.apache.skywalking.oap.server.admin.status.StatusModule;
-import org.apache.skywalking.oap.server.admin.status.StatusModuleProvider;
-import org.apache.skywalking.oap.server.admin.inspect.InspectModule;
-import org.apache.skywalking.oap.server.admin.inspect.InspectModuleProvider;
-import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModule;
-import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleProvider;
-import org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModule;
-import org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModuleProvider;
-// GraalVM stub for the unsupported admin feature (runtime-rule) + read-only rule catalog
-import org.apache.skywalking.oap.server.graalvm.admin.UnsupportedAdminFeatureModule;
-import org.apache.skywalking.oap.server.graalvm.admin.UnsupportedAdminFeatureModuleProvider;
-// Exporter
-import org.apache.skywalking.oap.server.exporter.provider.ExporterProvider;
-// Health Checker
-import org.apache.skywalking.oap.server.health.checker.module.HealthCheckerModule;
-import org.apache.skywalking.oap.server.health.checker.provider.HealthCheckerProvider;
-// AI Pipeline
-import org.apache.skywalking.oap.server.ai.pipeline.AIPipelineModule;
-import org.apache.skywalking.oap.server.ai.pipeline.AIPipelineProvider;
-
 /**
- * GraalVM-optimized OAP server startup with fixed module wiring.
- * No ServiceLoader/SPI discovery — all modules and providers are directly constructed.
+ * Boots as upstream {@code OAPServerBootstrap} does: {@link ModuleManager} loads the modules {@code application.yml}
+ * names, with the providers their selectors pick, found through the module SPI (native image registers the providers
+ * at build time). The distro adds the compiled-rule checks around loading the configuration.
  */
 @Slf4j
 public class GraalVMOAPServerStartUp {
@@ -171,7 +54,7 @@ public class GraalVMOAPServerStartUp {
     }
 
     public static void start() {
-        FixedModuleManager manager = new FixedModuleManager("SkyWalking GraalVM OAP");
+        ModuleManager manager = new ModuleManager("SkyWalking GraalVM OAP");
         final TerminalFriendlyTable bootingParameters = manager.getBootingParameters();
 
         String mode = System.getProperty("mode");
@@ -188,11 +71,7 @@ public class GraalVMOAPServerStartUp {
             ApplicationConfiguration configuration = configLoader.load();
             CompiledRuleActivation.apply(configuration);
 
-            // Register all modules with their fixed providers
-            registerAllModules(manager, configuration);
-
-            // Initialize (prepare -> start -> notifyAfterCompleted)
-            manager.initFixed(configuration);
+            manager.init(configuration);
 
             manager.find(CoreModule.NAME)
                    .provider()
@@ -209,131 +88,5 @@ public class GraalVMOAPServerStartUp {
         } finally {
             log.info(bootingParameters.toString());
         }
-    }
-
-    private static void registerAllModules(FixedModuleManager manager, ApplicationConfiguration configuration) {
-        // Core
-        manager.register(new CoreModule(), new CoreModuleProvider());
-        // Cluster: standalone or kubernetes, selected by config
-        ApplicationConfiguration.ModuleConfiguration clusterConfig = configuration.getModuleConfiguration("cluster");
-        if (clusterConfig != null && clusterConfig.has("kubernetes")) {
-            manager.register(new ClusterModule(), new ClusterModuleKubernetesProvider());
-        } else {
-            manager.register(new ClusterModule(), new ClusterModuleStandaloneProvider());
-        }
-        // Storage: BanyanDB
-        manager.register(new StorageModule(), new BanyanDBStorageProvider());
-        // Configuration: Kubernetes ConfigMap or None
-        ApplicationConfiguration.ModuleConfiguration configConfig = configuration.getModuleConfiguration("configuration");
-        if (configConfig != null && configConfig.has("k8s-configmap")) {
-            manager.register(new ConfigurationModule(), new ConfigmapConfigurationProvider());
-        } else {
-            manager.register(new ConfigurationModule(), new NoneConfigurationProvider());
-        }
-        // Telemetry: Prometheus
-        manager.register(new TelemetryModule(), new PrometheusTelemetryProvider());
-
-        // Analyzers
-        manager.register(new AnalyzerModule(), new AnalyzerModuleProvider());
-        manager.register(new LogAnalyzerModule(), new LogAnalyzerModuleProvider());
-        // Trace analyzer (TAL): `selector: -` removes it, which fails the boot while the native trace receiver or the
-        // Kafka fetcher is loaded, as both require it; with neither, the OTLP receiver stores spans unanalyzed.
-        if (configuration.has("trace-analyzer")) {
-            manager.register(new TraceAnalyzerModule(), new TraceAnalyzerModuleProvider());
-        }
-        manager.register(new EventAnalyzerModule(), new EventAnalyzerModuleProvider());
-        manager.register(new GenAIAnalyzerModule(), new GenAIAnalyzerModuleProvider());
-        // AI evaluation (optional, disabled by default with selector: -)
-        if (configuration.has("ai-evaluation")) {
-            manager.register(new AIEvaluationModule(), new AIEvaluationProvider());
-        }
-        // AI agent conversations: always registered because the GraphQL query module requires it,
-        // so the `none` provider is how the feature is turned off.
-        ApplicationConfiguration.ModuleConfiguration conversationConfig =
-            configuration.getModuleConfiguration("ai-agent-conversation");
-        if (conversationConfig != null && conversationConfig.has("none")) {
-            manager.register(new AIAgentConversationModule(), new NoneAIAgentConversationProvider());
-        } else {
-            manager.register(new AIAgentConversationModule(), new AIAgentConversationProvider());
-        }
-
-        // Receivers
-        manager.register(new SharingServerModule(), new SharingServerModuleProvider());
-        manager.register(new RegisterModule(), new RegisterModuleProvider());
-        manager.register(new TraceModule(), new TraceModuleProvider());
-        manager.register(new JVMModule(), new JVMModuleProvider());
-        manager.register(new CLRModule(), new CLRModuleProvider());
-        manager.register(new ProfileModule(), new ProfileModuleProvider());
-        manager.register(new AsyncProfilerModule(), new AsyncProfilerModuleProvider());
-        manager.register(new PprofModule(), new PprofModuleProvider());
-        if (configuration.has("receiver-zabbix")) {
-            manager.register(new ZabbixReceiverModule(), new ZabbixReceiverProvider());
-        }
-        manager.register(new MeshReceiverModule(), new MeshReceiverProvider());
-        manager.register(new EnvoyMetricReceiverModule(), new EnvoyMetricReceiverProvider());
-        manager.register(new MeterReceiverModule(), new MeterReceiverProvider());
-        manager.register(new OtelMetricReceiverModule(), new OtelMetricReceiverProvider());
-        if (configuration.has("receiver-zipkin")) {
-            manager.register(new ZipkinReceiverModule(), new ZipkinReceiverProvider());
-        }
-        manager.register(new BrowserModule(), new BrowserModuleProvider());
-        manager.register(new LogModule(), new LogModuleProvider());
-        manager.register(new EventModule(), new EventModuleProvider());
-        manager.register(new EBPFReceiverModule(), new EBPFReceiverProvider());
-        manager.register(new TelegrafReceiverModule(), new TelegrafReceiverProvider());
-        manager.register(new AWSFirehoseReceiverModule(), new AWSFirehoseReceiverModuleProvider());
-        manager.register(new ConfigurationDiscoveryModule(), new ConfigurationDiscoveryProvider());
-
-        // Fetchers (optional, disabled by default with selector: -)
-        if (configuration.has("kafka-fetcher")) {
-            manager.register(new KafkaFetcherModule(), new KafkaFetcherProvider());
-        }
-        if (configuration.has("cilium-fetcher")) {
-            manager.register(new CiliumFetcherModule(), new CiliumFetcherProvider());
-        }
-
-        // Query: GraphQL, the AI agent conversation API and the status TTL route mount on query-server, which serves
-        // them on the core REST server unless its restPort is set.
-        manager.register(new QueryServerModule(), new QueryServerModuleProvider());
-        manager.register(new QueryModule(), new GraphQLQueryProvider());
-        if (configuration.has("query-zipkin")) {
-            manager.register(new ZipkinQueryModule(), new ZipkinQueryProvider());
-        }
-        manager.register(new PromQLModule(), new PromQLProvider());
-        manager.register(new LogQLModule(), new LogQLProvider());
-        if (configuration.has("traceQL")) {
-            manager.register(new TraceQLModule(), new TraceQLProvider());
-        }
-        // Alarm
-        manager.register(new AlarmModule(), new AlarmModuleProvider());
-
-        // Exporter (optional, disabled by default with selector: -)
-        if (configuration.has("exporter")) {
-            manager.register(new ExporterModule(), new ExporterProvider());
-        }
-
-        // Health Checker
-        manager.register(new HealthCheckerModule(), new HealthCheckerProvider());
-
-        // AI Pipeline
-        manager.register(new AIPipelineModule(), new AIPipelineProvider());
-
-        // Admin server family (11.0.0+). admin-server hosts the operator REST surface
-        // (default :17128) + admin-internal gRPC bus (:17129). The new Horizon UI loads
-        // dashboard templates via ui-management, so the host must be available.
-        //   - status        : /status/*, /debugging/* (relocated from status-query-plugin)
-        //   - inspect        : /inspect/* metric catalog + entity enumeration (SWIP-14)
-        //   - ui-management  : /ui-management/* dashboard template CRUD (Horizon UI needs this)
-        // dsl-debugging IS wired: its probes are compiled into every rule class by the
-        // precompiler, and at runtime it only flips gates and reads recorders. runtime-rule is
-        // NOT wired — hot-update requires runtime Javassist class generation, impossible under
-        // a closed-world native image; its mutating endpoints get a friendly 501 from
-        // UnsupportedAdminFeatureModule, which also serves the read-only rule catalog.
-        manager.register(new AdminServerModule(), new AdminServerModuleProvider());
-        manager.register(new DSLDebuggingModule(), new DSLDebuggingModuleProvider());
-        manager.register(new StatusModule(), new StatusModuleProvider());
-        manager.register(new InspectModule(), new InspectModuleProvider());
-        manager.register(new UIManagementModule(), new UIManagementModuleProvider());
-        manager.register(new UnsupportedAdminFeatureModule(), new UnsupportedAdminFeatureModuleProvider());
     }
 }

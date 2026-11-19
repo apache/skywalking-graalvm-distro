@@ -1,8 +1,8 @@
 # Supported Features
 
 This distro packages the Apache SkyWalking OAP server as a GraalVM native image with a
-**fixed module set**. All modules and providers are selected at build time — there is no
-runtime SPI discovery or dynamic module loading.
+**built-in module set**: the modules and providers are chosen at build time, and only those are in the
+image. As upstream, `application.yml` decides which of them run and picks each one's provider.
 
 ## What's Included
 
@@ -87,7 +87,7 @@ All receivers are included:
 | Module | Status |
 |--------|--------|
 | Alarm | Included (webhook, gRPC hooks) |
-| Telemetry | Prometheus (self-monitoring metrics on port 1234) |
+| Telemetry | Prometheus (self-monitoring metrics on port 1234), or none |
 | Exporter | Included (disabled by default) |
 | Health Checker | Included |
 | AI Pipeline | Included (baseline prediction) |
@@ -156,7 +156,7 @@ distribution if you need hot-update.
 | Storage | ES, BanyanDB, H2, MySQL, PG, ... | BanyanDB only |
 | Cluster | ZK, K8s, Consul, Etcd, Nacos | Standalone, K8s |
 | Config | All dynamic config providers | K8s ConfigMap or none |
-| Module loading | SPI discovery at runtime | Fixed at build time |
+| Module loading | SPI discovery of the providers on the classpath, selected by `application.yml` | Same, over the providers built into the image |
 | DSL rules | Hot-update + live debugger | Live debugger on bundled rules; read-only catalogs; no hot-update |
 | TLS/SSL | gRPC TLS on OpenSSL (`netty_tcnative`) | Same settings; gRPC TLS on the JDK TLS provider |
 

@@ -52,10 +52,11 @@ cd skywalking && git log --oneline <old-commit>..<new-commit>
 ### Module wiring (if new modules added)
 
 - [ ] Add dependency to root `pom.xml` `<dependencyManagement>`
-- [ ] Add dependency to `oap-graalvm-server/pom.xml` `<dependencies>`
-- [ ] Register module+provider in `GraalVMOAPServerStartUp.java`
+- [ ] Add dependency to `oap-graalvm-server/pom.xml` `<dependencies>` (the boot finds it through the module SPI, as
+      upstream; nothing to register in code)
 - [ ] Add `(moduleName, providerName)` pair to `AcceptedModules.java`
-- [ ] Add module config section to `application.yml`
+- [ ] Add module config section to `application.yml` (`ApplicationYmlModulesTest` requires every module on the
+      classpath to have one, listing exactly its providers)
 
 ### Config handling (if new ModuleConfig classes)
 
@@ -176,8 +177,9 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
 
 ## 7. Common Pitfalls
 
-- **New module = three lists**: `GraalVMOAPServerStartUp` registration, `provider-inventory.properties`, AND
-  `build-tools/build-common/.../AcceptedModules.java`. The config-generator discovers providers only through
+- **New module = three places**: the `oap-graalvm-server` dependency plus its `application.yml` section,
+  `provider-inventory.properties`, AND `build-tools/build-common/.../AcceptedModules.java`. The config-generator
+  discovers providers only through
   `AcceptedModules`, so a module missing there gets no `copyTo<Config>` branch in `YamlConfigLoaderUtils` and the
   OAP dies at boot with `Unknown config type` — after the JVM unit tests passed.
 - **Always `./mvnw clean install` before a native build after a submodule bump**: a resumed build
@@ -275,7 +277,8 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   ships only SPI implementations, no `ModuleDefine`, is invisible to `ImmigrationScopeTest`. `ios-analyzer`
   (iOS `SpanListener`s, 11.0.0) was never bundled, and the iOS MAL/LAL rules kept the gap hidden until the
   `ios` e2e case was adopted in 11.1. Anything missing must be policy-excluded (cluster/configuration/storage
-  plugins, `runtime-rule`) or added.
+  plugins, `runtime-rule`) or added. `server-starter-for-graalvm` excludes all of `server-starter`'s dependencies,
+  so a policy-excluded plugin stays off the classpath, where the module SPI would load it.
 - **Generated TAL classes hold function objects** (since SWIP-17, 11.2): upstream's `TALClassGenerator.compile` sets
   private `_fnN` fields from a `TALFunctionRegistry` after `newInstance()`, so a pre-compiled class loaded by name has
   them null and every rule NPEs on its first function call. The precompiler records each field's registry key (the

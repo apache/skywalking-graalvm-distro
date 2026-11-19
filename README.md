@@ -13,7 +13,7 @@ native binary with the full OAP feature set. No upstream source modifications re
 
 - **Native binary** instead of JVM — instant startup, ~512MB memory footprint
 - **BanyanDB only** — the sole supported storage backend
-- **Fixed module set** — modules selected at build time, no SPI discovery
+- **Built-in module set** — the modules and providers are chosen at build time; `application.yml` turns each on or off (a `-` selector, e.g. `SW_RECEIVER_PPROF=-`) and picks its provider, as upstream
 - **Pre-compiled DSL** — all DSL rules compiled at build time; the rule catalogs and the live debugger work, runtime hot-update does not
 
 All existing SkyWalking agents, UI, and tooling work unchanged.

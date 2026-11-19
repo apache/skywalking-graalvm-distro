@@ -16,7 +16,7 @@ are identical — the differences are in how the server is built and deployed:
 
 - **Native binary** instead of JVM — instant startup, ~512MB memory
 - **BanyanDB only** — the sole supported storage backend
-- **Fixed module set** — modules selected at build time, no SPI discovery
+- **Built-in module set** — the modules and providers are chosen at build time; `application.yml` turns each on or off (a `-` selector, e.g. `SW_RECEIVER_PPROF=-`) and picks its provider, as upstream
 - **Pre-compiled DSL** — OAL, MAL, LAL, and Hierarchy rules compiled at build time
 
 Official documentation is published at [skywalking.apache.org/docs](https://skywalking.apache.org/docs/#ExperimentalGraalVMDistro).

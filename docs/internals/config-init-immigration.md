@@ -7,9 +7,11 @@
 reflection pattern is problematic for GraalVM native image — every config field
 would require `reflect-config.json` entries, and `setAccessible()` is restricted.
 
-Since our module/provider set is fixed (37 modules, see distro-policy.md), we
-can generate hardcoded field-setting code at build time that eliminates all
-config-related reflection.
+Since the image ships a known module/provider set (the accepted providers, see
+distro-policy.md), we can generate hardcoded field-setting code at build time that
+eliminates field reflection in config loading. Upstream's `ModuleDefine.prepare` still
+creates each config object through its no-arg constructor reflectively; the precompiler
+registers those constructors from `module-config-classes.txt`.
 
 ---
 
@@ -110,7 +112,7 @@ public class YamlConfigLoaderUtils {
 
 ### Input
 - Classpath with all SkyWalking module JARs (same dependencies as `oap-graalvm-server`)
-- Provider class list — derived from the fixed module table in `GraalVMOAPServerStartUp`
+- Provider class list — the `ModuleProvider` SPI entries on the classpath that `AcceptedModules` (build-common) accepts
 - Extra config class list — BanyanDB nested configs used by `BanyanDBConfigLoader`
 
 ### Process
@@ -128,20 +130,23 @@ config classes with `@Setter` added. Original upstream JARs are forced to
 ### Output
 - `oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java`
   (same-FQCN replacement)
+- `build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt` — the config classes, from which the
+  precompiler generates their reflection metadata (`ModuleDefine.prepare` instantiates them reflectively)
 
 ### Running the generator
 ```bash
 JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
   mvn -pl build-tools/config-generator exec:java \
-  -Dexec.args="oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java"
+  -Dexec.args="oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt"
 ```
 
 ---
 
 ## Config Classes Inventory
 
-37 modules registered in `GraalVMOAPServerStartUp`. 1 (`AlarmModule`) has null
-ConfigCreator. The rest need coverage.
+The accepted providers (`AcceptedModules`, matching the module SPI entries on the classpath — see
+`provider-inventory.properties` and `ApplicationYmlModulesTest`). Providers whose `newConfigCreator()` returns null
+need no coverage.
 
 ### Provider Config Classes
 
@@ -246,7 +251,7 @@ The original `YamlConfigLoaderUtils.class` is excluded from the `library-util-fo
 # Run generator
 JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
   mvn -pl build-tools/config-generator exec:java \
-  -Dexec.args="oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java"
+  -Dexec.args="oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt"
 
 # Full build (compile + test + package)
 JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro

@@ -20,14 +20,11 @@ package org.apache.skywalking.oap.server.graalvm.admin;
 import org.apache.skywalking.oap.server.library.module.ModuleDefine;
 
 /**
- * GraalVM-distro-only module that serves a friendly "not available" response for the
- * admin features this distro cannot support in a native image: runtime-rule hot-update
- * and the DSL live debugger. Both rely on runtime Javassist class generation, which is
- * impossible under the closed-world assumption of a native image.
- *
- * <p>Without this module the Horizon UI would hit connection-refused / 404 on the
- * {@code /dsl-debugging/*} and {@code /runtime/*} endpoints. The stub mounts those routes
- * on the admin-server HTTP host and returns 501 with an explanatory payload instead.
+ * GraalVM-distro-only stand-in for upstream's runtime-rule module, whose hot-update relies on
+ * runtime Javassist class generation, impossible under the closed-world assumption of a native
+ * image. On the admin-server HTTP host it answers the hot-update routes with 501 and an
+ * explanatory payload, so the Horizon UI gets no 404, and serves the read-only catalog of the
+ * bundled rules.
  */
 public class UnsupportedAdminFeatureModule extends ModuleDefine {
     public static final String NAME = "graalvm-unsupported-admin";
