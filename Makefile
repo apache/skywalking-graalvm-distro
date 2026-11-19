@@ -117,10 +117,7 @@ javadoc:
 # Phase 2: package oap-graalvm-server and oap-graalvm-native with assembly.
 #           -am (also-make) automatically builds build-common, precompiler,
 #           and other dependencies in the reactor.
-# The exploded JVM distribution's compiled-rules/ is removed first: the assembly adds to an existing directory, so the
-# rule files another build compiled would stay in it.
 build-distro:
-	rm -rf oap-graalvm-server/target/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro/compiled-rules
 	$(MVN) clean install -pl build-tools/precompiler,oap-libs-for-graalvm -am -DskipTests $(HOST_MVN_ARGS)
 	$(MVN) install -f oap-libs-for-graalvm -DskipTests $(HOST_MVN_ARGS)
 	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -am -DskipTests $(HOST_MVN_ARGS)

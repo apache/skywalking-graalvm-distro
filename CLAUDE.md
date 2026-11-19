@@ -14,7 +14,7 @@
 ## Key Principles
 1. **Minimize upstream changes.** SkyWalking is a submodule. Changes to it require separate upstream PRs and syncing back.
 2. **Build-time class export.** All runtime code generation (OAL/MAL/LAL/TAL/Hierarchy via ANTLR4 + Javassist) runs at build time. Export `.class` files into native-image classpath.
-3. **Fixed module wiring.** Module/provider selection is hardcoded in this distro — no SPI discovery. See docs/distro-policy.md for the full module table.
+3. **Shipped module set, booted as upstream.** The build decides which modules/providers the image carries (only theirs are on the classpath: `server-starter-for-graalvm` excludes all of `server-starter`'s dependencies); at boot upstream's `ModuleManager` loads the ones `application.yml` names through the module SPI, which native image supports. See docs/distro-policy.md for the full module table.
 4. **JDK 25, GraalVM 25.5.** Already compiles and runs.
 5. **Minimal comments.** Comment only what the code can't say for itself — a non-obvious invariant, the *why* behind a non-obvious choice, or cross-cutting context (e.g. "must match upstream X"). Don't restate the code or annotate the obvious. When a same-FQCN replacement diverges from upstream, one line on *why* is enough.
 

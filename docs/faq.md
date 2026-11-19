@@ -9,7 +9,7 @@ native image. The observability features are identical. The differences are:
 
 - **Native binary** instead of JVM — faster startup, lower memory
 - **BanyanDB only** — no Elasticsearch/H2/MySQL/PostgreSQL support
-- **Fixed module set** — modules are selected at build time, not via SPI
+- **Built-in module set** — the modules and providers are chosen at build time; `application.yml` turns each on or off (a `-` selector, e.g. `SW_RECEIVER_PPROF=-`) and picks its provider, as upstream
 - **No runtime code generation** — all DSL compilation happens at build time
 
 Your existing SkyWalking agents, UI, and tooling work unchanged.

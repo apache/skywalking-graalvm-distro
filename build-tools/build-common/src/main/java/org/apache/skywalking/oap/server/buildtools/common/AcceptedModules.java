@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Single source of truth for accepted module + provider pairs in this distro.
- * Derived from GraalVMOAPServerStartUp.registerAllModules().
+ * Single source of truth for accepted module + provider pairs in this distro: the upstream providers it ships, which
+ * the boot finds through the module SPI and {@code application.yml} selects among.
  *
  * <p>When a new module/provider is added to the distro, add its (moduleName, providerName)
  * pair here. Build-time tools (config-generator, precompiler) use this list to discover
@@ -51,6 +51,7 @@ public final class AcceptedModules {
         new ModuleProviderPair("configuration", "none"),
         new ModuleProviderPair("configuration", "k8s-configmap"),
         // Telemetry
+        new ModuleProviderPair("telemetry", "none"),
         new ModuleProviderPair("telemetry", "prometheus"),
         // Analyzers
         new ModuleProviderPair("agent-analyzer", "default"),

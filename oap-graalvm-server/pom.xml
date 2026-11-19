@@ -29,7 +29,7 @@
 
     <artifactId>oap-graalvm-server</artifactId>
     <name>OAP GraalVM Server</name>
-    <description>SkyWalking OAP server with fixed module wiring for GraalVM (JVM mode)</description>
+    <description>SkyWalking OAP server for GraalVM (JVM mode)</description>
 
     <!--
       == Provided-scope overrides ==
@@ -39,12 +39,6 @@
     -->
     <dependencyManagement>
         <dependencies>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>library-module</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>library-server</artifactId>
@@ -136,10 +130,6 @@
         <!-- Repackaged OAP libs with GraalVM-compatible replacements baked in -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>library-module-for-graalvm</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.skywalking</groupId>
             <artifactId>library-server-for-graalvm</artifactId>
         </dependency>
         <dependency>
@@ -217,6 +207,10 @@
         </dependency>
 
         <!-- Core (non-repackaged) -->
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>library-module</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>receiver-proto</artifactId>
@@ -476,6 +470,7 @@
                     <systemPropertyVariables>
                         <rules.staging.dir>${rules.staging.dir}</rules.staging.dir>
                         <rules.overlay.inventory>${rules.state.dir}/overlay-inventory.txt</rules.overlay.inventory>
+                        <runtime.classpath.file>${project.build.directory}/runtime-classpath.txt</runtime.classpath.file>
                     </systemPropertyVariables>
                     <argLine>
                         --add-opens java.base/java.lang=ALL-UNNAMED
@@ -485,6 +480,26 @@
                         -Dnet.bytebuddy.experimental=true
                     </argLine>
                 </configuration>
+            </plugin>
+            <!-- ApplicationYmlModulesTest resolves the module SPI over the runtime classpath, which the distributions
+                 ship; the test classpath also has the provided jars, which would mask a missing one. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.7.0</version>
+                <executions>
+                    <execution>
+                        <id>runtime-classpath</id>
+                        <phase>generate-test-resources</phase>
+                        <goals>
+                            <goal>build-classpath</goal>
+                        </goals>
+                        <configuration>
+                            <includeScope>runtime</includeScope>
+                            <outputFile>${project.build.directory}/runtime-classpath.txt</outputFile>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <!-- NativeTALComparisonTest replays the segments of upstream's native-trace checker; its two fixture files
                  are copied from the submodule at build time, so the corpus follows upstream. -->
@@ -532,12 +547,54 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- Generate VERSION file with pom version + git commit ID -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
+                    <!-- The assembly adds to an existing directory: right before it (same phase, this plugin comes
+                         first), clear the exploded distribution except the logs of a previous run, or another build's
+                         jars and rule files stay in it, and the boot's module SPI would find a stale jar's providers. -->
+                    <execution>
+                        <id>clear-exploded-distribution</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target xmlns:unless="ant:unless">
+                                <!-- Without an assembly to rebuild it, the previous distribution stays. Not so for
+                                     assembly.runOnlyAtExecutionRoot: whether this module is the root is not visible here,
+                                     and a stale jar the assembly then keeps is worse than a distribution not rebuilt. -->
+                                <condition property="sw.exploded.distribution.kept">
+                                    <or>
+                                        <istrue value="${assembly.skipAssembly}"/>
+                                        <istrue value="${assembly.dryRun}"/>
+                                    </or>
+                                </condition>
+                                <fail unless:set="sw.exploded.distribution.kept"
+                                      message="target/oap-graalvm-jvm-distro or its oap-graalvm-jvm-distro is a symlink; refusing to clear it">
+                                    <condition>
+                                        <or>
+                                            <isfileselected file="${project.build.directory}/oap-graalvm-jvm-distro">
+                                                <symlink/>
+                                            </isfileselected>
+                                            <isfileselected file="${project.build.directory}/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro">
+                                                <symlink/>
+                                            </isfileselected>
+                                        </or>
+                                    </condition>
+                                </fail>
+                                <!-- A symlinked directory inside (e.g. config/) is removed as a link, never followed. -->
+                                <delete unless:set="sw.exploded.distribution.kept" includeemptydirs="true"
+                                        removeNotFollowedSymlinks="true">
+                                    <fileset dir="${project.build.directory}/oap-graalvm-jvm-distro/oap-graalvm-jvm-distro"
+                                             excludes="logs/**" erroronmissingdir="false" followsymlinks="false"/>
+                                </delete>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <!-- Generate VERSION file with pom version + git commit ID -->
                     <execution>
                         <id>generate-version-file</id>
                         <phase>prepare-package</phase>

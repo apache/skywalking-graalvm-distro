@@ -30,10 +30,9 @@ import org.apache.skywalking.oap.server.library.module.ServiceNotProvidedExcepti
 /**
  * Registers {@link UnsupportedAdminFeatureHandler} (501 for the mutating runtime-rule routes)
  * and {@link BundledRuleCatalogHandler} (read-only MAL/LAL catalog) on the admin-server HTTP
- * host. The
- * module carries no configuration ({@link #newConfigCreator()} returns null), so it needs
- * no {@code application.yml} section and no config-generator entry — it is wired directly
- * by {@code GraalVMOAPServerStartUp}.
+ * host. Registered through the module SPI ({@code META-INF/services}) and loaded when
+ * {@code application.yml} names {@code graalvm-unsupported-admin}, like any module; it carries
+ * no configuration ({@link #newConfigCreator()} returns null), so no config-generator entry.
  */
 public class UnsupportedAdminFeatureModuleProvider extends ModuleProvider {
 

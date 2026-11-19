@@ -32,9 +32,18 @@
     <description>Repackaged server-starter with version.properties excluded (provided by oap-graalvm-server)</description>
 
     <dependencies>
+        <!-- server-starter depends on every upstream plugin, incl. the storage, cluster and configuration providers
+             this distro does not ship; the boot finds providers through the module SPI, so none of them may reach the
+             classpath. oap-graalvm-server declares the modules the distro ships. -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>server-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 

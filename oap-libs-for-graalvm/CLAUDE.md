@@ -18,7 +18,7 @@ Two test-based mechanisms detect upstream drift:
 
 1. **`ReplacementClassStalenessTest`** — SHA-256 tracks upstream `.java` source files.
    Hashes recorded in `oap-graalvm-server/src/test/resources/replacement-source-sha256.properties`.
-   Tracks every replacement's upstream source (28 files, see "Tracking Gaps" below).
+   Tracks every replacement's upstream source (27 files, see "Tracking Gaps" below).
 
 2. **`PrecompiledYamlStalenessTest`** — SHA-256 tracks ~116 YAML rule files (MAL, LAL, TAL, ...) consumed
    by the precompiler. Hashes recorded in `oap-graalvm-server/src/test/resources/precompiled-yaml-sha256.properties`.
@@ -95,12 +95,6 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 |---|---|---|---|
 | `AnalyzerModuleConfig` | `agent-analyzer/.../provider/AnalyzerModuleConfig.java` | Added `@Setter` at class level | **Yes** |
 
-### library-module-for-graalvm (1 class)
-
-| Replacement Class | Upstream Source | Change | Staleness Tracked |
-|---|---|---|---|
-| `ModuleDefine` | `library-module/.../module/ModuleDefine.java` | Added `prepare()` overload for direct provider wiring | **Yes** |
-
 ### library-util-for-graalvm (1 class)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
@@ -126,11 +120,13 @@ Also uses shade plugin to exclude `YamlConfigLoaderUtils`, `ResourceUtils`,
 ### server-starter-for-graalvm (0 classes, resource-only)
 
 Repackages upstream `server-starter` with `version.properties` excluded (distro
-generates its own from git).
+generates its own from git). Its `server-starter` dependency excludes `*:*`: the starter
+depends on every upstream plugin, and the boot loads modules through the module SPI, so a
+plugin the distro does not ship must not reach the classpath.
 
 ## Tracking Gaps
 
-All **28 replacement source files** are tracked in `replacement-source-sha256.properties`.
+All **27 replacement source files** are tracked in `replacement-source-sha256.properties`.
 The v2 upstream migration removed many v1 files; remaining replacements cover:
 
 - server-core-for-graalvm: 8 files (OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem, CoreModuleConfig, HierarchyDefinitionService, HierarchyService, LayerExtensionLoader)
@@ -139,7 +135,6 @@ The v2 upstream migration removed many v1 files; remaining replacements cover:
 - trace-analyzer-for-graalvm: 2 files (TalDSL, TALConfigs)
 - zabbix-receiver-for-graalvm: 1 file (ZabbixConfigs)
 - agent-analyzer-for-graalvm: 1 file (AnalyzerModuleConfig)
-- library-module-for-graalvm: 1 file (ModuleDefine)
 - library-util-for-graalvm: 1 file (VirtualThreads); `YamlConfigLoaderUtils` lives in `oap-graalvm-server`
 - Config-only @Setter additions: 6 files
 

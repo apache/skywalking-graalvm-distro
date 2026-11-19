@@ -16,12 +16,8 @@
 # =============================================================================
 # SkyWalking GraalVM Distro — application.yml
 #
-# Fixed provider selection:
-#   cluster     -> kubernetes
-#   storage     -> banyandb
-#   configuration -> k8s-configmap
-#   telemetry   -> prometheus
-#   query       -> graphql
+# The modules and providers below are the ones the image ships. As upstream, the OAP loads the modules this file names,
+# each selector picks the provider, and a module whose selector is "-" (e.g. SW_RECEIVER_PPROF=-) is not loaded.
 #
 # Rules are compiled into the image, and every compiled rule file is active: the settings that select rule files
 # (enabledOtelMetricsRules, meterAnalyzerActiveFiles, malFiles, lalFiles, talFiles, nativeTalFiles,
@@ -143,7 +139,8 @@ ai-evaluation:
 
 ai-agent-conversation:
   selector: ${SW_AI_AGENT_CONVERSATION:default}
-  # The GraphQL query module requires this module, so `-` can't remove it; `none` turns it off.
+  # The GraphQL query module requires this module, so `-` removes it only together with `query`; `none` turns the
+  # conversations off while GraphQL stays available.
   none:
   default:
     conversationListMaxLimit: ${SW_AI_AGENT_CONVERSATION_LIST_MAX_LIMIT:10000}
@@ -412,6 +409,7 @@ alarm:
 
 telemetry:
   selector: ${SW_TELEMETRY:prometheus}
+  none:
   prometheus:
     host: ${SW_TELEMETRY_PROMETHEUS_HOST:0.0.0.0}
     port: ${SW_TELEMETRY_PROMETHEUS_PORT:1234}
@@ -506,6 +504,12 @@ dsl-debugging:
   selector: ${SW_DSL_DEBUGGING:default}
   default:
     injectionEnabled: ${SW_DSL_DEBUGGING_INJECTION_ENABLED:true}
+
+# GraalVM distro only, in place of upstream's receiver-runtime-rule: answers the runtime-rule hot-update routes with
+# 501 and serves the read-only catalog of the bundled MAL / LAL rules (/runtime/rule/*). Mounts onto admin-server.
+graalvm-unsupported-admin:
+  selector: ${SW_GRAALVM_UNSUPPORTED_ADMIN:default}
+  default:
 
 configuration-discovery:
   selector: ${SW_CONFIGURATION_DISCOVERY:default}

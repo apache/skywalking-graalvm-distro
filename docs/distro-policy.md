@@ -5,23 +5,26 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 
 ## Architecture Constraints
 - **Submodule**: `skywalking/` is a git submodule of `apache/skywalking.git`. All SkyWalking source changes go through upstream PRs. **Minimize upstream changes.**
-- **This repo**: Maven + Makefile to orchestrate building on top of the submodule. Pre-compilation, GraalVM config, native-image wiring, and the fixed module manager live here.
+- **This repo**: Maven + Makefile to orchestrate building on top of the submodule. Pre-compilation, GraalVM config, native-image wiring, and the boot entry point live here.
 - **JDK 25**: Already compiles and runs. Not an issue.
 
-## Module Selection (Fixed at Build Time)
+## Module Selection
+
+The image ships these modules and providers, and only these: they are the module SPI entries on its classpath. At boot,
+`application.yml` decides which of them run and picks each one's provider, as upstream does.
 
 | Category | Module | Provider |
 |----------|--------|----------|
 | **Core** | CoreModule | default |
 | **Storage** | StorageModule | BanyanDB |
 | **Cluster** | ClusterModule | Standalone, Kubernetes |
-| **Configuration** | ConfigurationModule | Kubernetes |
+| **Configuration** | ConfigurationModule | Kubernetes ConfigMap, none |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
 | **Analyzers** | AnalyzerModule, LogAnalyzerModule, TraceAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule, AIEvaluationModule, AIAgentConversationModule | default providers (AIEvaluationModule disabled by default; AIAgentConversationModule also offers `none`; TraceAnalyzerModule analyzes both OTLP spans and agent segments, and the native trace receiver and Kafka fetcher require it) |
 | **Query** | QueryServerModule, QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule | default providers (QueryServerModule serves GraphQL, the AI agent conversation API and `/status/config/ttl` on the core REST port unless its `restPort` is set) |
-| **Admin** | AdminServerModule, StatusModule, InspectModule, UIManagementModule, DSLDebuggingModule | default; runtime-rule excluded (mutations return 501) |
+| **Admin** | AdminServerModule, StatusModule, InspectModule, UIManagementModule, DSLDebuggingModule, UnsupportedAdminFeatureModule (distro only) | default; runtime-rule excluded (`graalvm-unsupported-admin` answers its mutations with 501) |
 | **Alarm** | AlarmModule | default |
-| **Telemetry** | TelemetryModule | Prometheus |
+| **Telemetry** | TelemetryModule | Prometheus, none |
 | **Other** | ExporterModule, HealthCheckerModule, AIPipelineModule | default providers |
 
 **Full feature set.** Work around issues as they arise.
@@ -49,7 +52,7 @@ Build and package Apache SkyWalking OAP server as a GraalVM native image on JDK 
 
 1. **Build-Time Class Export**: All runtime code generation (OAL/MAL/LAL/TAL/Hierarchy via ANTLR4 + Javassist) runs at build time. Export `.class` files and package into native-image classpath. Classpath scanning also runs here as a verification gate.
 
-2. **Fixed Module Wiring**: Module/provider selection is hardcoded in this distro (no SPI discovery). Simplified config file for selected providers only.
+2. **Shipped Module Set, Booted as Upstream**: The build decides which modules and providers the image carries; only theirs are on the classpath. At boot, upstream's `ModuleManager` loads the modules `application.yml` names through the module SPI, which native image supports (the providers in `META-INF/services` are registered at build time). Simplified config file for the shipped providers only.
 
 3. **Separation**: SkyWalking upstream changes tracked separately, go through upstream PRs.
 
@@ -120,19 +123,18 @@ Run all five v2 compilers at build time via their native exposed APIs (`setClass
 `ModuleManager` uses `ServiceLoader` (SPI). `application.yml` selects providers. Config loaded via reflection (`Field.setAccessible` + `field.set` in `YamlConfigLoaderUtils.copyProperties`).
 
 ### Approach (this repo)
-1. **New module manager**: Directly constructs chosen `ModuleDefine`/`ModuleProvider` — no SPI
-2. **Simplified config file**: Only knobs for selected providers
-3. **Config loading**: **No reflection.** Build-time tool scans all `ModuleConfig` subclass fields → generates same-FQCN replacement of `YamlConfigLoaderUtils` that uses Lombok setters and VarHandle to set config fields directly. Eliminates `Field.setAccessible`/`field.set` and the need for `reflect-config.json` for config classes.
+1. **Module loading as upstream**: `GraalVMOAPServerStartUp` boots through upstream's `ModuleManager`, which loads the modules `application.yml` names via `ServiceLoader`; a module whose selector is `-` is not loaded. Native image registers every provider listed in `META-INF/services` on the build classpath, so the classpath carries only the shipped modules: `server-starter-for-graalvm` excludes all of `server-starter`'s dependencies (every upstream plugin), and `oap-graalvm-server` declares the modules the distro ships. The distro's own `graalvm-unsupported-admin` module registers through the same SPI.
+2. **Simplified config file**: Only knobs for the shipped providers
+3. **Config loading**: **No reflection.** Build-time tool scans all `ModuleConfig` subclass fields → generates same-FQCN replacement of `YamlConfigLoaderUtils` that uses Lombok setters and VarHandle to set config fields directly. Eliminates `Field.setAccessible`/`field.set`; the config classes need reflection metadata only for the no-arg constructor upstream's `ModuleDefine.prepare` calls, which the precompiler generates from `module-config-classes.txt`.
 
 **Details**: [config-init-immigration.md](internals/config-init-immigration.md)
 
 ### What Was Built
-- `FixedModuleManager` — direct module/provider construction via `ModuleDefine.prepare()` overload, no SPI
-- `GraalVMOAPServerStartUp` — entry point with `configuration.has()` guards for 6 optional modules
+- `GraalVMOAPServerStartUp` — entry point: the compiled-rule checks, then upstream's `ModuleManager.init`
+- `ApplicationYmlModulesTest` — the classpath carries exactly the accepted providers, and every provider option of the shipped `application.yml` resolves to one of them
 - `application.yml` — simplified config for selected providers
 - `ConfigInitializerGenerator` — build-time tool that scans config classes and generates `YamlConfigLoaderUtils` replacement
 - `YamlConfigLoaderUtils` — same-FQCN replacement using type-dispatch + setter/VarHandle instead of reflection
-- `ModuleDefine` — same-FQCN replacement (`library-module-for-graalvm`) adding `prepare(ModuleManager, ModuleProvider, ...)` overload for direct provider wiring without ServiceLoader
 
 ---
 
@@ -157,7 +159,6 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 
 | Module | Replacement Classes | Purpose |
 |---|---|---|
-| `library-module-for-graalvm` | `ModuleDefine` | Add `prepare()` overload for direct provider wiring (bypasses ServiceLoader) |
 | `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService`, `LayerExtensionLoader` | OAL / meter classes, hierarchy and layer extensions from the rule registry, annotation scans from manifests, instead of Javassist/ClassPath/YAML; config with @Setter |
 | `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set config fields via setter instead of reflection |
 | `meter-analyzer-for-graalvm` | `DSL` (v2), `FilterExpression`, `Rules` | Pre-compiled v2 `MalExpression` / `MalFilter` classes and the rule files from the rule registry |
@@ -280,7 +281,7 @@ filesystem YAML.
 ### Build System
 - Maven + Makefile orchestrates building on top of the skywalking submodule
 - Oracle GraalVM 25.5 in CI (`.github/workflows/ci.yml`), the same release the Makefile looks for locally
-- JVM-mode starter with fixed module wiring (`FixedModuleManager` + `GraalVMOAPServerStartUp`)
+- JVM-mode starter `GraalVMOAPServerStartUp`, booting through upstream's `ModuleManager` like the native image
 - Simplified config file for selected modules (`application.yml`)
 
 ### Build-Time Pre-Compilation
@@ -301,7 +302,7 @@ All five DSL compilers (OAL/MAL/LAL/TAL/Hierarchy) use ANTLR4 + Javassist v2 eng
 
 **Static rule registry**: the precompiler generates a Java class per rule file (what upstream's loader read from it, as code) plus the `CompiledRules` index and compiles them into the generated jar; the replacement loaders (`Rules`, `LALConfigs`, `TALConfigs`, `ZabbixConfigs`, `HierarchyDefinitionService`, `LayerExtensionLoader`) read it instead of filesystem YAML. The `config-data/*.json` and rule manifests the engine passes write are build intermediates, left out of the jar.
 
-**Module system**: `ModuleDefine` replacement with direct `prepare()` overload (bypasses ServiceLoader). `GraalVMOAPServerStartUp` with `configuration.has()` guards for 6 optional modules.
+**Module system**: upstream's `ModuleManager` and `ModuleDefine`, unchanged: `application.yml` names the modules to load, found through the module SPI.
 
 **Distro resource packaging**: 146 runtime files → distro `config/`, 90 pre-compiled files → JARs. Assembly descriptor (`distribution.xml`) packages runtime config files from upstream.
 

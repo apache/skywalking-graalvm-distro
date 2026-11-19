@@ -1,6 +1,6 @@
 # Configuration
 
-The SkyWalking GraalVM Distro uses a simplified `application.yml` with a fixed set of modules and providers.
+The SkyWalking GraalVM Distro uses a simplified `application.yml` covering the modules and providers it ships.
 All settings are configurable via **system environment variables** at runtime, following the same
 `${SW_ENV_VAR:default}` pattern as upstream SkyWalking.
 
@@ -9,8 +9,13 @@ For the full upstream configuration reference, see the
 
 ## Differences from Upstream
 
-This distro selects a fixed subset of modules/providers at build time. Modules and providers **not listed
+This distro ships a subset of the upstream modules/providers, chosen at build time. Modules and providers **not listed
 below are not available** — they are not compiled into the distro binary.
+
+Which of the shipped modules run is decided by `application.yml`, as upstream: the OAP loads the modules it names, a
+module whose selector is `-` (for example `SW_RECEIVER_PPROF=-`) is not loaded at all, and the selector picks the
+provider. A module another loaded module requires (`receiver-sharing-server` for most receivers, `admin-server` for
+the admin modules) cannot be removed while that module is loaded: the boot fails, naming both.
 
 ### Removed Providers (vs upstream)
 
@@ -19,7 +24,6 @@ below are not available** — they are not compiled into the distro binary.
 | **cluster** | zookeeper, consul, etcd, nacos | Only `standalone` and `kubernetes` are included |
 | **storage** | elasticsearch, h2, mysql, postgresql, opensearch | Only `banyandb` is included |
 | **configuration** | apollo, consul, etcd, nacos, zookeeper, grpc | Only `k8s-configmap` (and `none`) are included |
-| **telemetry** | none (upstream default) | Only `prometheus` is included |
 
 All other modules (receivers, analyzers, query, alarm, exporter, etc.) retain their default providers
 with the same configuration options as upstream.
@@ -40,8 +44,8 @@ corresponding environment variable:
 | `ai-evaluation` | `SW_AI_EVALUATION=default` | disabled |
 | `traceQL` | `SW_TRACEQL=default` | disabled |
 
-`ai-agent-conversation` is on by default and cannot be removed with `-` (the GraphQL query module
-requires it); `SW_AI_AGENT_CONVERSATION=none` turns it off.
+`ai-agent-conversation` is on by default. The GraphQL query module requires it, so `-` removes it only together with
+`query`; `SW_AI_AGENT_CONVERSATION=none` turns the conversations off while GraphQL stays available.
 
 `trace-analyzer` (TAL) is on by default; `SW_TRACE_ANALYZER=-` removes it, and the OTLP trace
 receiver then stores spans without analysis.
@@ -72,7 +76,7 @@ runtime choice: a disabled module's rules stay compiled and unused.
 
 ## Module Configuration Reference
 
-Below is the complete list of modules, their fixed providers, and available settings.
+Below is the complete list of modules, their providers, and available settings.
 Each setting shows its environment variable and default value.
 
 ---
@@ -225,6 +229,14 @@ pipeline in `TALDocScriptsTest`. `talPath` is not read.
 ### event-analyzer
 
 **Selector**: `SW_EVENT_ANALYZER` (default: `default`)
+
+No additional settings.
+
+---
+
+### gen-ai-analyzer
+
+**Selector**: `SW_GENAI_ANALYZER` (default: `default`)
 
 No additional settings.
 
@@ -648,7 +660,9 @@ Alarm rules are configured via `alarm-settings.yml`.
 
 **Selector**: `SW_TELEMETRY` (default: `prometheus`)
 
-Only the `prometheus` provider is available.
+Available providers: `none`, `prometheus`
+
+**prometheus** provider:
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
@@ -711,9 +725,8 @@ Set `SW_EXPORTER=default` to enable.
 
 **Selector**: `SW_ADMIN_SERVER` (default: `default`)
 
-Hosts the admin HTTP API (status, inspect, ui-management, dsl-debugging) on its own port, plus
-the read-only MAL/LAL rule catalog (`/runtime/rule/list|bundled`, `GET /runtime/rule`). Every
-runtime-rule mutation answers HTTP 501.
+Hosts the admin HTTP API (status, inspect, ui-management, dsl-debugging, and the read-only rule
+catalog of [graalvm-unsupported-admin](#graalvm-unsupported-admin)) on its own port.
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
@@ -763,6 +776,16 @@ the flag below only gates the debug API.
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
 | injectionEnabled | `SW_DSL_DEBUGGING_INJECTION_ENABLED` | `true` |
+
+---
+
+### graalvm-unsupported-admin
+
+**Selector**: `SW_GRAALVM_UNSUPPORTED_ADMIN` (default: `default`)
+
+This distro only, in place of upstream's `receiver-runtime-rule`: serves the read-only MAL/LAL rule catalog
+(`/runtime/rule/list|bundled`, `GET /runtime/rule`) and answers every runtime-rule mutation with HTTP 501, mounted on
+admin-server. No settings.
 
 ---
 
