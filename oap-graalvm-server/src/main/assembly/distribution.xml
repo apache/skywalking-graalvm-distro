@@ -139,15 +139,8 @@
                 <exclude>org.apache.skywalking:meter-analyzer</exclude>
                 <exclude>org.apache.skywalking:log-analyzer</exclude>
                 <exclude>org.apache.skywalking:trace-analyzer</exclude>
-                <exclude>org.apache.skywalking:agent-analyzer</exclude>
-                <exclude>org.apache.skywalking:envoy-metrics-receiver-plugin</exclude>
-                <exclude>org.apache.skywalking:otel-receiver-plugin</exclude>
                 <exclude>org.apache.skywalking:skywalking-zabbix-receiver-plugin</exclude>
-                <exclude>org.apache.skywalking:skywalking-ebpf-receiver-plugin</exclude>
-                <exclude>org.apache.skywalking:aws-firehose-receiver</exclude>
-                <exclude>org.apache.skywalking:cilium-fetcher-plugin</exclude>
                 <exclude>org.apache.skywalking:status-query-plugin</exclude>
-                <exclude>org.apache.skywalking:server-health-checker</exclude>
             </excludes>
         </dependencySet>
     </dependencySets>

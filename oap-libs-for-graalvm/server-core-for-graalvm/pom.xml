@@ -71,7 +71,6 @@
                         <filter>
                             <artifact>org.apache.skywalking:server-core</artifact>
                             <excludes>
-                                <exclude>org/apache/skywalking/oap/server/core/CoreModuleConfig.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/oal/rt/OALEngineLoaderService.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/annotation/AnnotationScan.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/annotation/AnnotationScan$*.class</exclude>

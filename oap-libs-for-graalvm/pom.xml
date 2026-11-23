@@ -39,14 +39,7 @@
         <module>meter-analyzer-for-graalvm</module>
         <module>log-analyzer-for-graalvm</module>
         <module>trace-analyzer-for-graalvm</module>
-        <module>agent-analyzer-for-graalvm</module>
-        <module>envoy-metrics-receiver-for-graalvm</module>
-        <module>otel-receiver-for-graalvm</module>
         <module>zabbix-receiver-for-graalvm</module>
-        <module>ebpf-receiver-for-graalvm</module>
-        <module>aws-firehose-receiver-for-graalvm</module>
-        <module>cilium-fetcher-for-graalvm</module>
-        <module>health-checker-for-graalvm</module>
         <module>server-starter-for-graalvm</module>
     </modules>
 

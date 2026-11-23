@@ -67,7 +67,7 @@ each PR's impact item.
   comm -23 <(printf '%s\n' "$U") <(printf '%s\n' "$D")
   ```
 
-  The two module names differ (e.g. `otel-receiver-plugin` and `otel-receiver-for-graalvm`); a `javap` error
+  The two module names differ (e.g. `skywalking-zabbix-receiver-plugin` and `zabbix-receiver-for-graalvm`); a `javap` error
   stops the check instead of comparing against nothing.
 
   Some members are dropped on purpose (run-time Javassist and runtime-rule members such as
@@ -112,16 +112,16 @@ each PR's impact item.
 ### Config handling (if new ModuleConfig classes)
 
 - [ ] Re-run config-generator to regenerate `YamlConfigLoaderUtils.java`, `module-config-classes.txt` and, next to
-      it, `module-config-field-set.txt` (the final and static fields the loader writes through `Field.set`, as upstream,
-      which the precompiler registers for the native image):
+      it, `module-config-field-set.txt` (the fields no setter writes, which the loader writes through `Field.set`, as
+      upstream, and the precompiler registers for the native image):
   ```bash
   ./mvnw -pl build-tools/build-common,build-tools/config-generator install -DskipTests -Dskywalking.version=<version>
   ./mvnw -pl build-tools/config-generator exec:java \
     -Dexec.args="oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt" \
     -Dskywalking.version=<version>
   ```
-- [ ] If config class has no `@Setter` at class level, create same-FQCN replacement in `oap-libs-for-graalvm/` with `@Setter` added
-- [ ] Add shade exclusion for replaced config class
+- [ ] Nothing per config class: a field its class has no setter for is written through `Field.set` (it shows up in
+      `module-config-field-set.txt`), so no config class is copied
 
 ### OAL changes (if new .oal files or scopes)
 
@@ -404,7 +404,7 @@ syncs: keep the path and the "Common Pitfalls" heading.
   snippet or the shipped rule loses an anchor line, the test names it.
 
 - **Reflection errors at native image runtime**: New classes instantiated via `Class.forName().newInstance()` need entries in `reflect-config.json` or `reachability-metadata.json`
-- **Config loading failures**: New `ModuleConfig` subclasses need config-generator regeneration AND may need `@Setter` same-FQCN replacement
+- **Config loading failures**: New `ModuleConfig` subclasses need config-generator regeneration (and their module an `AcceptedModules` entry)
 - **Missing config files**: Runtime config files (non-DSL) must be in distribution assembly descriptors
 - **OAL builder registration**: the precompiler generates constructor entries for every OAL metrics, builder and dispatcher class it compiled (incl. a rules overlay's scripts); the older hand-kept entries in `reachability-metadata.json` are redundant
-- **Config-generator runs against upstream classpath**: Setter checks see upstream classes (no `@Setter`), not our for-graalvm replacements — the generator trusts that for-graalvm modules will provide setters
+- **Config-generator runs against upstream classpath**: it reads upstream's own config classes and calls a setter only where the class has one; every other field goes through `Field.set` and needs its `module-config-field-set.txt` entry (`GeneratedConfigLoaderIsCurrentTest` fails when the committed loader or either manifest is not what the generator writes)

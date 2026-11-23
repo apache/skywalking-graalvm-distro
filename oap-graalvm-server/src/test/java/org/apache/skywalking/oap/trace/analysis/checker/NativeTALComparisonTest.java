@@ -60,6 +60,7 @@ import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.ISource;
 import org.apache.skywalking.oap.server.core.source.NetworkAddressAliasSetup;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
+import org.apache.skywalking.oap.server.graalvm.ConfigFieldValues;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.apache.skywalking.oap.server.library.module.ModuleProviderHolder;
@@ -206,7 +207,9 @@ class NativeTALComparisonTest {
                 ? profile.thresholds : setting("agent-analyzer", "slowCacheWriteThreshold"));
             analyzer.setForceSampleErrorSegment(Boolean.parseBoolean(setting("agent-analyzer", "forceSampleErrorSegment")));
             analyzer.setSegmentStatusAnalysisStrategy(setting("agent-analyzer", "segmentStatusAnalysisStrategy"));
-            analyzer.setNoUpstreamRealAddressAgents(setting("agent-analyzer", "noUpstreamRealAddressAgents"));
+            // No setter upstream: written as the config loader writes it
+            ConfigFieldValues.setByField(analyzer, "noUpstreamRealAddressAgents",
+                setting("agent-analyzer", "noUpstreamRealAddressAgents"));
             analyzer.setDbLatencyThresholdsAndWatcher(
                 new DBLatencyThresholdsAndWatcher(analyzer.getSlowDBAccessThreshold(), provider));
             analyzer.setCacheReadLatencyThresholdsAndWatcher(

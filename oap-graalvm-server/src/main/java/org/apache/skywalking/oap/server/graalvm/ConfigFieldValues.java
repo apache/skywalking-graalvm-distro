@@ -23,8 +23,8 @@ import java.lang.reflect.Field;
  * The conversions upstream's {@code Field.set} applies to a config value, which the generated config binder
  * ({@code YamlConfigLoaderUtils}) puts every value through before its setter: a primitive field takes its wrapper or a
  * value of a primitive type that widens to it, a reference field an instance of its type or null; anything else is
- * refused with {@code Field.set}'s {@code IllegalArgumentException}. A final or static field, which has no setter, is
- * written through {@code Field.set} itself ({@link #setByField}).
+ * refused with {@code Field.set}'s {@code IllegalArgumentException}. A field no setter writes (none declared, or a final
+ * or static field) is written through {@code Field.set} itself ({@link #setByField}).
  */
 public final class ConfigFieldValues {
     private ConfigFieldValues() {
@@ -108,11 +108,12 @@ public final class ConfigFieldValues {
     }
 
     /**
-     * Writes a field as upstream's binder does, reflectively, for a final or a static field, which no setter writes:
+     * Writes a field as upstream's binder does, reflectively, for a field no setter writes (none declared, or a final
+     * or a static field):
      * {@code Field.set} takes an instance of the field's type or null (a final field's own list given back to it
      * included), refuses anything else with its own {@code IllegalArgumentException}, and a static final field with
      * {@code IllegalAccessException}. The field is looked up from the object's class up, as upstream's
-     * {@code getDeclaredField}; the precompiler registers every final instance field of a config class for writing.
+     * {@code getDeclaredField}; the precompiler registers every such field (a final instance one writable).
      */
     public static void setByField(final Object dest, final String name, final Object value) throws IllegalAccessException {
         for (Class<?> c = dest.getClass(); c != null; c = c.getSuperclass()) {

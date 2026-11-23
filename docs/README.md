@@ -40,7 +40,7 @@ These docs describe how the distro moves runtime code generation to build time:
 
 - [DSL Pre-Compilation](internals/dsl-immigration.md) — unified OAL/MAL/LAL/Hierarchy build-time compilation via ANTLR4 + Javassist v2
 - [OAL Pre-Compilation](internals/oal-immigration.md) — OAL-specific details: Javassist class export, annotation scan manifests
-- [Config Initialization](internals/config-init-immigration.md) — config loading via generated setters (`Field.set` only for the few final fields, as upstream)
+- [Config Initialization](internals/config-init-immigration.md) — generated config loading: setter calls, and `Field.set` for a field no setter writes, as upstream
 
 ## Why Native Image
 

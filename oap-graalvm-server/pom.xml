@@ -77,49 +77,7 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
-                <artifactId>agent-analyzer</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>envoy-metrics-receiver-plugin</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>otel-receiver-plugin</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
                 <artifactId>skywalking-zabbix-receiver-plugin</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>skywalking-ebpf-receiver-plugin</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>aws-firehose-receiver</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>cilium-fetcher-plugin</artifactId>
-                <version>${skywalking.version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.skywalking</groupId>
-                <artifactId>server-health-checker</artifactId>
                 <version>${skywalking.version}</version>
                 <scope>provided</scope>
             </dependency>
@@ -154,35 +112,34 @@
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>agent-analyzer-for-graalvm</artifactId>
+            <artifactId>agent-analyzer</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>envoy-metrics-receiver-for-graalvm</artifactId>
+            <artifactId>envoy-metrics-receiver-plugin</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>otel-receiver-for-graalvm</artifactId>
+            <artifactId>otel-receiver-plugin</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>ebpf-receiver-for-graalvm</artifactId>
+            <artifactId>skywalking-ebpf-receiver-plugin</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>aws-firehose-receiver-for-graalvm</artifactId>
+            <artifactId>aws-firehose-receiver</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>cilium-fetcher-for-graalvm</artifactId>
+            <artifactId>cilium-fetcher-plugin</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
-            <artifactId>health-checker-for-graalvm</artifactId>
+            <artifactId>server-health-checker</artifactId>
         </dependency>
 
-        <!-- Admin server family (11.0.0+). Used as-is (configs already carry @Setter,
-             no same-FQCN replacement needed). dsl-debugging works because the precompiler
+        <!-- Admin server family (11.0.0+). Used as-is. dsl-debugging works because the precompiler
              compiles its probes into every rule class; runtime-rule is NOT included: its
              runtime-Javassist codegen can't run under native image. -->
         <dependency>
