@@ -17,29 +17,23 @@
 
 package org.apache.skywalking.oap.server.core.annotation;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.lang.annotation.Annotation;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.storage.StorageException;
+import org.apache.skywalking.oap.server.graalvm.rules.BuildManifest;
 
 /**
  * GraalVM replacement for upstream AnnotationScan.
  * Original: skywalking/oap-server/server-core/src/main/java/.../annotation/AnnotationScan.java
  * Repackaged into server-core-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
  *
- * Change: Complete rewrite. Reads pre-built manifest files from META-INF/annotation-scan/{AnnotationSimpleName}.txt
- * instead of Guava ClassPath.from() scanning.
+ * Change: the classes come from the manifest META-INF/annotation-scan/{AnnotationSimpleName}.txt, which the
+ * precompiler writes for every AnnotationListener's annotation, instead of a Guava ClassPath scan.
  * Why: Guava ClassPath scanning is incompatible with GraalVM native image.
  */
-@Slf4j
 public class AnnotationScan {
 
     private static final String MANIFEST_PREFIX = "META-INF/annotation-scan/";
@@ -56,18 +50,10 @@ public class AnnotationScan {
 
     public void scan() throws IOException, StorageException {
         for (AnnotationListenerCache listener : listeners) {
-            String annotationName = listener.annotation().getSimpleName();
-            String manifestPath = MANIFEST_PREFIX + annotationName + ".txt";
-
-            List<String> classNames = readManifest(manifestPath);
-            for (String className : classNames) {
-                try {
-                    Class<?> aClass = Class.forName(className);
-                    if (aClass.isAnnotationPresent(listener.annotation())) {
-                        listener.addMatch(aClass);
-                    }
-                } catch (ClassNotFoundException e) {
-                    log.warn("Class not found from manifest {}: {}", manifestPath, className);
+            String manifest = MANIFEST_PREFIX + listener.annotation().getSimpleName() + ".txt";
+            for (Class<?> aClass : BuildManifest.classes(manifest)) {
+                if (aClass.isAnnotationPresent(listener.annotation())) {
+                    listener.addMatch(aClass);
                 }
             }
         }
@@ -75,28 +61,6 @@ public class AnnotationScan {
         for (AnnotationListenerCache listener : listeners) {
             listener.complete();
         }
-    }
-
-    private static List<String> readManifest(String resourcePath) throws IOException {
-        List<String> lines = new ArrayList<>();
-        ClassLoader cl = AnnotationScan.class.getClassLoader();
-        try (InputStream is = cl.getResourceAsStream(resourcePath)) {
-            if (is == null) {
-                log.warn("Annotation manifest not found: {}", resourcePath);
-                return lines;
-            }
-            try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (!line.isEmpty()) {
-                        lines.add(line);
-                    }
-                }
-            }
-        }
-        return lines;
     }
 
     private static class AnnotationListenerCache {

@@ -20,9 +20,12 @@ package org.apache.skywalking.oap.server.graalvm.mal;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,13 +34,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.apache.skywalking.oap.meter.analyzer.v2.MetricConvert;
+import org.apache.skywalking.oap.meter.analyzer.v2.MetricRuleConfig;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.counter.CounterWindow;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.DSL;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Expression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.ExpressionMetadata;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalExpression;
@@ -45,12 +49,14 @@ import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Result;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
-import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule;
 import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
+import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.RuleSourceLines;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterEntity;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
-import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
+import org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig;
+import org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfigs;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -69,7 +75,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  *   <li>Discovers required sample names via ExpressionMetadata</li>
  *   <li>Builds SampleFamily input with appropriate labels</li>
  *   <li>Runs the expression via fresh v2 compilation (Path A)</li>
- *   <li>Runs the expression via pre-compiled class from manifest (Path B)</li>
+ *   <li>Runs the pre-compiled class the runtime DSL returns for the rule's coordinates (Path B)</li>
  *   <li>Asserts both paths produce identical results</li>
  * </ol>
  *
@@ -103,13 +109,13 @@ abstract class MALScriptComparisonBase {
     // ---------------------------------------------------------------
 
     protected Stream<DynamicTest> generateComparisonTests(final String yamlResource) {
-        Rule rule = loadRule(yamlResource);
+        MetricRuleConfig rule = loadRule(yamlResource);
         String prefix = rule.getMetricPrefix();
         String expSuffix = rule.getExpSuffix();
         String expPrefix = rule.getExpPrefix();
         List<DynamicTest> tests = new ArrayList<>();
 
-        for (MetricsRule mr : rule.getMetricsRules()) {
+        for (MetricRuleConfig.RuleConfig mr : rule.getMetricsRules()) {
             String metricName = prefix + "_" + mr.getName();
             String fullExp = formatExp(expPrefix, expSuffix, mr.getExp());
             boolean needsWarmup = fullExp.contains(".increase(")
@@ -117,7 +123,7 @@ abstract class MALScriptComparisonBase {
                 || fullExp.contains(".irate(");
 
             tests.add(DynamicTest.dynamicTest(metricName, () ->
-                compareWithAutoDiscovery(yamlResource, metricName, fullExp, needsWarmup, false)));
+                compareWithAutoDiscovery(coordinates(rule, mr), metricName, fullExp, needsWarmup, false)));
         }
         return tests.stream();
     }
@@ -126,19 +132,20 @@ abstract class MALScriptComparisonBase {
      * Auto-discovery for rules this suite has no inputs for (a rules overlay's): an expression the generated inputs
      * leave empty, or fail, alike on both paths is skipped and reported instead of failing; paths that differ fail.
      */
-    protected Stream<DynamicTest> generateOverlayComparisonTests(final String yamlResource, final Rule rule) {
+    protected Stream<DynamicTest> generateOverlayComparisonTests(final String yamlResource,
+                                                                 final MetricRuleConfig rule) {
         List<DynamicTest> tests = new ArrayList<>();
         if (rule == null || rule.getMetricsRules() == null) {
             return tests.stream();
         }
-        for (MetricsRule mr : rule.getMetricsRules()) {
+        for (MetricRuleConfig.RuleConfig mr : rule.getMetricsRules()) {
             String metricName = rule.getMetricPrefix() + "_" + mr.getName();
             String fullExp = formatExp(rule.getExpPrefix(), rule.getExpSuffix(), mr.getExp());
             boolean needsWarmup = fullExp.contains(".increase(")
                 || fullExp.contains(".rate(")
                 || fullExp.contains(".irate(");
             tests.add(DynamicTest.dynamicTest(yamlResource + " " + metricName, () ->
-                compareWithAutoDiscovery(yamlResource, metricName, fullExp, needsWarmup, true)));
+                compareWithAutoDiscovery(coordinates(rule, mr), metricName, fullExp, needsWarmup, true)));
         }
         return tests.stream();
     }
@@ -151,13 +158,11 @@ abstract class MALScriptComparisonBase {
             final String yamlResource,
             final ImmutableMap<String, SampleFamily> input1,
             final ImmutableMap<String, SampleFamily> input2) {
-        return generateComparisonTests(
-            yamlResource, loadRule(yamlResource), input1, input2);
+        return generateComparisonTests(loadRule(yamlResource), input1, input2);
     }
 
     protected Stream<DynamicTest> generateComparisonTests(
-            final String yamlResource,
-            final Rule rule,
+            final MetricRuleConfig rule,
             final ImmutableMap<String, SampleFamily> input1,
             final ImmutableMap<String, SampleFamily> input2) {
         String prefix = rule.getMetricPrefix();
@@ -165,7 +170,7 @@ abstract class MALScriptComparisonBase {
         String expPrefix = rule.getExpPrefix();
         List<DynamicTest> tests = new ArrayList<>();
 
-        for (MetricsRule mr : rule.getMetricsRules()) {
+        for (MetricRuleConfig.RuleConfig mr : rule.getMetricsRules()) {
             String metricName = prefix + "_" + mr.getName();
             String fullExp = formatExp(expPrefix, expSuffix, mr.getExp());
             boolean needsWarmup = fullExp.contains(".increase(")
@@ -174,27 +179,23 @@ abstract class MALScriptComparisonBase {
 
             tests.add(DynamicTest.dynamicTest(metricName, () ->
                 compareWithExplicitInput(
-                    yamlResource, metricName, fullExp, needsWarmup, input1, input2)));
+                    coordinates(rule, mr), metricName, fullExp, needsWarmup, input1, input2)));
         }
         return tests.stream();
     }
 
     /**
-     * Overload accepting a pre-loaded Rule (for zabbix and similar custom formats).
+     * @return the coordinates MetricConvert passes for the metric rule
      */
-    protected Stream<DynamicTest> generateComparisonTests(
-            final Rule rule,
-            final ImmutableMap<String, SampleFamily> input1,
-            final ImmutableMap<String, SampleFamily> input2) {
-        // When no yamlResource is available, use empty string for manifest lookup
-        return generateComparisonTests("", rule, input1, input2);
+    private static DslSourceRef coordinates(final MetricRuleConfig rule, final MetricRuleConfig.RuleConfig metric) {
+        return DslSourceRef.ofRule(rule.getSourcePath(), metric.getLineNo());
     }
 
     // ---------------------------------------------------------------
     // Core comparison logic — auto-discovery
     // ---------------------------------------------------------------
 
-    private void compareWithAutoDiscovery(final String yamlResource,
+    private void compareWithAutoDiscovery(final DslSourceRef sourceRef,
                                           final String metricName,
                                           final String expression,
                                           final boolean needsWarmup,
@@ -222,7 +223,7 @@ abstract class MALScriptComparisonBase {
             sampleNames, requiredLabels, tagValues, histogramLabel, 200.0,
             Instant.parse("2024-01-01T00:00:10Z").toEpochMilli());
 
-        Expression precompiledExpr = loadPrecompiled(yamlResource, metricName, expression);
+        Expression precompiledExpr = DSL.parse(metricName, expression, sourceRef);
         runAndCompare(metricName, freshExpr, precompiledExpr,
             needsWarmup, input1, input2, generatedInputs);
     }
@@ -232,14 +233,14 @@ abstract class MALScriptComparisonBase {
     // ---------------------------------------------------------------
 
     private void compareWithExplicitInput(
-            final String yamlResource,
+            final DslSourceRef sourceRef,
             final String metricName,
             final String expression,
             final boolean needsWarmup,
             final ImmutableMap<String, SampleFamily> input1,
             final ImmutableMap<String, SampleFamily> input2) throws Exception {
         Expression freshExpr = compileFresh(metricName + "_fresh", expression);
-        Expression precompiledExpr = loadPrecompiled(yamlResource, metricName, expression);
+        Expression precompiledExpr = DSL.parse(metricName, expression, sourceRef);
         runAndCompare(metricName, freshExpr, precompiledExpr,
             needsWarmup, input1, input2, false);
     }
@@ -248,7 +249,7 @@ abstract class MALScriptComparisonBase {
     // Shared run-and-compare
     // ---------------------------------------------------------------
 
-    private static void runAndCompare(final String metricName,
+    static void runAndCompare(final String metricName,
                                       final Expression freshExpr,
                                       final Expression precompiledExpr,
                                       final boolean needsWarmup,
@@ -258,18 +259,19 @@ abstract class MALScriptComparisonBase {
         Result freshResult;
         Result precompiledResult;
 
+        // Each path on inputs of its own: a family carries the mutable context an expression records its entities in
         if (needsWarmup) {
             // Since upstream #13911 CounterWindow is keyed by sample name, not metric name, so both
             // paths would share one window; run them back to back with a reset in between.
             CounterWindow.INSTANCE.reset();
-            freshExpr.run(input1);
-            freshResult = freshExpr.run(input2);
+            freshExpr.run(copyOf(input1));
+            freshResult = freshExpr.run(copyOf(input2));
             CounterWindow.INSTANCE.reset();
-            precompiledExpr.run(input1);
-            precompiledResult = precompiledExpr.run(input2);
+            precompiledExpr.run(copyOf(input1));
+            precompiledResult = precompiledExpr.run(copyOf(input2));
         } else {
-            freshResult = freshExpr.run(input1);
-            precompiledResult = precompiledExpr.run(input1);
+            freshResult = freshExpr.run(copyOf(input1));
+            precompiledResult = precompiledExpr.run(copyOf(input1));
         }
 
         assertEquals(freshResult.isSuccess(), precompiledResult.isSuccess(),
@@ -280,6 +282,8 @@ abstract class MALScriptComparisonBase {
         if (freshResult.isSuccess()) {
             assertSamplesMatch(metricName,
                 freshResult.getData(), precompiledResult.getData());
+            assertMeterSamplesMatch(metricName,
+                freshResult.getData().context.getMeterSamples(), precompiledResult.getData().context.getMeterSamples());
         } else if (generatedInputs && Objects.equals(freshResult.getError(), precompiledResult.getError())) {
             // Generated inputs need not fit the rule (a label it reads as a number, say); both paths failing alike is
             // the same behaviour, and upstream's build does not run a rule either.
@@ -293,6 +297,18 @@ abstract class MALScriptComparisonBase {
         }
     }
 
+    /**
+     * @return the families anew, each with a context of its own, holding the same (immutable) samples
+     */
+    static ImmutableMap<String, SampleFamily> copyOf(final ImmutableMap<String, SampleFamily> input) {
+        final ImmutableMap.Builder<String, SampleFamily> copy = ImmutableMap.builder();
+        input.forEach((name, family) -> copy.put(name, family == SampleFamily.EMPTY || family.samples.length == 0
+            ? family : SampleFamilyBuilder.newBuilder(family.samples.clone())
+                                          .defaultHistogramBucketUnit(family.context.getDefaultHistogramBucketUnit())
+                                          .build()));
+        return copy.build();
+    }
+
     // ---------------------------------------------------------------
     // Path A: Fresh v2 compilation via MALClassGenerator
     // ---------------------------------------------------------------
@@ -303,25 +319,6 @@ abstract class MALScriptComparisonBase {
         generator.setClassNameHint("Test_" + FRESH_COUNTER.incrementAndGet());
         MalExpression malExpr = generator.compile(metricName, expression);
         return new Expression(metricName, expression, malExpr);
-    }
-
-    // ---------------------------------------------------------------
-    // Path B: Pre-compiled MalExpression from the generated rule registry
-    // ---------------------------------------------------------------
-
-    private static Expression loadPrecompiled(final String yamlResource,
-                                              final String metricName,
-                                              final String expression) {
-        // Look up by expression text — each expression is globally unique
-        // across all YAML files even when metric names overlap.
-        final Supplier<MalExpression> compiled = CompiledRules.malExpressions().get(expression);
-        if (compiled == null) {
-            throw new AssertionError(
-                "registry missing metric: " + metricName
-                    + " (expression: " + expression
-                    + ", yamlResource: " + yamlResource + ")");
-        }
-        return new Expression(metricName, expression, compiled.get());
     }
 
     // ---------------------------------------------------------------
@@ -496,47 +493,69 @@ abstract class MALScriptComparisonBase {
         }
     }
 
+    /**
+     * What upstream emits from a result: the samples of each entity (its scope, names and layer), compared by entity,
+     * then by labels, value and timestamp.
+     */
+    private static void assertMeterSamplesMatch(final String metricName,
+                                                final Map<MeterEntity, Sample[]> expectedSamples,
+                                                final Map<MeterEntity, Sample[]> actualSamples) {
+        // Hashed anew: an entity can change after the map took it (its attributes set as the expression decorates it)
+        final Map<MeterEntity, Sample[]> expected = new HashMap<>(expectedSamples);
+        final Map<MeterEntity, Sample[]> actual = new HashMap<>(actualSamples);
+        assertEquals(expected.keySet(), actual.keySet(), metricName + ": entities mismatch");
+        for (final Map.Entry<MeterEntity, Sample[]> entity : expected.entrySet()) {
+            final List<Sample> e = byLabels(entity.getValue());
+            final List<Sample> a = byLabels(actual.get(entity.getKey()));
+            assertEquals(e.size(), a.size(), metricName + " " + entity.getKey() + ": sample count mismatch");
+            for (int i = 0; i < e.size(); i++) {
+                final String at = metricName + " " + entity.getKey() + "[" + i + "]";
+                assertEquals(e.get(i).getLabels(), a.get(i).getLabels(), at + " labels mismatch");
+                assertEquals(e.get(i).getValue(), a.get(i).getValue(), 0.001, at + " value mismatch");
+                assertEquals(e.get(i).getTimestamp(), a.get(i).getTimestamp(), at + " timestamp mismatch");
+            }
+        }
+    }
+
+    private static List<Sample> byLabels(final Sample[] samples) {
+        final List<Sample> sorted = new ArrayList<>(Arrays.asList(samples));
+        sorted.sort(Comparator.comparing(sample -> new TreeMap<>(sample.getLabels()).toString()));
+        return sorted;
+    }
+
     // ---------------------------------------------------------------
     // YAML loading
     // ---------------------------------------------------------------
 
+    /**
+     * The rule file as upstream's loader binds it, stamped with its source path and lines, which the pre-compiled
+     * classes are looked up by.
+     */
     static Rule loadRule(final String yamlResource) {
         try (InputStream is = MALScriptComparisonBase.class
                 .getClassLoader().getResourceAsStream(yamlResource)) {
             assertNotNull(is, "YAML resource not found: " + yamlResource);
-            return new Yaml().loadAs(is, Rule.class);
+            final String text = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            final Rule rule = new Yaml().loadAs(text, Rule.class);
+            rule.setSourcePath(yamlResource);
+            RuleSourceLines.assign(rule, text);
+            return rule;
         } catch (Exception e) {
             throw new AssertionError("Failed to load YAML: " + yamlResource, e);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    static Rule loadZabbixRule(final String yamlResource) {
-        try (InputStream is = MALScriptComparisonBase.class
-                .getClassLoader().getResourceAsStream(yamlResource)) {
-            assertNotNull(is, "YAML resource not found: " + yamlResource);
-            Map<String, Object> yamlMap = new Yaml().load(is);
-            Rule rule = new Rule();
-            rule.setMetricPrefix((String) yamlMap.get("metricPrefix"));
-            rule.setExpSuffix((String) yamlMap.get("expSuffix"));
-            rule.setExpPrefix((String) yamlMap.get("expPrefix"));
-            rule.setFilter((String) yamlMap.get("filter"));
-
-            List<Map<String, String>> metrics =
-                (List<Map<String, String>>) yamlMap.get("metrics");
-            if (metrics != null) {
-                List<MetricsRule> metricsRules = new ArrayList<>();
-                for (Map<String, String> m : metrics) {
-                    metricsRules.add(MetricsRule.builder()
-                        .name(m.get("name"))
-                        .exp(m.get("exp"))
-                        .build());
-                }
-                rule.setMetricsRules(metricsRules);
-            }
-            return rule;
+    /**
+     * The Zabbix rule file as the Zabbix receiver loads it.
+     */
+    static ZabbixConfig loadZabbixConfig(final String yamlResource) {
+        final String name = yamlResource.substring(yamlResource.lastIndexOf('/') + 1, yamlResource.lastIndexOf('.'));
+        try {
+            final List<ZabbixConfig> configs = ZabbixConfigs.loadConfigs("zabbix-rules", List.of(name));
+            assertEquals(1, configs.size(), "Zabbix rule file not compiled: " + yamlResource);
+            return configs.get(0);
         } catch (Exception e) {
-            throw new AssertionError("Failed to load YAML: " + yamlResource, e);
+            throw new AssertionError("Failed to load Zabbix rule file: " + yamlResource, e);
         }
     }
 
@@ -544,9 +563,9 @@ abstract class MALScriptComparisonBase {
     // Metric lookup from YAML
     // ---------------------------------------------------------------
 
-    static String findMetricExp(final Rule rule, final String metricName) {
+    static String findMetricExp(final MetricRuleConfig rule, final String metricName) {
         String prefix = rule.getMetricPrefix();
-        for (MetricsRule mr : rule.getMetricsRules()) {
+        for (MetricRuleConfig.RuleConfig mr : rule.getMetricsRules()) {
             if (metricName.equals(prefix + "_" + mr.getName())) {
                 return formatExp(rule.getExpPrefix(), rule.getExpSuffix(),
                     mr.getExp());
@@ -562,8 +581,7 @@ abstract class MALScriptComparisonBase {
     static String formatExp(final String expPrefix,
                             final String expSuffix,
                             final String exp) {
-        // Use the real formatExp so the composed text matches the precompiler's manifest key;
-        // a hand-rolled replica drifts when upstream changes expPrefix injection.
+        // The real formatExp: the pre-compiled class is looked up with the text MetricConvert composes.
         return MetricConvert.formatExp(expPrefix, expSuffix, exp);
     }
 }

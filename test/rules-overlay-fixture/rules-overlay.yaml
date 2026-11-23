@@ -19,8 +19,23 @@ add:
   - oal/fixture.oal
   - otel-rules/fixture/*.yaml
   - lal/fixture.yml
+  - lal/fixture-twins.yaml
+  - lal/fixture-unnamed.yaml
+  - lal/fixture-layers.yaml
+  - lal/fixture-bound.yaml
+  - lal/fixture-trace-context.yaml
   - tal/fixture.yaml
+  - tal/fixture-layers.yaml
+  - tal/fixture-unshipped.yaml
+  - tal/fixture-twins.yaml
+  - tal/fixture-unnamed.yaml
+  - tal/fixture-nested-modules.yaml
+  - tal/fixture-null-module.yaml
+  - zabbix-rules/fixture-no-hosts.yaml
 override:
   - layer-extensions.yml
+  - lal/nginx.yaml
+  - otel-rules/vm.yaml
+  - tal/native-rpc.yaml
 exclude:
   - oal/tcp.oal

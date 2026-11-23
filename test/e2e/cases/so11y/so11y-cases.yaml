@@ -48,6 +48,13 @@
       expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value.yml
     - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="meter_oap_instance_trace_latency_percentile{p='90,99'}" --instance-name=http://localhost:1234 --service-name=oap-server
       expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value-percentile.yml
+    # Cluster remote so11y: a single node still sends through SelfRemoteClient (self=Y) and reports cluster_size.
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="meter_oap_instance_remote_out_count{self='Y'}" --instance-name=http://localhost:1234 --service-name=oap-server
+      expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value-label-remote.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression="meter_oap_instance_remote_out_latency_percentile{p='50,99',self='Y'}" --instance-name=http://localhost:1234 --service-name=oap-server
+      expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value-percentile-remote.yml
+    - query: swctl --display yaml --base-url=http://${oap_host}:${oap_12800}/graphql metrics exec --expression=meter_oap_instance_cluster_size --instance-name=http://localhost:1234 --service-name=oap-server
+      expected: ../../../../skywalking/test/e2e-v2/cases/so11y/expected/metrics-has-value.yml
     # Alarm HTTP hook delivery, fed by the webhook in upstream's so11y alarm-settings.yml.
     - query: |
         sleep 60;

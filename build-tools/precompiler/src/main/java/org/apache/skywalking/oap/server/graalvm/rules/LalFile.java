@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
 
 /**
- * A LAL rule file, keyed by its name without extension, as upstream's loader read it at build time.
+ * A LAL rule file, by its file name ({@code default.yaml}), as upstream's loader read it at build time.
  */
 @Getter
 @RequiredArgsConstructor

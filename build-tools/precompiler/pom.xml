@@ -32,6 +32,11 @@
     <description>Build-time pre-compilation for OAL, MAL, LAL, and Hierarchy: exports generated .class files and manifests</description>
 
     <dependencies>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>build-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- OAL engine -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>
@@ -309,13 +314,21 @@
                                  runtime reads the registry. -->
                             <excludes>
                                 <exclude>META-INF/config-data/**</exclude>
-                                <exclude>META-INF/mal-v2/**</exclude>
-                                <exclude>META-INF/mal-v2.manifest</exclude>
+                                <exclude>META-INF/annotation-scan/MeterFunction.txt</exclude>
+                                <exclude>META-INF/annotation-scan/StorageBuilders.txt</exclude>
+                                <exclude>META-INF/annotation-scan/StreamData.txt</exclude>
+                                <exclude>META-INF/annotation-scan/ArmeriaHandlers.txt</exclude>
+                                <exclude>META-INF/annotation-scan/HttpBodyTypes.txt</exclude>
+                                <exclude>META-INF/annotation-scan/GraphQLResolvers.txt</exclude>
+                                <exclude>META-INF/annotation-scan/GraphQLTypes.txt</exclude>
+                                <exclude>META-INF/annotation-scan/QueryEntityClasses.txt</exclude>
                                 <exclude>META-INF/*-v2-classes.txt</exclude>
                                 <exclude>META-INF/*-v2-rules.txt</exclude>
                                 <exclude>META-INF/oal-*.txt</exclude>
                                 <exclude>META-INF/*-meter-classes.txt</exclude>
                                 <exclude>META-INF/tal-io-classes.txt</exclude>
+                                <exclude>META-INF/lal-io-classes.txt</exclude>
+                                <exclude>META-INF/lal-input-types.txt</exclude>
                             </excludes>
                         </configuration>
                     </execution>

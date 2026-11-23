@@ -18,7 +18,7 @@ Two test-based mechanisms detect upstream drift:
 
 1. **`ReplacementClassStalenessTest`** — SHA-256 tracks upstream `.java` source files.
    Hashes recorded in `oap-graalvm-server/src/test/resources/replacement-source-sha256.properties`.
-   Tracks every replacement's upstream source (27 files, see "Tracking Gaps" below).
+   Tracks every replacement's upstream source (29 files, see "Tracking Gaps" below).
 
 2. **`PrecompiledYamlStalenessTest`** — SHA-256 tracks ~116 YAML rule files (MAL, LAL, TAL, ...) consumed
    by the precompiler. Hashes recorded in `oap-graalvm-server/src/test/resources/precompiled-yaml-sha256.properties`.
@@ -41,18 +41,17 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 
 ## Complete Replacement Inventory
 
-### server-core-for-graalvm (8 classes)
+### server-core-for-graalvm (7 classes)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
-| `OALEngineLoaderService` | `server-core/.../oal/rt/OALEngineLoaderService.java` | Register the OAL classes the rule registry (`CompiledRules`) lists instead of Javassist | **Yes** |
+| `OALEngineLoaderService` | `server-core/.../oal/rt/OALEngineLoaderService.java` | Register a define's compiled OAL script (`CompiledRules`) when its provider loads it, instead of Javassist | **Yes** |
 | `AnnotationScan` | `server-core/.../annotation/AnnotationScan.java` | Read manifests instead of Guava ClassPath scan | **Yes** |
 | `SourceReceiverImpl` | `server-core/.../source/SourceReceiverImpl.java` | Read manifests instead of Guava ClassPath scan | **Yes** |
-| `MeterSystem` | `server-core/.../analysis/meter/MeterSystem.java` | Read MeterFunction manifest; take pre-generated Javassist classes from the rule registry | **Yes** |
+| `MeterSystem` | `server-core/.../analysis/meter/MeterSystem.java` | Take the meter functions and pre-generated Javassist classes from the rule registry; `create` is upstream's boot path with the class the build recorded for the metric name looked up instead of generated | **Yes** |
 | `CoreModuleConfig` | `server-core/.../CoreModuleConfig.java` | Added `@Setter` at class level | **Yes** |
-| `HierarchyDefinitionService` | `server-core/.../config/HierarchyDefinitionService.java` | Definition and pre-compiled matching rules from the rule registry instead of the YAML | **Yes** |
+| `HierarchyDefinitionService` | `server-core/.../config/HierarchyDefinitionService.java` | Definition and pre-compiled matching rules from the rule registry instead of the YAML and the `HierarchyRuleProvider` SPI; upstream's `HierarchyService` runs unchanged on its `MatchingRule` | **Yes** |
 | `LayerExtensionLoader` | `server-core/.../analysis/LayerExtensionLoader.java` | `layer-extensions.yml` entries from the rule registry instead of the file; SPI as upstream | **Yes** |
-| `HierarchyService` | `server-core/.../hierarchy/HierarchyService.java` | Support for Java-backed closures | **Yes** |
 
 ### library-server-for-graalvm (1 class)
 
@@ -64,16 +63,16 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
-| `DSL` | `meter-analyzer/.../v2/dsl/DSL.java` | Take the pre-compiled `MalExpression` of an expression text from the rule registry; closure fields are self-wired by companion classes in the static initializer (no `LambdaMetafactory`) | **Yes** |
-| `FilterExpression` | `meter-analyzer/.../v2/dsl/FilterExpression.java` | Take the pre-compiled `MalFilter` of a filter literal from the rule registry | **Yes** |
-| `Rules` | `meter-analyzer/.../v2/prometheus/rule/Rules.java` | Rule files from the rule registry instead of YAML; registers inline `layerDefinitions` | **Yes** |
+| `DSL` | `meter-analyzer/.../v2/dsl/DSL.java` | Take the pre-compiled `MalExpression` from the rule registry by the coordinates `MetricConvert` passes, checking the metric name and text; closure fields are self-wired by companion classes in the static initializer (no `LambdaMetafactory`) | **Yes** |
+| `FilterExpression` | `meter-analyzer/.../v2/dsl/FilterExpression.java` | Take the pre-compiled `MalFilter` from the rule registry by the coordinates `MetricConvert` passes, checking the literal | **Yes** |
+| `Rules` | `meter-analyzer/.../v2/prometheus/rule/Rules.java` | Rule files from the rule registry instead of YAML, selected with upstream's patterns and passed through `RuleSetMerger` (`RuleSources`); registers inline `layerDefinitions` | **Yes** |
 
 ### log-analyzer-for-graalvm (3 classes)
 
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
-| `DSL` | `log-analyzer/.../v2/dsl/DSL.java` | Take the pre-compiled `LalExpression` from the rule registry by source coordinates | **Yes** |
-| `LALConfigs` | `log-analyzer/.../v2/provider/LALConfigs.java` | Rule files from the rule registry instead of YAML; registers inline `layerDefinitions` | **Yes** |
+| `DSL` | `log-analyzer/.../v2/dsl/DSL.java` | Take the pre-compiled `LalExpression` from the rule registry by source coordinates and compile inputs (name, DSL text, requested types) | **Yes** |
+| `LALConfigs` | `log-analyzer/.../v2/provider/LALConfigs.java` | Rule files from the rule registry instead of YAML, passed through `RuleSetMerger` (`RuleSources`), in the order upstream's loader returned them all at build time; registers inline `layerDefinitions` | **Yes** |
 | `LogAnalyzerModuleConfig` | `log-analyzer/.../v2/provider/LogAnalyzerModuleConfig.java` | Added `@Setter` at class level | **Yes** |
 
 ### trace-analyzer-for-graalvm (2 classes)
@@ -81,7 +80,7 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 | Replacement Class | Upstream Source | Change | Staleness Tracked |
 |---|---|---|---|
 | `TalDSL` | `trace-analyzer/.../v2/dsl/TalDSL.java` | Take the pre-compiled `TalExpression` from the rule registry; set its function-object fields from the function registry by the recorded keys; claim + create the recorded metric declarations | **Yes** |
-| `TALConfigs` | `trace-analyzer/.../v2/provider/TALConfigs.java` | Rule files from the rule registry instead of `tal/*.yaml` + `RuleSetMerger`; `requiredModules`, `loadInOrder`, `requiredModulesOf` from the same registry | **Yes** |
+| `TALConfigs` | `trace-analyzer/.../v2/provider/TALConfigs.java` | Rule files from the rule registry instead of `tal/*.yaml`, passed through `RuleSetMerger` (`RuleSources`), in the order upstream's loader returned them at build time; `requiredModules`, `loadInOrder` from the same registry, `requiredModulesOf` as upstream's own read gave it at build time | **Yes** |
 
 ### zabbix-receiver-for-graalvm (1 class)
 
@@ -103,7 +102,7 @@ JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
 
 Also uses shade plugin to exclude `YamlConfigLoaderUtils`, `ResourceUtils`,
 `FieldsHelper` from upstream JAR. The replacements for those live in
-`oap-graalvm-server/` (due to 30+ cross-module imports).
+`oap-graalvm-server/` (due to 30+ cross-module imports), as does `LoggingConfigWatcher` (server-core).
 
 ### Config-only replacements (added `@Setter` at class level)
 
@@ -126,16 +125,21 @@ plugin the distro does not ship must not reach the classpath.
 
 ## Tracking Gaps
 
-All **27 replacement source files** are tracked in `replacement-source-sha256.properties`.
+All **29 replacement source files** are tracked in `replacement-source-sha256.properties`, with the upstream sources
+whose logic a distro class or precompiler pass copies or replays (`OAPServerBootstrap`, the runtime-rule read routes,
+`LogFilterListener`, `SpanFilterListener`, ...). `ReplacementClassStalenessTest` requires every same-FQCN class here and
+in `oap-graalvm-server` to be tracked.
 The v2 upstream migration removed many v1 files; remaining replacements cover:
 
-- server-core-for-graalvm: 8 files (OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem, CoreModuleConfig, HierarchyDefinitionService, HierarchyService, LayerExtensionLoader)
+- server-core-for-graalvm: 7 files (OALEngineLoaderService, AnnotationScan, SourceReceiverImpl, MeterSystem, CoreModuleConfig, HierarchyDefinitionService, LayerExtensionLoader)
 - meter-analyzer-for-graalvm: 3 files (DSL v2, FilterExpression v2, Rules v2)
 - log-analyzer-for-graalvm: 3 files (DSL v2, LogAnalyzerModuleConfig v2, LALConfigs v2)
 - trace-analyzer-for-graalvm: 2 files (TalDSL, TALConfigs)
 - zabbix-receiver-for-graalvm: 1 file (ZabbixConfigs)
 - agent-analyzer-for-graalvm: 1 file (AnalyzerModuleConfig)
-- library-util-for-graalvm: 1 file (VirtualThreads); `YamlConfigLoaderUtils` lives in `oap-graalvm-server`
+- library-util-for-graalvm: 1 file (VirtualThreads)
+- library-server-for-graalvm: 1 file (DynamicSslContext)
+- oap-graalvm-server: 4 files (YamlConfigLoaderUtils, ResourceUtils, FieldsHelper, LoggingConfigWatcher)
 - Config-only @Setter additions: 6 files
 
 ## Verification Tests
@@ -149,7 +153,7 @@ All tests live in `oap-graalvm-server/src/test/`:
 | `PrecompiledRegistrationTest` | Annotation-scan manifests match live Guava ClassPath scans; all OAL/MAL/LAL classes of the rule registry loadable |
 | 73 MAL comparison tests | Dual-path: fresh v2 compilation vs pre-compiled class |
 | 5 LAL pre-compilation tests | Pre-compiled LAL classes load from the rule registry |
-| `RegistryParityTest` (precompiler) | The rule registry holds what upstream's loaders read from every bundled file, and the classes the build manifests record |
+| `RegistryParityTest` (precompiler) | The rule registry holds what upstream's loaders read from every bundled file, and the classes the build manifests record; its hierarchy is what upstream's `HierarchyDefinitionService` builds over the staged file, and each matcher decides upstream's hierarchy test pairs as a fresh compile does |
 
 ## Adding a New Replacement
 

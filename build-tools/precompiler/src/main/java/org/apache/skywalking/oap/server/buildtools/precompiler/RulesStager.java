@@ -40,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -48,6 +49,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleCatalog;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
@@ -67,13 +69,6 @@ import org.yaml.snakeyaml.error.YAMLException;
 public final class RulesStager {
     static final String MANIFEST = "rules-overlay.yaml";
     static final String INVENTORY = "overlay-inventory.txt";
-    // The rule directories, as upstream reads them: OAL, LAL, TAL and Zabbix from the directory itself, MAL from it
-    // and below.
-    static final List<String> FLAT_DIRECTORIES = List.of("oal", "lal", "tal", "zabbix-rules");
-    static final List<String> NESTED_DIRECTORIES = List.of(
-        "otel-rules", "meter-analyzer-config", "log-mal-rules", "envoy-metrics-rules", "telegraf-rules");
-
-    static final List<String> RULE_FILES = List.of("hierarchy-definition.yml", "layer-extensions.yml");
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]+");
     private static final int MAX_NAME = 64;
     private static final int MAX_PATH = 128;
@@ -246,8 +241,8 @@ public final class RulesStager {
             }
             plan.excluded.addAll(excluded);
         }
-        if (plan.excluded.contains("hierarchy-definition.yml")) {
-            throw new IllegalStateException("hierarchy-definition.yml cannot be excluded; override it with "
+        if (plan.excluded.contains(RuleCatalog.HIERARCHY_DEFINITION)) {
+            throw new IllegalStateException(RuleCatalog.HIERARCHY_DEFINITION + " cannot be excluded; override it with "
                 + "`hierarchy: {}`, `auto-matching-rules: {}` and `layer-levels: {}` to turn the hierarchy off");
         }
         final Set<String> effective = new TreeSet<>(upstreamRules);
@@ -284,7 +279,7 @@ public final class RulesStager {
     private static void checkStems(final Set<String> effective) {
         final Map<String, String> byStem = new TreeMap<>();
         for (final String rule : effective) {
-            if (RULE_FILES.contains(rule)) {
+            if (RuleCatalog.RULE_FILES.contains(rule)) {
                 continue;
             }
             final String stem = rule.contains(".") ? rule.substring(0, rule.lastIndexOf('.')) : rule;
@@ -300,8 +295,9 @@ public final class RulesStager {
         // The image carries a rule file's name into settings lists, generated class files and rule-browser URLs: keep
         // it to names every one of them takes as is. The MAL loaders also strip a listed name's .yaml or .yml.
         final String stem = rule.substring(0, rule.lastIndexOf('.'));
-        final String directory = rule.contains("/") ? rule.substring(0, rule.indexOf('/')) : "";
-        final boolean mal = NESTED_DIRECTORIES.contains(directory) || "zabbix-rules".equals(directory);
+        final Optional<RuleCatalog> catalog =
+            RuleCatalog.ofDirectory(rule.contains("/") ? rule.substring(0, rule.indexOf('/')) : "");
+        final boolean mal = catalog.map(c -> c.getEngine() == RuleCatalog.Engine.MAL).orElse(false);
         final boolean unsafe = rule.length() > MAX_PATH || Stream.of(rule.split("/"))
                                      .anyMatch(part -> part.length() > MAX_NAME || !SAFE_NAME.matcher(part).matches());
         if (unsafe || mal && (stem.endsWith(".yaml") || stem.endsWith(".yml"))) {
@@ -309,9 +305,9 @@ public final class RulesStager {
                 + "use ASCII letters, digits, '.', '_' and '-', at most " + MAX_NAME + " characters a path segment "
                 + "and " + MAX_PATH + " the path, and in a MAL directory one extension");
         }
-        if (FLAT_DIRECTORIES.contains(directory) && rule.indexOf('/') != rule.lastIndexOf('/')) {
-            throw new IllegalStateException("The overlay rule file " + rule + " is nested in " + directory
-                + "/, whose rules are read from the directory itself only");
+        if (catalog.isPresent() && !catalog.get().isRecursive() && rule.indexOf('/') != rule.lastIndexOf('/')) {
+            throw new IllegalStateException("The overlay rule file " + rule + " is nested in "
+                + catalog.get().getDirectory() + "/, whose rules are read from the directory itself only");
         }
     }
 
@@ -360,19 +356,17 @@ public final class RulesStager {
     }
 
     static boolean isRulePath(final String rel) {
-        if (RULE_FILES.contains(rel)) {
+        if (RuleCatalog.RULE_FILES.contains(rel)) {
             return true;
         }
         final int slash = rel.indexOf('/');
-        if (slash < 0) {
-            return false;
-        }
-        final String directory = rel.substring(0, slash);
-        if (!FLAT_DIRECTORIES.contains(directory) && !NESTED_DIRECTORIES.contains(directory)) {
+        final Optional<RuleCatalog> catalog =
+            slash < 0 ? Optional.empty() : RuleCatalog.ofDirectory(rel.substring(0, slash));
+        if (catalog.isEmpty()) {
             return false;
         }
         // Rule files are YAML, as upstream documents them (OAL scripts .oal): another file there is not a rule file.
-        return "oal".equals(directory) ? rel.endsWith(".oal") : rel.endsWith(".yaml") || rel.endsWith(".yml");
+        return catalog.get() == RuleCatalog.OAL ? rel.endsWith(".oal") : rel.endsWith(".yaml") || rel.endsWith(".yml");
     }
 
     private static boolean isHidden(final String rel) {

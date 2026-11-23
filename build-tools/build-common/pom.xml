@@ -29,12 +29,18 @@
 
     <artifactId>build-common</artifactId>
     <name>Build Common</name>
-    <description>Shared accepted module/provider list and SPI discovery utility for build-time tools</description>
+    <description>Shared accepted module/provider list, SPI discovery and protobuf type utilities for build-time tools and tests</description>
 
     <dependencies>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
             <artifactId>library-module</artifactId>
+        </dependency>
+        <!-- Every user of ProtobufMessages has protobuf on its own classpath -->
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 

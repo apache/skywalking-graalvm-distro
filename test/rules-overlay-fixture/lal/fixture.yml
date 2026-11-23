@@ -22,3 +22,22 @@ rules:
         sink {
         }
       }
+  # Skipped at boot with a warning, as upstream skips a layer: auto rule that saves logs without deciding their layer:
+  # nothing is compiled for it, and it takes no name, so the next rule may use it.
+  - name: fixture-auto
+    layer: auto
+    dsl: |
+      filter {
+        sink {
+        }
+      }
+  - name: fixture-auto
+    layer: auto
+    dsl: |
+      filter {
+        extractor {
+          layer "FIXTURE"
+        }
+        sink {
+        }
+      }

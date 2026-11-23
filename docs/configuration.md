@@ -1,8 +1,10 @@
 # Configuration
 
 The SkyWalking GraalVM Distro uses a simplified `application.yml` covering the modules and providers it ships.
-All settings are configurable via **system environment variables** at runtime, following the same
-`${SW_ENV_VAR:default}` pattern as upstream SkyWalking.
+Every setting written with an `SW_*` placeholder is configurable via **system environment variables** at runtime,
+following the same `${SW_ENV_VAR:default}` pattern as upstream SkyWalking; a setting without one (`downsampling`, for
+one) is set in `application.yml`, and the rule-selecting settings are filled from the rules compiled into the image
+(see below).
 
 For the full upstream configuration reference, see the
 [SkyWalking Configuration Vocabulary](https://skywalking.apache.org/docs/main/next/en/setup/backend/configuration-vocabulary/).
@@ -16,6 +18,10 @@ Which of the shipped modules run is decided by `application.yml`, as upstream: t
 module whose selector is `-` (for example `SW_RECEIVER_PPROF=-`) is not loaded at all, and the selector picks the
 provider. A module another loaded module requires (`receiver-sharing-server` for most receivers, `admin-server` for
 the admin modules) cannot be removed while that module is loaded: the boot fails, naming both.
+
+The native image reads `application.yml` and the other configuration files from the `config/` directory next to its
+executable, whatever the working directory, and from nothing else: without that directory the boot fails at once. The
+JVM distribution reads them from its class path, as upstream (`bin/oapService.sh` puts `config/` on it).
 
 ### Removed Providers (vs upstream)
 
@@ -68,7 +74,8 @@ and are not in this `application.yml`:
 
 Setting one of them, in `application.yml` (under any provider), by environment variable or by system property
 (`-DSW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES=…` or `-Dreceiver-otel.default.enabledOtelMetricsRules=…`), fails the
-boot instead of being ignored. A rule file under
+boot instead of being ignored, as does a setting that locates rule files or carries rules (`log-analyzer` `lalPath`,
+`malPath`, `meterConfigs`; `trace-analyzer` `talPath`). A rule file under
 `config/` (`otel-rules/`, `lal/`, `tal/`, `oal/`, `hierarchy-definition.yml`, `layer-extensions.yml`, …) fails the boot
 too. The image built from this repository compiles every rule file upstream bundles; to add, override or exclude rule
 files, build the image with a rules overlay ([Compiling Your Own Rules](rules-overlay.md)). Which modules run stays a
@@ -126,7 +133,7 @@ Available providers: `standalone`, `kubernetes`
 | gRPCSslKeyPath | `SW_CORE_GRPC_SSL_KEY_PATH` | `""` |
 | gRPCSslCertChainPath | `SW_CORE_GRPC_SSL_CERT_CHAIN_PATH` | `""` |
 | gRPCSslTrustedCAPath | `SW_CORE_GRPC_SSL_TRUSTED_CA_PATH` | `""` |
-| downsampling | *(not overridable)* | `Hour, Day` |
+| downsampling | *(no dedicated environment variable; set it in `application.yml`)* | `Hour, Day` |
 | enableDataKeeperExecutor | `SW_CORE_ENABLE_DATA_KEEPER_EXECUTOR` | `true` |
 | dataKeeperExecutePeriod | `SW_CORE_DATA_KEEPER_EXECUTE_PERIOD` | `5` |
 | recordDataTTL | `SW_CORE_RECORD_DATA_TTL` | `3` |
@@ -212,6 +219,7 @@ skipped, as upstream skips it.
 Every compiled TAL file is active (see [Rules are compiled in](#rules-are-compiled-in)): the files over OTLP spans fill
 `talFiles`, and the `sw-native` files fill `nativeTalFiles`, in upstream's listed order and then any others by name, as
 that order decides the order sources reach OAL. The precompiler compiles every file, whatever it contains, as long as
+it requires no module this image does not ship (such a file is never loaded at boot, so none of it is compiled) and
 the [TAL grammar](https://skywalking.apache.org/docs/main/next/en/concepts-and-designs/tal/) accepts it, and fails the
 build on a rule upstream would refuse at boot (an unknown layer or input type, a construct or function of another
 input, or conflicting metric shapes). The scripts in upstream's TAL reference and its trace-analyzer practice pages
@@ -468,6 +476,7 @@ No additional settings.
 | enabledHandlers | `SW_OTEL_RECEIVER_ENABLED_HANDLERS` | `otlp-traces,otlp-metrics,otlp-logs` |
 | otlpTraceStorage | `SW_OTEL_TRACE_STORAGE` | `otlp` (native `otlp_span`, served by the TraceQL `/otlp` datasource); `zipkin` converts spans for `receiver-zipkin` |
 | otlpServiceGroupKeys | `SW_OTEL_RECEIVER_OTLP_SERVICE_GROUP` | *(empty)* |
+| otlpLogSearchableTags | `SW_OTEL_LOG_SEARCHABLE_TAG_KEYS` | `level,severity,ai_route_type` (OTLP logs; empty uses core `searchableLogsTags`) |
 | otlpTraceSearchableTags | `SW_OTEL_TRACE_SEARCHABLE_TAG_KEYS` | `resource.deployment.environment.name,...,span.peer.service` (see `application.yml`) |
 | otlpTraceSampleRate | `SW_OTEL_TRACE_SAMPLE_RATE` | `10000` |
 | otlpTraceMaxSpansPerSecond | `SW_OTEL_TRACE_MAX_SPANS_PER_SECOND` | `0` |
@@ -552,10 +561,14 @@ firewalled and given TLS apart from the ports agents report to.
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
-| enableLogTestTool | `SW_QUERY_GRAPHQL_ENABLE_LOG_TEST_TOOL` | `false` |
+| enableLogTestTool | `SW_QUERY_GRAPHQL_ENABLE_LOG_TEST_TOOL` | `false` (not supported here, see below) |
 | maxQueryComplexity | `SW_QUERY_MAX_QUERY_COMPLEXITY` | `3000` |
 | enableUpdateUITemplate | `SW_ENABLE_UPDATE_UI_TEMPLATE` | `false` |
 | enableOnDemandPodLog | `SW_ENABLE_ON_DEMAND_POD_LOG` | `false` |
+
+The LAL log test tool (`enableLogTestTool`) is not supported in the native image: it compiles the rule it is given at
+runtime, which the image cannot, so its API answers an error saying so. The image runs only the LAL rules compiled into
+it; see [rules-overlay.md](rules-overlay.md) to compile your own.
 
 ---
 
@@ -781,11 +794,11 @@ the flag below only gates the debug API.
 
 ### graalvm-unsupported-admin
 
-**Selector**: `SW_GRAALVM_UNSUPPORTED_ADMIN` (default: `default`)
+**Selector**: `SW_RECEIVER_RUNTIME_RULE` (default: `default`), upstream's variable for the module this one stands in for
 
 This distro only, in place of upstream's `receiver-runtime-rule`: serves the read-only MAL/LAL rule catalog
-(`/runtime/rule/list|bundled`, `GET /runtime/rule`) and answers every runtime-rule mutation with HTTP 501, mounted on
-admin-server. No settings.
+(`/runtime/rule/list|bundled|status`, `GET /runtime/rule`), answering as upstream does on a node with no runtime rule
+(every rule `BUNDLED`), and answers every runtime-rule mutation with HTTP 501, mounted on admin-server. No settings.
 
 ---
 

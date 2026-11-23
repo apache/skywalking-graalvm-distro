@@ -16,7 +16,7 @@
 # Pre-built images from ghcr.io/apache/skywalking and ghcr.io/apache/skywalking-java.
 # Update when syncing the skywalking submodule.
 SW_AGENT_JAVA_COMMIT=ac0df43d7140e726eba9e5e5b1b75cf364c71dff
-SW_BANYANDB_COMMIT=88245d3965b6a28c329d1c9ef36aaafecec6144f
+SW_BANYANDB_COMMIT=8efdf0ca7cc4879b88e4e7818fad5690eb1bbe59
 SW_CTL_COMMIT=30aaacd00e0df1f48db3fcd3e263149f84e00391
 SW_KUBERNETES_COMMIT_SHA=da0e267f877b9b8e5f7728ae4ea7dc7723a2a073
 SW_AI_SESSIONIZER_COMMIT=aa67971da10c82ef5b840524c9349c6a9510fbe3

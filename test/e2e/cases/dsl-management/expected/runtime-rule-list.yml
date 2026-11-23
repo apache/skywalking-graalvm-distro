@@ -17,4 +17,28 @@ generatedAt: {{ gt .generatedAt 0 }}
 loaderStats:
   active: 0
   pending: 0
-rules: []
+rules:
+{{- contains .rules }}
+- catalog: lal
+  name: default
+  status: BUNDLED
+  localState: RUNNING
+  loaderGc: LIVE
+  loaderKind: NONE
+  loaderName: ""
+  contentHash: {{ notEmpty .contentHash }}
+  bundled: true
+  bundledContentHash: {{ notEmpty .bundledContentHash }}
+  pendingUnregister: false
+- catalog: otel-rules
+  name: vm
+  status: BUNDLED
+  localState: RUNNING
+  loaderGc: LIVE
+  loaderKind: NONE
+  loaderName: ""
+  contentHash: {{ notEmpty .contentHash }}
+  bundled: true
+  bundledContentHash: {{ notEmpty .bundledContentHash }}
+  pendingUnregister: false
+{{- end }}

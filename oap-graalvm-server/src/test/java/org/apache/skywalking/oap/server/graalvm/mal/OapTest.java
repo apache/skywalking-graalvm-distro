@@ -153,6 +153,14 @@ class OapTest extends MALScriptComparisonBase {
      * alarm_http_delivery_total{...,hook_type="webhook",result="timeout"} 2.0
      * alarm_http_delivery_status_total{...,hook_type="webhook",status_class="2xx"} 30.0
      * alarm_http_delivery_latency_seconds{...le buckets...,hook_type="webhook"} histogram
+     *
+     * # --- Cluster remote client (dest + self: one sample to this node, one to a peer) ---
+     * remote_out_count / remote_out_error_count{...,dest,self}
+     * remote_out_stream_inflight / remote_out_stream_block_seconds / remote_out_queue_used_percentage{...,dest,self="N"}
+     * remote_out_latency{...le buckets...,dest,self} histogram, peer counts three times self's
+     * remote_in_count / remote_in_error_count / remote_in_target_not_found_count{...}
+     * remote_in_latency{...le buckets...} histogram
+     * cluster_size{...} 2.0
      * </pre>
      */
     private static ImmutableMap<String, SampleFamily> buildInput(
@@ -457,7 +465,71 @@ class OapTest extends MALScriptComparisonBase {
                         .putAll(scope).put("hook_type", "webhook").build(),
                     scale, timestamp))
 
+            // --- Cluster remote client ---
+            .put("remote_out_count",
+                remoteOut("remote_out_count", scope, 900.0 * scale, 1200.0 * scale, timestamp))
+            .put("remote_out_error_count",
+                remoteOut("remote_out_error_count", scope, 0.0, 4.0 * scale, timestamp))
+            .put("remote_out_latency",
+                SampleFamilyBuilder.newBuilder(Stream.concat(
+                    Stream.of(histogramSampleArray("remote_out_latency", remoteOutLabels(scope, true), scale, timestamp)),
+                    Stream.of(histogramSampleArray("remote_out_latency", remoteOutLabels(scope, false), 3 * scale,
+                        timestamp))
+                ).toArray(Sample[]::new)).build())
+            // Stream and queue metrics exist for gRPC peers only.
+            .put("remote_out_stream_inflight",
+                peerOnly("remote_out_stream_inflight", scope, 3.0, timestamp))
+            .put("remote_out_stream_block_seconds",
+                peerOnly("remote_out_stream_block_seconds", scope, 0.25 * scale, timestamp))
+            .put("remote_out_queue_used_percentage",
+                peerOnly("remote_out_queue_used_percentage", scope, 0.42, timestamp))
+            .put("remote_in_count",
+                single("remote_in_count", scope, 300.0 * scale, timestamp))
+            .put("remote_in_error_count",
+                single("remote_in_error_count", scope, 1.0 * scale, timestamp))
+            .put("remote_in_target_not_found_count",
+                single("remote_in_target_not_found_count", scope, 2.0 * scale, timestamp))
+            .put("remote_in_latency",
+                histogramSamples("remote_in_latency", scope, scale, timestamp))
+            .put("cluster_size",
+                single("cluster_size", scope, 2.0, timestamp))
+
             .build();
+    }
+
+    private static ImmutableMap<String, String> remoteOutLabels(final ImmutableMap<String, String> scope,
+                                                                final boolean self) {
+        return ImmutableMap.<String, String>builder()
+            .putAll(scope)
+            .put("dest", self ? "oap-host-1:11800" : "oap-host-2:11800")
+            .put("self", self ? "Y" : "N")
+            .build();
+    }
+
+    private static SampleFamily peerOnly(final String name,
+                                         final ImmutableMap<String, String> scope,
+                                         final double value,
+                                         final long timestamp) {
+        return SampleFamilyBuilder.newBuilder(
+            Sample.builder().name(name).labels(remoteOutLabels(scope, false))
+                .value(value).timestamp(timestamp).build()
+        ).build();
+    }
+
+    /**
+     * One sample to this node (self=Y) and one to a peer (self=N).
+     */
+    private static SampleFamily remoteOut(final String name,
+                                          final ImmutableMap<String, String> scope,
+                                          final double selfValue,
+                                          final double peerValue,
+                                          final long timestamp) {
+        return SampleFamilyBuilder.newBuilder(
+            Sample.builder().name(name).labels(remoteOutLabels(scope, true))
+                .value(selfValue).timestamp(timestamp).build(),
+            Sample.builder().name(name).labels(remoteOutLabels(scope, false))
+                .value(peerValue).timestamp(timestamp).build()
+        ).build();
     }
 
     private static SampleFamily single(final String name,

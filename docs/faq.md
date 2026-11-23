@@ -95,12 +95,17 @@ Check for these common issues:
 3. **Insufficient memory**: The native binary needs at least ~400MB of heap. If running in a
    container with tight limits, increase the memory allocation.
 
-### Logs show "Unknown config type" warnings
+### The boot fails with "no provider found"
 
-This means an environment variable is set for a module that isn't included in the distro.
-For example, setting `SW_STORAGE=elasticsearch` will produce a warning because
-Elasticsearch isn't available. Check [Supported Features](supported-features.md) for
-the list of included modules.
+A module's selector names a provider the image does not ship, for example `SW_STORAGE=elasticsearch`: only
+BanyanDB is included. Upstream fails its boot the same way for a provider it does not have. Check
+[Supported Features](supported-features.md) for the list of included modules and providers.
+
+### The native OAP fails with "No .../config"
+
+The native binary reads its configuration from the `config/` directory next to it (`oap-native/config/` in the
+distribution, `/skywalking/config/` in the Docker image), whatever the working directory. Keep `config/` beside
+`oap-server`, or mount your own over it.
 
 ### How do I change the log level?
 

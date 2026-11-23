@@ -26,6 +26,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,6 +39,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.skywalking.oap.server.buildtools.common.AcceptedModules;
 import org.apache.skywalking.oap.server.library.module.ModuleDefine;
 import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.junit.jupiter.api.Test;
@@ -59,6 +61,10 @@ class ApplicationYmlModulesTest {
     private static final Pattern SELECTOR = Pattern.compile("\\$\\{SW_[A-Z0-9_]+:([^}]*)}");
     private static final Pattern SHADED_ARTIFACT =
         Pattern.compile("<include>org\\.apache\\.skywalking:([^<]+)</include>");
+    private static final Path UPSTREAM_APPLICATION_YML =
+        DISTRO.resolve("skywalking/oap-server/server-starter/src/main/resources/application.yml");
+    private static final String RUNTIME_RULE_MODULE = "receiver-runtime-rule";
+    private static final String STAND_IN_MODULE = "graalvm-unsupported-admin";
 
     /**
      * A module is turned off by its selector ({@code SW_RECEIVER_PPROF=-}); without one, or without the environment
@@ -80,16 +86,7 @@ class ApplicationYmlModulesTest {
 
     @Test
     void theRuntimeClasspathCarriesExactlyTheAcceptedUpstreamProviders() throws Exception {
-        final Set<String> accepted = new TreeSet<>();
-        final Properties inventory = new Properties();
-        try (InputStream in = getClass().getClassLoader().getResourceAsStream("provider-inventory.properties")) {
-            inventory.load(in);
-        }
-        inventory.forEach((key, status) -> {
-            if ("ACCEPTED".equals(status)) {
-                accepted.add(((String) key).substring("provider.".length()));
-            }
-        });
+        final Set<String> accepted = new TreeSet<>(acceptedProviders());
 
         final Set<String> shipped = new TreeSet<>();
         try (URLClassLoader runtime = runtimeClassLoader()) {
@@ -102,6 +99,24 @@ class ApplicationYmlModulesTest {
         }
 
         assertEquals(accepted, shipped);
+    }
+
+    /**
+     * The build asks {@code AcceptedModules.shippedModuleNames()} which modules a rule file's {@code requiredModules}
+     * can find at boot: exactly the modules the runtime class path defines, the distro's stand-in included.
+     */
+    @Test
+    void theBuildToolsShipExactlyTheModulesTheRuntimeClasspathDefines() throws Exception {
+        final Set<String> defined = new TreeSet<>();
+        try (URLClassLoader runtime = runtimeClassLoader()) {
+            final Class<?> defineType = runtime.loadClass(ModuleDefine.class.getName());
+            for (final Object module : ServiceLoader.load(defineType, runtime)) {
+                defined.add((String) defineType.getMethod("name").invoke(module));
+            }
+        }
+
+        assertTrue(defined.contains(STAND_IN_MODULE) && !defined.contains(RUNTIME_RULE_MODULE), defined.toString());
+        assertEquals(defined, AcceptedModules.shippedModuleNames());
     }
 
     /**
@@ -135,6 +150,98 @@ class ApplicationYmlModulesTest {
         assertEquals(options, resolved);
     }
 
+    /**
+     * The build tools take the shipped providers from {@code AcceptedModules}; a provider missing there gets no config
+     * loader branch and the boot fails with "Unknown config type".
+     */
+    @Test
+    void theBuildToolsAcceptExactlyTheInventorysAcceptedProviders() throws Exception {
+        final Comparator<AcceptedModules.ModuleProviderPair> byName =
+            Comparator.comparing(AcceptedModules.ModuleProviderPair::moduleName)
+                      .thenComparing(AcceptedModules.ModuleProviderPair::providerName);
+        final Set<AcceptedModules.ModuleProviderPair> inventory = new TreeSet<>(byName);
+        for (final String providerClass : acceptedProviders()) {
+            final ModuleProvider provider =
+                (ModuleProvider) Class.forName(providerClass).getDeclaredConstructor().newInstance();
+            inventory.add(new AcceptedModules.ModuleProviderPair(
+                provider.module().getDeclaredConstructor().newInstance().name(), provider.name()));
+        }
+        final Set<AcceptedModules.ModuleProviderPair> accepted = new TreeSet<>(byName);
+        accepted.addAll(AcceptedModules.ACCEPTED);
+        assertEquals(inventory, accepted);
+    }
+
+    /**
+     * The shipped {@code application.yml} is upstream's for the modules and providers the image ships, but for the
+     * declared differences: the rule-selecting settings are refused (rules are compiled in), the configuration selector
+     * defaults to {@code k8s-configmap}, the providers the image does not ship are left out, and
+     * {@code graalvm-unsupported-admin}, switched by upstream's variable, stands in for {@code receiver-runtime-rule}.
+     */
+    @Test
+    void theShippedApplicationYmlIsUpstreamsButForTheDeclaredDifferences() throws IOException {
+        final Map<String, Map<String, Object>> upstream = loadApplicationYml(UPSTREAM_APPLICATION_YML);
+        final Map<String, Map<String, Object>> shipped = loadShippedApplicationYml();
+        final Set<String> refused = CompiledRuleActivation.SETTINGS.stream()
+            .map(s -> s.module + "." + s.provider + "." + s.field).collect(Collectors.toSet());
+
+        final Set<String> missing = new TreeSet<>(upstream.keySet());
+        missing.removeAll(shipped.keySet());
+        assertEquals(Set.of(RUNTIME_RULE_MODULE), missing, "upstream modules the shipped application.yml leaves out");
+
+        final List<String> differences = new ArrayList<>();
+        shipped.forEach((module, section) -> {
+            if (STAND_IN_MODULE.equals(module)) {
+                if (!Objects.equals(upstream.get(RUNTIME_RULE_MODULE).get("selector"), section.get("selector"))) {
+                    differences.add(module + ".selector = " + section.get("selector"));
+                }
+                return;
+            }
+            final Map<String, Object> upstreamSection = upstream.get(module);
+            if (upstreamSection == null) {
+                differences.add(module + ": not an upstream module");
+                return;
+            }
+            final Object selector = "configuration".equals(module)
+                ? "${SW_CONFIGURATION:k8s-configmap}" : upstreamSection.get("selector");
+            if (!Objects.equals(selector, section.get("selector"))) {
+                differences.add(module + ".selector = " + section.get("selector"));
+            }
+            for (final String provider : providerOptions(section)) {
+                if (!upstreamSection.containsKey(provider)) {
+                    differences.add(module + "." + provider + ": not an upstream provider");
+                    continue;
+                }
+                final Map<String, Object> expected = new TreeMap<>(settings(upstreamSection.get(provider)));
+                expected.keySet().removeIf(setting -> refused.contains(module + "." + provider + "." + setting));
+                final Map<String, Object> actual = new TreeMap<>(settings(section.get(provider)));
+                if (!expected.equals(actual)) {
+                    differences.add(module + "." + provider + ": " + actual + " instead of " + expected);
+                }
+            }
+        });
+        assertTrue(differences.isEmpty(), "Differences from upstream's application.yml: " + differences);
+    }
+
+    private static List<String> acceptedProviders() throws IOException {
+        final Properties inventory = new Properties();
+        try (InputStream in = ApplicationYmlModulesTest.class.getClassLoader()
+                                                             .getResourceAsStream("provider-inventory.properties")) {
+            inventory.load(in);
+        }
+        final List<String> accepted = new ArrayList<>();
+        inventory.forEach((key, status) -> {
+            if ("ACCEPTED".equals(status)) {
+                accepted.add(((String) key).substring("provider.".length()));
+            }
+        });
+        return accepted;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> settings(final Object provider) {
+        return provider == null ? Map.of() : (Map<String, Object>) provider;
+    }
+
     private static List<String> providerOptions(final Map<String, Object> section) {
         return section.keySet().stream()
                       .filter(key -> !"selector".equals(key))
@@ -143,8 +250,11 @@ class ApplicationYmlModulesTest {
     }
 
     private static Map<String, Map<String, Object>> loadShippedApplicationYml() throws IOException {
-        try (Reader reader = Files.newBufferedReader(
-            DISTRO.resolve("oap-graalvm-server/src/main/resources/application.yml"))) {
+        return loadApplicationYml(DISTRO.resolve("oap-graalvm-server/src/main/resources/application.yml"));
+    }
+
+    private static Map<String, Map<String, Object>> loadApplicationYml(final Path file) throws IOException {
+        try (Reader reader = Files.newBufferedReader(file)) {
             return new Yaml().load(reader);
         }
     }
@@ -156,7 +266,7 @@ class ApplicationYmlModulesTest {
      * dependency is its {@code target/classes}, holding only the replacement classes until shade adds its upstream jar;
      * that jar follows it here, so the replacements still win.
      */
-    private static URLClassLoader runtimeClassLoader() throws IOException {
+    static URLClassLoader runtimeClassLoader() throws IOException {
         final String file = Objects.requireNonNull(System.getProperty("runtime.classpath.file"),
             "runtime.classpath.file is set by the surefire configuration in oap-graalvm-server/pom.xml");
         final List<URL> urls = new ArrayList<>();

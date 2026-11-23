@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  *       file still exists at the recorded path and its content hash matches.
  *       A mismatch means the replacement needs review and update.</li>
  *   <li><b>Coverage check</b>: Scan all {@code .java} files under
- *       {@code oap-libs-for-graalvm/} with {@code org.apache.skywalking} package,
+ *       {@code oap-libs-for-graalvm/} and {@code oap-graalvm-server/} with {@code org.apache.skywalking} package,
  *       map each to its upstream counterpart in {@code skywalking/}, and verify
  *       it is tracked in the properties file. An untracked replacement means
  *       someone added a same-FQCN override without recording its upstream SHA.</li>
@@ -115,8 +115,8 @@ class ReplacementClassStalenessTest {
     }
 
     /**
-     * Scan all replacement .java files under oap-libs-for-graalvm/ with
-     * org.apache.skywalking package and verify each has a corresponding entry
+     * Scan all replacement .java files under oap-libs-for-graalvm/ and oap-graalvm-server/ (whose replacements import
+     * types from many modules) with org.apache.skywalking package and verify each has a corresponding entry
      * in replacement-source-sha256.properties. This catches new replacements
      * that were added without recording the upstream SHA.
      */
@@ -124,11 +124,6 @@ class ReplacementClassStalenessTest {
     void allReplacementClassesAreTracked() throws Exception {
         Properties props = loadProperties();
         Path projectRoot = Path.of(System.getProperty("user.dir")).getParent();
-        Path libsDir = projectRoot.resolve("oap-libs-for-graalvm");
-
-        if (!Files.isDirectory(libsDir)) {
-            return; // skip if directory doesn't exist (e.g. clean checkout)
-        }
 
         // Collect all tracked upstream paths for quick lookup
         Set<String> trackedUpstreamPaths = new HashSet<>();
@@ -136,9 +131,10 @@ class ReplacementClassStalenessTest {
             trackedUpstreamPaths.add(key);
         }
 
-        // Scan oap-libs-for-graalvm for replacement .java files
         List<String> untracked = new ArrayList<>();
-        try (Stream<Path> walk = Files.walk(libsDir)) {
+        try (Stream<Path> walk = Stream.concat(
+            Files.walk(projectRoot.resolve("oap-libs-for-graalvm")),
+            Files.walk(projectRoot.resolve("oap-graalvm-server/src/main/java")))) {
             walk.filter(p -> p.toString().endsWith(".java"))
                 .filter(p -> p.toString().contains("src/main/java/"))
                 .forEach(replacementFile -> {

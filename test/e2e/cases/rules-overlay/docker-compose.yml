@@ -37,6 +37,8 @@ services:
       SW_HEALTH_CHECKER: default
       SW_STORAGE_BANYANDB_TARGETS: banyandb:17912
       SW_CONFIGURATION: none
+      # The TCP access log analysis makes the receiver load tcp.oal, which the overlay excluded: its metrics stay absent.
+      SW_ENVOY_METRIC_ALS_TCP_ANALYSIS: persistence
     depends_on:
       banyandb:
         condition: service_healthy

@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -34,20 +34,25 @@ import static java.util.Objects.nonNull;
 
 /**
  * GraalVM replacement for upstream LogAnalyzerModuleConfig.
- * Change: Added @Setter at class level so config-generator can set all fields via Lombok setters.
- * Why: Upstream only has @Setter on specific fields. The meterConfigs field is lazy-loaded and
- * won't be set from config, but having the setter avoids compile errors in generated YamlConfigLoaderUtils.
+ * Change: Added @Setter at class level, so the generated YamlConfigLoaderUtils sets every field through a setter.
  */
 @EqualsAndHashCode(callSuper = false)
-@Getter
 @Setter
 public class LogAnalyzerModuleConfig extends ModuleConfig {
+    @Getter
+    @Setter
     private String lalPath = "lal";
 
+    @Getter
+    @Setter
     private String malPath = "log-mal-rules";
 
+    @Getter
+    @Setter
     private String lalFiles = "default.yaml";
 
+    @Getter
+    @Setter
     private String malFiles;
 
     private List<Rule> meterConfigs;

@@ -17,40 +17,48 @@
 
 package org.apache.skywalking.oap.trace.analyzer.v2.provider;
 
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.UnexpectedException;
 import org.apache.skywalking.oap.server.core.analysis.LayerDefinition;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleCatalog;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleSources;
 import org.apache.skywalking.oap.server.graalvm.rules.TalFile;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.io.Files.getNameWithoutExtension;
 import static org.apache.skywalking.oap.server.library.util.CollectionUtils.isEmpty;
+import static org.apache.skywalking.oap.server.library.util.StringUtil.isNotBlank;
 
 /**
  * GraalVM replacement for upstream TALConfigs.
  * Original: skywalking/oap-server/analyzer/trace-analyzer/src/main/java/.../v2/provider/TALConfigs.java
  * Repackaged into trace-analyzer-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
  *
- * Change: Returns the rule files from the generated {@link CompiledRules} registry, which holds what upstream's
- * loader read from each tal/ file at build time, instead of reading tal/*.yaml from disk through RuleSetMerger;
- * requiredModulesOf reads the same registry.
- * Why: The distro ships no tal/ directory; its rules are compiled at build time. RuleSetMerger only overlays
- * runtime rules, and upstream's Catalog has no TAL entry, so nothing is lost. lineNo comes from the registry;
- * sourceName/sourcePath/metricPrefix are re-stamped, files whose requiredModules are not all loaded skipped and
- * inline layers registered exactly as upstream parse() does, because SpanFilterListener builds the DslSourceRef the
- * pre-compiled class is looked up by from them.
+ * Change: Returns the rule files from the generated {@link CompiledRules} registry instead of reading tal/*.yaml from
+ * disk. The registry holds what upstream's loader read from each file at build time (a file without rules too), the
+ * coordinates it stamped included, and lists the files in the order upstream's loader returns the talFiles;
+ * requiredModulesOf returns what upstream's own read of each file's requiredModules gave at build time. The files it
+ * reads go through upstream's RuleSetMerger first, from their sources the image carries ({@link RuleSources}), as
+ * upstream's loader passes them, which records them.
+ * Why: The distro ships no tal/ directory; its rules are compiled at build time. What depends on the booted modules
+ * stays here, as upstream's parse() does it: a file whose requiredModules are not all loaded is skipped, and the
+ * others register their inline layers.
  */
 @Data
 @Slf4j
@@ -79,42 +87,49 @@ public class TALConfigs {
     public static final String TAL_CATALOG = "tal/";
 
     public static void stampSource(final TALConfig config, final String fileName) {
-        final String canonical = fileName.endsWith(".yaml") || fileName.endsWith(".yml")
-            ? fileName : fileName + ".yaml";
-        config.setSourceName(canonical);
-        config.setSourcePath(TAL_CATALOG + canonical);
+        stampVerbatim(config, isYamlName(fileName) ? fileName : fileName + ".yaml");
+    }
+
+    private static boolean isYamlName(final String fileName) {
+        final String lower = fileName.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".yaml") || lower.endsWith(".yml");
+    }
+
+    private static void stampVerbatim(final TALConfig config, final String fileName) {
+        config.setSourceName(fileName);
+        config.setSourcePath(TAL_CATALOG + fileName);
     }
 
     public static List<TALConfigs> load(final String path, final List<String> files) throws Exception {
-        return loadInternal(path, files, null, false);
+        return loadInternal(path, files, null, true, false);
     }
 
     public static List<TALConfigs> load(final String path, final List<String> files,
                                         final ModuleManager manager) throws Exception {
-        return loadInternal(path, files, manager, false);
+        return loadInternal(path, files, manager, false, false);
     }
 
     public static List<TALConfigs> loadInOrder(final String path, final List<String> files,
                                                final ModuleManager manager) throws Exception {
-        return loadInternal(path, files, manager, true);
+        return loadInternal(path, files, manager, false, true);
     }
 
     private static List<TALConfigs> loadInternal(final String path, final List<String> files,
                                                  final ModuleManager manager,
+                                                 final boolean useInstalledManager,
                                                  final boolean inOrder) throws Exception {
         if (isEmpty(files)) {
             return Collections.emptyList();
         }
-        // Keyed by the rule file's name with its extension, which stampSource needs.
-        final Map<String, TALConfigs> all = readPrecompiled();
-        final Map<String, Map.Entry<String, TALConfigs>> byStem = new HashMap<>();
-        for (final Map.Entry<String, TALConfigs> e : all.entrySet()) {
-            if (files.contains(getNameWithoutExtension(e.getKey()))) {
-                byStem.put(getNameWithoutExtension(e.getKey()), e);
-            }
+        checkArgument(isNotBlank(path), "path cannot be blank");
+        // As upstream fails on a directory that does not exist; the image compiles tal/ only, so another holds no file
+        if (!RuleCatalog.exists(path)) {
+            throw new ModuleStartException("Failed to load TAL config rules",
+                new FileNotFoundException("path not found: " + path));
         }
+        final Map<String, TalFile> compiled = TAL_CATALOG.equals(path + "/") ? compiledFiles() : Map.of();
         for (final String name : files) {
-            if (!byStem.containsKey(name)) {
+            if (!compiled.containsKey(name)) {
                 if (inOrder) {
                     throw new ModuleStartException(
                         "TAL rule file " + path + "/" + name + ".yaml is listed but does not exist");
@@ -122,48 +137,52 @@ public class TALConfigs {
                 log.warn("talFiles names '{}', but no {}/{}.yaml was pre-compiled", name, path, name);
             }
         }
-        // The order rules are installed in decides which runs first on a span (first-wins tags and alias), so
-        // the files come in upstream's order: by stem through the HashMap RuleSetMerger.merge returns, or as
-        // listed for loadInOrder.
-        final List<Map.Entry<String, TALConfigs>> entries = new ArrayList<>(new HashMap<>(byStem).values());
-        if (inOrder) {
-            entries.sort(Comparator.comparingInt(e -> files.indexOf(getNameWithoutExtension(e.getKey()))));
-        }
-        final List<TALConfigs> out = new ArrayList<>();
-        for (final Map.Entry<String, TALConfigs> e : entries) {
-            final TALConfigs configs = e.getValue();
-            if (configs == null || configs.getRules() == null) {
-                continue;
+        // The order the rules are installed in decides which runs first on a span (first-wins alias, last-wins tags):
+        // the registry's, which the build took from upstream's loader, or as listed for loadInOrder.
+        final List<Map.Entry<String, TalFile>> listed = new ArrayList<>();
+        for (final Map.Entry<String, TalFile> file : compiled.entrySet()) {
+            if (files.contains(file.getKey())) {
+                listed.add(file);
             }
+        }
+        if (inOrder) {
+            listed.sort(Comparator.comparingInt(file -> files.indexOf(file.getKey())));
+        }
+        // As upstream's loader passes every file it reads, before skipping one for its modules
+        RuleSources.merge("tal", listed.stream().map(Map.Entry::getKey).collect(Collectors.toList()),
+            useInstalledManager, manager);
+        final List<TALConfigs> out = new ArrayList<>(listed.size());
+        for (final Map.Entry<String, TalFile> file : listed) {
+            final TALConfigs configs = file.getValue().getConfigs();
             if (!configs.requiredModulesLoaded(manager)) {
                 log.info("TAL rule file {} skipped: it requires modules {} and not all are loaded",
-                    getNameWithoutExtension(e.getKey()), configs.getRequiredModules());
+                    file.getKey(), configs.getRequiredModules());
                 continue;
             }
-            registerInlineLayers(getNameWithoutExtension(e.getKey()), configs);
-            for (final TALConfig config : configs.getRules()) {
-                stampSource(config, e.getKey());
-                config.setMetricPrefix(configs.getMetricPrefix());
+            // A file of layerDefinitions alone still declares them.
+            registerInlineLayers(file.getKey(), configs);
+            if (configs.getRules() != null) {
+                out.add(configs);
             }
-            out.add(configs);
         }
         log.info("Loaded {} pre-compiled TAL rule file(s) from {} (filtered from {} available)",
-            out.size(), path, all.size());
+            out.size(), path, compiled.size());
         return out;
     }
 
     public static Set<String> requiredModulesOf(final String path, final List<String> files) {
         final Set<String> modules = new LinkedHashSet<>();
-        if (isEmpty(files)) {
+        // Upstream reads no modules from a directory that does not exist.
+        if (isEmpty(files) || !TAL_CATALOG.equals(path + "/")) {
             return modules;
         }
-        final Map<String, TALConfigs> all = readPrecompiled();
-        for (final String name : files) {
-            for (final Map.Entry<String, TALConfigs> e : all.entrySet()) {
-                if (name.equals(getNameWithoutExtension(e.getKey())) && e.getValue() != null
-                    && e.getValue().getRequiredModules() != null) {
-                    modules.addAll(e.getValue().getRequiredModules());
-                }
+        final Map<String, TalFile> compiled = compiledFiles();
+        // By name, the order upstream reads the files in.
+        // What upstream's own read of each file's key gave at build time, not the modules its loader binds
+        for (final String name : new TreeSet<>(files)) {
+            final TalFile file = compiled.get(name);
+            if (file != null) {
+                modules.addAll(file.getRequiredModulesOf());
             }
         }
         return modules;
@@ -185,14 +204,19 @@ public class TALConfigs {
     }
 
     /**
-     * @return the rule files by their name with extension, in listing order
+     * @return the compiled rule files by the name talFiles lists them under, in the registry's order
      */
-    private static Map<String, TALConfigs> readPrecompiled() {
-        final Map<String, TALConfigs> all = new LinkedHashMap<>();
+    private static Map<String, TalFile> compiledFiles() {
+        final Map<String, TalFile> compiled = new LinkedHashMap<>();
         for (final TalFile file : CompiledRules.talFiles()) {
-            all.put(file.getFileName(), file.getConfigs());
+            final TalFile other = compiled.put(getNameWithoutExtension(file.getFileName()), file);
+            if (other != null) {
+                throw new IllegalStateException("The compiled TAL rule files " + other.getFileName() + " and "
+                    + file.getFileName() + " are both named " + getNameWithoutExtension(file.getFileName())
+                    + "; rebuild the distro");
+            }
         }
-        return all;
+        return compiled;
     }
 
     private static void registerInlineLayers(final String ruleName, final TALConfigs configs) {

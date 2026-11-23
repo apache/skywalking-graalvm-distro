@@ -94,6 +94,48 @@ public class MeterSystem implements Service {
         }
     }
 
+    /**
+     * The create / limitLabels calls {@code action} makes on this meter system, in order; {@code dryRun} records them
+     * without running them. The precompiler compares what upstream registers with what the runtime replays.
+     */
+    public List<String> recordCalls(final boolean dryRun, final Runnable action) {
+        final Recording previous = RECORDING.get();
+        final Recording recording = new Recording(this, dryRun);
+        RECORDING.set(recording);
+        try {
+            action.run();
+            return recording.calls;
+        } finally {
+            if (previous == null) {
+                RECORDING.remove();
+            } else {
+                RECORDING.set(previous);
+            }
+        }
+    }
+
+    /**
+     * @return the recording of this meter system's calls on this thread, or null
+     */
+    private Recording recording() {
+        final Recording recording = RECORDING.get();
+        return recording != null && recording.target == this ? recording : null;
+    }
+
+    private static final class Recording {
+        private final MeterSystem target;
+        private final boolean dryRun;
+        private final List<String> calls = new ArrayList<>();
+
+        private Recording(final MeterSystem target, final boolean dryRun) {
+            this.target = target;
+            this.dryRun = dryRun;
+        }
+    }
+
+    // Per thread and meter system: a recording neither sees nor suppresses another thread's or meter's calls.
+    private static final ThreadLocal<Recording> RECORDING = new ThreadLocal<>();
+
     public synchronized <T> void create(String metricsName,
                                         String functionName,
                                         ScopeType type) throws IllegalArgumentException {
@@ -123,6 +165,14 @@ public class MeterSystem implements Service {
                                         String functionName,
                                         ScopeType type,
                                         Class<T> dataType) throws IllegalArgumentException {
+        // Every create reaches this overload, so each call is recorded once, with the type it resolved.
+        final Recording recording = recording();
+        if (recording != null) {
+            recording.calls.add("create " + metricsName + " " + functionName + " " + type + " " + dataType.getName());
+            if (recording.dryRun) {
+                return;
+            }
+        }
         final Class<? extends AcceptableValue> meterFunction = functionRegister.get(functionName);
         if (meterFunction == null) {
             throw new IllegalArgumentException("Function " + functionName + " can't be found.");
@@ -227,6 +277,13 @@ public class MeterSystem implements Service {
      * @param maxLabels   the most label sets one row holds; 0 or less for no limit
      */
     public void limitLabels(final String metricsName, final int maxLabels) {
+        final Recording recording = recording();
+        if (recording != null) {
+            recording.calls.add("limitLabels " + metricsName + " " + maxLabels);
+            if (recording.dryRun) {
+                return;
+            }
+        }
         LabeledValueLimits.register(METER_CLASS_PACKAGE + formatName(metricsName), maxLabels);
     }
 

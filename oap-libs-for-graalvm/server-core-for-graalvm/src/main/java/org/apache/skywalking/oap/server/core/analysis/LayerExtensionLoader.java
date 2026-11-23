@@ -45,8 +45,7 @@ public final class LayerExtensionLoader {
             def.register();
         }
         loadFromSpi();
-        log.info("Layer registry after compiled layer-extensions + SPI extension loading: {}",
-            Layer.describeRegistry());
+        log.info("Layer registry after yaml + SPI extension loading: {}", Layer.describeRegistry());
     }
 
     /** Kept for API parity with upstream: the shape of {@code layer-extensions.yml}. */

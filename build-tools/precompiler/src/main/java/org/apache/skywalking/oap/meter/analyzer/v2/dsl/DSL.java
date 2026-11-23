@@ -18,42 +18,45 @@
 package org.apache.skywalking.oap.meter.analyzer.v2.dsl;
 
 import java.io.File;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javassist.ClassPool;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
+import org.apache.skywalking.oap.server.buildtools.precompiler.GeneratedInstanceCheck;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 
 /**
- * Build-time same-FQCN replacement of upstream v2 MAL DSL.
- *
- * <p>Delegates to the real {@link MALClassGenerator} for compilation and
- * additionally records the mapping from expression hash + metric name
- * to the generated class name. The precompiler reads {@link #COMPILE_MAP}
- * after all compilations and writes it to a manifest file for runtime use.
- *
- * <p>The manifest key is {@code sha256(expression).substring(0,16) + "|" + metricName}.
- * This avoids collisions when multiple YAML files (e.g., {@code otel-rules/vm.yaml}
- * and {@code telegraf-rules/vm.yaml}) define the same metric name with different
- * expressions — they produce different SHA-256 hashes.
+ * Build-time same-FQCN replacement of upstream v2 MAL DSL: compiles with upstream's {@link MALClassGenerator} as its
+ * startup path does, writing the classes to the output directory, and records each expression with the coordinates,
+ * metric name and text {@code MetricConvert} passed, by which the rule registry keys the classes.
  */
-@Slf4j
 public final class DSL {
 
     private static final MALClassGenerator GENERATOR = new MALClassGenerator();
 
     /**
-     * Mapping recorded during compilation: {@code "exprHash|metricName" -> FQCN}.
-     * Read by the precompiler after all MetricConvert instances have been created.
+     * Every expression compiled, in order. The precompiler reads it after the MAL pass.
      */
-    public static final Map<String, String> COMPILE_MAP = new ConcurrentHashMap<>();
+    public static final List<Compiled> COMPILED = Collections.synchronizedList(new ArrayList<>());
 
     /**
-     * Configure the GENERATOR to write .class files to the given directory.
+     * The class compiled for each coordinate, metric name and text: a boot asking again (the Zabbix receiver builds a
+     * converter per host pattern of one rule file) gets the class the runtime registry holds for it, compiled once.
      */
+    private static final Map<List<String>, MalExpression> BY_INPUTS = new ConcurrentHashMap<>();
+
+    /**
+     * Forgets every expression compiled, for a MAL pass to start over.
+     */
+    public static void clearCompiled() {
+        COMPILED.clear();
+        BY_INPUTS.clear();
+    }
+
     public static void setClassOutputDir(final File dir) {
         GENERATOR.setClassOutputDir(dir);
     }
@@ -65,21 +68,29 @@ public final class DSL {
     public static Expression parse(final String metricName,
                                    final String expression,
                                    final DslSourceRef sourceRef) {
+        if (sourceRef == null) {
+            throw new IllegalStateException("MAL expression for metric: " + metricName + " has no source coordinates, "
+                + "which the rule registry keys pre-compiled expressions by: " + expression);
+        }
+        final List<String> inputs = List.of(sourceRef.describeYaml(), metricName, expression);
+        final MalExpression compiled = BY_INPUTS.get(inputs);
+        if (compiled != null) {
+            return new Expression(metricName, expression, compiled);
+        }
         try {
             GENERATOR.setSourceRef(sourceRef);
-            // Upstream DSL.parse threads the expression text into the GateHolder for the debugger.
             GENERATOR.setContent(expression);
             final MalExpression malExpr = GENERATOR.compile(metricName, expression);
-
-            // Record mapping for manifest generation using expression hash
-            final String key = expressionKey(expression, metricName);
-            COMPILE_MAP.put(key, malExpr.getClass().getName());
-
+            GeneratedInstanceCheck.requireNoStateAfterConstruction(
+                malExpr, Set.of(), "MAL expression of " + metricName);
+            COMPILED.add(new Compiled(sourceRef, metricName, expression, malExpr.getClass().getName()));
+            BY_INPUTS.put(inputs, malExpr);
             return new Expression(metricName, expression, malExpr);
         } catch (Exception e) {
             throw new IllegalStateException(
                 "Failed to compile MAL expression for metric: " + metricName
-                    + ", expression: " + expression, e);
+                    + " (" + sourceRef.describeYaml() + ")"
+                    + ", expression: " + expression + ": " + e.getMessage(), e);
         }
     }
 
@@ -93,17 +104,9 @@ public final class DSL {
         return parse(metricName, expression, sourceRef);
     }
 
-    public static String expressionKey(final String expression, final String metricName) {
-        try {
-            final MessageDigest md = MessageDigest.getInstance("SHA-256");
-            final byte[] hash = md.digest(expression.getBytes(StandardCharsets.UTF_8));
-            final StringBuilder sb = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
-                sb.append(String.format("%02x", hash[i]));
-            }
-            return sb.toString() + "|" + metricName;
-        } catch (Exception e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+    /**
+     * A compiled expression: what {@code MetricConvert} passed and the class generated from it.
+     */
+    public record Compiled(DslSourceRef sourceRef, String metricName, String expression, String className) {
     }
 }

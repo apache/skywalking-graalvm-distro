@@ -18,46 +18,55 @@
 package org.apache.skywalking.oap.meter.analyzer.v2.dsl;
 
 import java.io.File;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javassist.ClassPool;
 import lombok.Getter;
 import lombok.ToString;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.meter.analyzer.v2.compiler.MALClassGenerator;
+import org.apache.skywalking.oap.server.buildtools.precompiler.GeneratedInstanceCheck;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 
 /**
- * Build-time same-FQCN replacement of upstream v2 MAL FilterExpression.
- *
- * <p>Delegates to a {@link MALClassGenerator} for filter compilation and
- * additionally records the mapping from filter literal to generated class name.
- * The precompiler reads {@link #FILTER_MAP} after all compilations.
+ * Build-time same-FQCN replacement of upstream v2 MAL FilterExpression: compiles with upstream's
+ * {@link MALClassGenerator} as its startup path does, writing the classes to the output directory, and records each
+ * filter with the coordinates and literal {@code MetricConvert} passed, by which the rule registry keys the classes.
+ * Nothing filters samples at build time.
  */
-@Slf4j
 @ToString(of = {"literal"})
 public class FilterExpression {
 
     private static final MALClassGenerator GENERATOR = new MALClassGenerator();
 
     /**
-     * Mapping recorded during compilation: filter literal -> FQCN.
-     * Read by the precompiler after all MetricConvert instances have been created.
+     * Every filter compiled, in order. The precompiler reads it after the MAL pass.
      */
-    public static final Map<String, String> FILTER_MAP = new ConcurrentHashMap<>();
+    public static final List<Compiled> COMPILED = Collections.synchronizedList(new ArrayList<>());
 
     /**
-     * Configure the GENERATOR to write .class files to the given directory.
+     * The coordinates and literals compiled: a boot asking again (the Zabbix receiver builds a converter per host
+     * pattern of one rule file) gets the filter the runtime registry holds for it, compiled once.
      */
+    private static final Set<List<String>> COMPILED_INPUTS = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Forgets every filter compiled, for a MAL pass to start over.
+     */
+    public static void clearCompiled() {
+        COMPILED.clear();
+        COMPILED_INPUTS.clear();
+    }
+
     public static void setClassOutputDir(final File dir) {
         GENERATOR.setClassOutputDir(dir);
     }
 
     @Getter
     private final String literal;
-    private final MalFilter malFilter;
 
     public FilterExpression(final String literal) {
         this(literal, null, null);
@@ -71,21 +80,29 @@ public class FilterExpression {
                             final String filterNameHint,
                             final DslSourceRef sourceRef) {
         this.literal = literal;
+        if (sourceRef == null) {
+            throw new IllegalStateException("MAL filter expression has no source coordinates, which the rule registry "
+                + "keys pre-compiled filters by: " + literal);
+        }
+        if (!COMPILED_INPUTS.add(List.of(sourceRef.describeYaml(), literal))) {
+            return;
+        }
         try {
             if (filterNameHint != null) {
                 GENERATOR.setClassNameHint(filterNameHint);
             }
             GENERATOR.setSourceRef(sourceRef);
             try {
-                this.malFilter = GENERATOR.compileFilter(literal);
-                FILTER_MAP.putIfAbsent(literal, malFilter.getClass().getName());
+                final MalFilter malFilter = GENERATOR.compileFilter(literal);
+                GeneratedInstanceCheck.requireNoStateAfterConstruction(malFilter, Set.of(), "MAL filter " + literal);
+                COMPILED.add(new Compiled(sourceRef, literal, malFilter.getClass().getName()));
             } finally {
                 GENERATOR.setClassNameHint(null);
                 GENERATOR.setSourceRef(null);
             }
         } catch (Exception e) {
-            throw new IllegalStateException(
-                "Failed to compile MAL filter expression: " + literal, e);
+            throw new IllegalStateException("Failed to compile MAL filter expression (" + sourceRef.describeYaml()
+                + "): " + literal + ": " + e.getMessage(), e);
         }
     }
 
@@ -100,18 +117,12 @@ public class FilterExpression {
     }
 
     public Map<String, SampleFamily> filter(final Map<String, SampleFamily> sampleFamilies) {
-        try {
-            final Map<String, SampleFamily> result = new HashMap<>();
-            for (final Map.Entry<String, SampleFamily> entry : sampleFamilies.entrySet()) {
-                final SampleFamily afterFilter = entry.getValue().filter(malFilter::test);
-                if (!Objects.equals(afterFilter, SampleFamily.EMPTY)) {
-                    result.put(entry.getKey(), afterFilter);
-                }
-            }
-            return result;
-        } catch (Throwable t) {
-            log.error("failed to run \"{}\"", literal, t);
-        }
-        return sampleFamilies;
+        throw new UnsupportedOperationException("filter is not available at build time. literal=" + literal);
+    }
+
+    /**
+     * A compiled filter: what {@code MetricConvert} passed and the class generated from it.
+     */
+    public record Compiled(DslSourceRef sourceRef, String literal, String className) {
     }
 }

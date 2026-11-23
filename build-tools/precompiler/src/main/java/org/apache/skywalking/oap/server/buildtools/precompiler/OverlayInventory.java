@@ -37,18 +37,18 @@ final class OverlayInventory {
     private final Set<String> excluded = new TreeSet<>();
 
     static OverlayInventory read(final String file) throws IOException {
-        final OverlayInventory inventory = new OverlayInventory();
-        if (file == null || file.isBlank()) {
-            return inventory;
-        }
         // The stager writes it on every build, empty without an overlay: a missing one would drop the overlay's OAL.
+        if (file == null || file.isBlank()) {
+            throw new IllegalStateException("The system property " + PROPERTY + " names no overlay inventory");
+        }
         if (!Files.isRegularFile(Path.of(file))) {
             throw new IllegalStateException("No overlay inventory at " + file + "; the rules were not staged");
         }
+        final OverlayInventory inventory = new OverlayInventory();
         for (final String line : Files.readAllLines(Path.of(file), StandardCharsets.UTF_8)) {
-            final String[] parts = line.split("\t");
-            if (parts.length < 2) {
-                continue;
+            final String[] parts = line.split("\t", -1);
+            if (parts.length != 3) {
+                throw new IllegalStateException("Malformed line in the overlay inventory " + file + ": " + line);
             }
             switch (parts[0]) {
                 case "add":

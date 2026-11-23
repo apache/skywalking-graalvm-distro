@@ -17,36 +17,60 @@
 
 package org.apache.skywalking.oap.server.buildtools.precompiler;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.ClassPath;
 import com.google.protobuf.Descriptors;
 import com.google.protobuf.Message;
+import com.google.protobuf.MessageOrBuilder;
+import com.linecorp.armeria.server.annotation.Decorator;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Header;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
+import com.linecorp.armeria.server.annotation.RequestConverter;
+import com.linecorp.armeria.server.annotation.ResponseConverter;
+import graphql.kickstart.tools.GraphQLMutationResolver;
+import graphql.kickstart.tools.GraphQLQueryResolver;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.Reader;
-import java.io.StringWriter;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
+import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -57,23 +81,39 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.apm.network.logging.v3.LogData;
+import org.apache.skywalking.oap.log.analyzer.v2.dsl.ExecutionContext;
 import org.apache.skywalking.oap.meter.analyzer.v2.MetricConvert;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.DSL;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.FilterExpression;
-import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule;
 import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
 import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rules;
+import org.apache.skywalking.oap.log.analyzer.v2.compiler.LALCallables;
 import org.apache.skywalking.oap.log.analyzer.v2.compiler.LALClassGenerator;
 import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.log.listener.LalStaticRuleResolver;
 import org.apache.skywalking.oap.log.analyzer.v2.spi.LALSourceTypeProvider;
+import org.apache.skywalking.oap.log.analyzer.v2.spi.LalInputDebugRenderer;
+import org.apache.skywalking.oap.server.buildtools.common.AcceptedModules;
+import org.apache.skywalking.oap.server.core.source.LogMetadata;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleCatalog;
+import org.apache.skywalking.oap.server.graalvm.rules.TalMetrics;
+import org.apache.skywalking.oap.server.library.module.ModuleManager;
+import org.apache.skywalking.oap.server.library.module.ModuleStartException;
+import org.apache.skywalking.oap.server.receiver.zabbix.provider.ZabbixMetrics;
+import org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig;
+import org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfigs;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALClassGenerator;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricDeclaration;
@@ -87,48 +127,46 @@ import org.apache.skywalking.oap.server.core.analysis.LayerExtensionLoader;
 import org.apache.skywalking.oap.server.core.source.TALFunctionProvider;
 import org.apache.skywalking.oap.server.core.config.v2.compiler.HierarchyRuleClassGenerator;
 import org.apache.skywalking.oap.server.core.dsl.debug.DSLDebugCodegenSwitch;
+import org.apache.skywalking.oap.server.core.dsl.DslCallables;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.server.core.dsl.DslYamlLineIndex;
+import org.apache.skywalking.oap.server.core.dsl.debug.ToJson;
 import org.yaml.snakeyaml.Yaml;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
 import org.apache.skywalking.oap.server.library.util.ResourceUtils;
 import org.apache.skywalking.oal.v2.OALEngineV2;
 import org.apache.skywalking.oal.v2.generator.OALClassGeneratorV2;
-import org.apache.skywalking.oap.server.core.analysis.Disable;
+import org.apache.skywalking.oal.v2.parser.OALScriptParserV2;
 import org.apache.skywalking.oap.server.core.analysis.DisableRegister;
 import org.apache.skywalking.oap.server.core.analysis.ISourceDecorator;
-import org.apache.skywalking.oap.server.core.analysis.MultipleDisable;
 import org.apache.skywalking.oap.server.core.analysis.SourceDispatcher;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.AcceptableValue;
 import org.apache.skywalking.oap.server.core.analysis.meter.function.MeterFunction;
+import org.apache.skywalking.oap.server.core.annotation.AnnotationListener;
 import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
 import org.apache.skywalking.oap.server.core.oal.rt.OALDefine;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
-import org.apache.skywalking.oap.server.core.source.ScopeDeclaration;
+import org.apache.skywalking.oap.server.core.remote.data.StreamData;
 import org.apache.skywalking.oap.server.core.storage.StorageBuilderFactory;
+import org.apache.skywalking.oap.server.core.storage.type.StorageBuilder;
 
 import static com.google.common.io.Files.getNameWithoutExtension;
+import static org.apache.skywalking.oap.server.buildtools.common.ProtobufMessages.generatedMessage;
 
 /**
- * Build-time pre-compilation tool that runs all four DSL engines (OAL, MAL, LAL, Hierarchy)
+ * Build-time pre-compilation tool that runs the five DSL engines (OAL, MAL, LAL, TAL, Hierarchy)
  * at build time, exports generated .class files and manifest files, and scans the classpath
  * for annotated classes and interface implementations used at runtime.
  *
- * All four DSL engines share the same pipeline:
+ * The DSL engines share the same pipeline:
  * DSL text → ANTLR4 parse → Immutable AST → Javassist bytecode → .class
  *
- * OAL script files and MAL/LAL/Hierarchy configs are loaded from the skywalking submodule
- * directly via additionalClasspathElements in the exec-maven-plugin configuration.
+ * The rule files are read from the staged rule tree ({@link RulesStager}: upstream's server-starter resources with
+ * the rules overlay merged in), on the classpath through additionalClasspathElements.
  */
 @Slf4j
 public class Precompiler {
 
-    private static final String METRICS_PACKAGE =
-        "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.";
-    private static final String BUILDER_PACKAGE =
-        "org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.";
-    private static final String DISPATCHER_PACKAGE =
-        "org.apache.skywalking.oap.server.core.source.oal.rt.dispatcher.";
     private static final String MAL_RT_PACKAGE =
         "org.apache.skywalking.oap.meter.analyzer.v2.compiler.rt.";
     private static final String LAL_RT_PACKAGE =
@@ -140,36 +178,48 @@ public class Precompiler {
 
     /**
      * Discover all OALDefine subclasses on the classpath via Guava ClassPath scanning.
-     * Each subclass follows the singleton pattern with a {@code public static final INSTANCE} field.
      */
     static OALDefine[] discoverOALDefines() {
-        List<OALDefine> defines = new ArrayList<>();
+        final List<OALDefine> defines = new ArrayList<>();
+        final ImmutableSet<ClassPath.ClassInfo> classes;
         try {
-            ClassPath classPath = ClassPath.from(Precompiler.class.getClassLoader());
-            for (ClassPath.ClassInfo ci : classPath.getTopLevelClassesRecursive("org.apache.skywalking")) {
-                try {
-                    Class<?> clazz = ci.load();
-                    if (OALDefine.class.isAssignableFrom(clazz)
-                            && !Modifier.isAbstract(clazz.getModifiers())
-                            && clazz != OALDefine.class) {
-                        Field instanceField = clazz.getField("INSTANCE");
-                        OALDefine instance = (OALDefine) instanceField.get(null);
-                        defines.add(instance);
-                        log.info("Discovered OALDefine: {}", clazz.getSimpleName());
-                    }
-                } catch (NoSuchFieldException | NoClassDefFoundError
-                         | IllegalAccessException | IllegalStateException e) {
-                    // Not an OALDefine singleton or can't load — skip
-                }
-            }
+            classes = ClassPath.from(Precompiler.class.getClassLoader())
+                               .getTopLevelClassesRecursive("org.apache.skywalking");
         } catch (IOException e) {
-            throw new RuntimeException("Failed to scan classpath for OALDefine subclasses", e);
+            throw new UncheckedIOException("Failed to scan the classpath for OALDefine subclasses", e);
+        }
+        for (final ClassPath.ClassInfo info : classes) {
+            final Class<?> clazz = info.load();
+            if (OALDefine.class.isAssignableFrom(clazz) && !Modifier.isAbstract(clazz.getModifiers())) {
+                defines.add(defineOf(clazz));
+                log.info("Discovered OALDefine: {}", clazz.getSimpleName());
+            }
         }
         if (defines.isEmpty()) {
             throw new IllegalStateException("No OALDefine subclasses found on classpath");
         }
         log.info("Discovered {} OALDefine subclasses", defines.size());
         return defines.toArray(new OALDefine[0]);
+    }
+
+    /**
+     * @return the define's {@code public static INSTANCE}, the one object of it providers load
+     */
+    static OALDefine defineOf(final Class<?> defineClass) {
+        try {
+            final Field instance = defineClass.getField("INSTANCE");
+            if (Modifier.isStatic(instance.getModifiers()) && defineClass.isInstance(instance.get(null))) {
+                return (OALDefine) instance.get(null);
+            }
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new IllegalStateException(notASingleton(defineClass), e);
+        }
+        throw new IllegalStateException(notASingleton(defineClass));
+    }
+
+    private static String notASingleton(final Class<?> defineClass) {
+        return "OALDefine " + defineClass.getName() + " has no public static INSTANCE of its own type: the build "
+            + "compiles each define's script through that instance";
     }
 
     public static void main(String[] args) throws Exception {
@@ -188,6 +238,7 @@ public class Precompiler {
         final OverlayInventory overlay = OverlayInventory.read(System.getProperty(OverlayInventory.PROPERTY));
         OALDefine[] oalDefines = effectiveOALDefines(discoverOALDefines(), overlay);
         validateOALScripts(oalDefines);
+        requireEveryScriptCompiled(oalDefines, stagedOalScripts());
 
         declareScopes();
         log.info("Initialized DefaultScopeDefine scope registry");
@@ -210,18 +261,23 @@ public class Precompiler {
         // classes are debuggable by the dsl-debugging module at runtime (upstream has it on by default).
         DSLDebugCodegenSwitch.enableInjection();
 
-        // Run all discovered OAL defines, recording what each script generated (oal-scripts.txt, which the rule
-        // registry's per-script classes are generated from)
+        // Run every OAL define as upstream's loader does, recording what its engine hands the listeners and what the
+        // script disables (oal-scripts.txt, which the rule registry's per-script classes are generated from)
         final Properties oalScripts = new Properties();
+        final Set<String> metricsClasses = new TreeSet<>();
+        final Set<String> dispatcherClasses = new TreeSet<>();
+        final Set<String> builderClasses = new TreeSet<>();
+        final Set<String> disabledSources = new TreeSet<>();
         for (int i = 0; i < oalDefines.length; i++) {
             final OALDefine define = oalDefines[i];
             log.info("Processing: {}", define.getConfigFile());
-            final List<String> metricsBefore = scanClassNames(outputDir, "metrics", METRICS_PACKAGE);
-            final List<String> dispatchersBefore = scanClassNames(outputDir, "dispatcher", DISPATCHER_PACKAGE);
-            final List<String> disabledBefore = getDisabledSources();
+            final OalListenerRecorder recorder = new OalListenerRecorder();
             OALEngineV2 engine = new OALEngineV2(define);
             engine.getClassGeneratorV2().setOpenEngineDebug(true);
+            // The factory the shipped storage registers (ShippedStorageBuilderFactoryTest)
             engine.setStorageBuilderFactory(new StorageBuilderFactory.Default());
+            engine.setStreamListener(recorder);
+            engine.setDispatcherListener(recorder);
             try {
                 engine.start(Precompiler.class.getClassLoader());
             } catch (Exception | LinkageError e) {
@@ -232,32 +288,37 @@ public class Precompiler {
                 }
                 throw e;
             }
+            engine.notifyAllListeners();
+            final List<String> disabled = scriptDisables(define);
             final String prefix = "script." + i + ".";
             // An overlay's own script has no define class: the registry recreates its define from these.
             oalScripts.setProperty(prefix + "define", define instanceof OverlayOALDefine ? "" : define.getClass().getName());
             oalScripts.setProperty(prefix + "file", define.getConfigFile());
             oalScripts.setProperty(prefix + "sourcePackage", define.getSourcePackage());
             oalScripts.setProperty(prefix + "dispatcherPackage", define.getDynamicDispatcherClassPackage());
-            oalScripts.setProperty(prefix + "metrics",
-                added(metricsBefore, scanClassNames(outputDir, "metrics", METRICS_PACKAGE)));
-            oalScripts.setProperty(prefix + "dispatchers",
-                added(dispatchersBefore, scanClassNames(outputDir, "dispatcher", DISPATCHER_PACKAGE)));
-            oalScripts.setProperty(prefix + "disabled", added(disabledBefore, getDisabledSources()));
+            oalScripts.setProperty(prefix + "metrics", String.join(",", recorder.getMetrics()));
+            oalScripts.setProperty(prefix + "dispatchers", String.join(",", recorder.getDispatchers()));
+            oalScripts.setProperty(prefix + "disabled", String.join(",", disabled));
+            metricsClasses.addAll(recorder.getMetrics());
+            dispatcherClasses.addAll(recorder.getDispatchers());
+            builderClasses.addAll(recorder.getBuilders());
+            disabledSources.addAll(disabled);
         }
-
-        // Scan generated .class files and build manifests
-        List<String> metricsClasses = scanClassNames(outputDir, "metrics", METRICS_PACKAGE);
-        List<String> dispatcherClasses = scanClassNames(outputDir, "dispatcher", DISPATCHER_PACKAGE);
-        List<String> builderClasses = scanClassNames(outputDir, "metrics/builder", BUILDER_PACKAGE);
-        List<String> disabledSources = getDisabledSources();
+        oalScripts.setProperty("excluded", overlay.excluded().stream().filter(f -> f.startsWith("oal/"))
+                                                  .collect(Collectors.joining(",")));
+        // No stream is defined at build time, so these are all the disables upstream's generators registered.
+        if (!DisableRegister.INSTANCE.scriptDisablesWithoutStream().equals(disabledSources)) {
+            throw new IllegalStateException("The OAL generators registered the disables "
+                + DisableRegister.INSTANCE.scriptDisablesWithoutStream() + ", the scripts name " + disabledSources);
+        }
 
         // Write manifest files
         Path metaInf = Path.of(outputDir, "META-INF");
         Files.createDirectories(metaInf);
-        writeManifest(metaInf.resolve("oal-metrics-classes.txt"), metricsClasses);
-        writeManifest(metaInf.resolve("oal-dispatcher-classes.txt"), dispatcherClasses);
-        writeManifest(metaInf.resolve("oal-builder-classes.txt"), builderClasses);
-        writeManifest(metaInf.resolve("oal-disabled-sources.txt"), disabledSources);
+        writeManifest(metaInf.resolve("oal-metrics-classes.txt"), List.copyOf(metricsClasses));
+        writeManifest(metaInf.resolve("oal-dispatcher-classes.txt"), List.copyOf(dispatcherClasses));
+        writeManifest(metaInf.resolve("oal-builder-classes.txt"), List.copyOf(builderClasses));
+        writeManifest(metaInf.resolve("oal-disabled-sources.txt"), List.copyOf(disabledSources));
         writeEscapedProperties(metaInf.resolve("oal-scripts.txt"), oalScripts);
 
         log.info("Precompiler: {} metrics, {} dispatchers, {} disabled sources",
@@ -271,31 +332,39 @@ public class Precompiler {
             .from(Precompiler.class.getClassLoader())
             .getTopLevelClassesRecursive("org.apache.skywalking");
 
-        writeManifest(annotationScanDir.resolve("ScopeDeclaration.txt"),
-            scanAnnotation(allClasses, ScopeDeclaration.class));
-        writeManifest(annotationScanDir.resolve("Stream.txt"),
-            scanAnnotation(allClasses, org.apache.skywalking.oap.server.core.analysis.Stream.class));
-        writeManifest(annotationScanDir.resolve("Disable.txt"),
-            scanAnnotation(allClasses, Disable.class));
-        writeManifest(annotationScanDir.resolve("MultipleDisable.txt"),
-            scanAnnotation(allClasses, MultipleDisable.class));
+        // The class lists AnnotationScan and SourceReceiverImpl read at boot: one per annotation an AnnotationListener
+        // listens for, and the decorators and dispatchers
+        List<String> scannedClassManifests = new ArrayList<>();
+        for (Class<? extends Annotation> annotation : listenedAnnotations(allClasses)) {
+            String manifest = annotation.getSimpleName() + ".txt";
+            writeManifest(annotationScanDir.resolve(manifest), scanAnnotation(allClasses, annotation));
+            scannedClassManifests.add(manifest);
+        }
         writeManifest(annotationScanDir.resolve("SourceDispatcher.txt"),
-            scanInterface(allClasses, SourceDispatcher.class));
+            scanImplementations(allClasses, SourceDispatcher.class));
         writeManifest(annotationScanDir.resolve("ISourceDecorator.txt"),
-            scanInterface(allClasses, ISourceDecorator.class));
+            scanImplementations(allClasses, ISourceDecorator.class));
+        scannedClassManifests.add("SourceDispatcher.txt");
+        scannedClassManifests.add("ISourceDecorator.txt");
 
-        // MeterFunction scan: extract functionName=FQCN pairs for MeterSystem manifest
-        writeManifest(annotationScanDir.resolve("MeterFunction.txt"),
-            scanMeterFunctions(allClasses));
+        // The meter functions, for the build-time MeterSystem and, through the rule registry, the runtime one
+        final Map<String, Class<? extends AcceptableValue>> meterFunctions = meterFunctionRegister(allClasses);
+        writeManifest(annotationScanDir.resolve("MeterFunction.txt"), meterFunctions.entrySet().stream()
+            .map(e -> e.getKey() + "=" + e.getValue().getName()).collect(Collectors.toList()));
 
+        // The rest are build intermediates of the reflection metadata, which the generated jar leaves out.
         // StorageBuilder scan: extract builder() class from @Stream annotations
         // These are instantiated via getDeclaredConstructor().newInstance() at runtime
         writeManifest(annotationScanDir.resolve("StorageBuilders.txt"),
             scanStorageBuilders(allClasses));
+        // RemoteHandleWorker rebuilds the stream data another OAP node sends with newInstance(), of any class a module
+        // registers through IWorkerInstanceSetter, an @Stream class or not
+        writeManifest(annotationScanDir.resolve("StreamData.txt"), scanStreamData(allClasses));
 
         // ---- Armeria HTTP handler scanning ----
-        writeManifest(annotationScanDir.resolve("ArmeriaHandlers.txt"),
-            scanArmeriaHandlers(allClasses));
+        final List<String> armeriaHandlers = scanArmeriaHandlers(allClasses);
+        writeManifest(annotationScanDir.resolve("ArmeriaHandlers.txt"), armeriaHandlers);
+        writeManifest(annotationScanDir.resolve("HttpBodyTypes.txt"), scanHttpBodyTypes(armeriaHandlers));
 
         // ---- GraphQL resolver and type scanning ----
         writeManifest(annotationScanDir.resolve("GraphQLResolvers.txt"),
@@ -312,26 +381,40 @@ public class Precompiler {
         // ---- layer-extensions.yml and the LayerExtension SPI, as Core registers them before any rule loads ----
         LayerExtensionLoader.load();
         // Core's hierarchy service checks the hierarchy now, before any rule file's own layers register.
-        checkHierarchy("hierarchy-definition.yml");
+        checkHierarchy(RuleCatalog.HIERARCHY_DEFINITION);
 
         // ---- MAL pre-compilation (v2 ANTLR4 + Javassist) ----
-        MeterSystem meterSystem = compileMAL(outputDir, allClasses);
+        MeterSystem meterSystem = compileMAL(outputDir, meterFunctions);
+
+        // ---- Every TAL file's inline layers before LAL checks rules against the registered layers: at boot the
+        // module start order decides which rule file's layers a LAL rule sees, so the image takes them all. A file
+        // requiring a module the image does not ship is skipped first, as upstream skips it, its layers unregistered ----
+        ModuleManager shipped = shippedModules();
+        final String talPath = RuleCatalog.TAL.getDirectory();
+        for (File f : filesOf(talPath)) {
+            if (f.isFile() && !f.getName().startsWith(".")) {
+                TALConfigs.load(talPath, List.of(getNameWithoutExtension(f.getName())), shipped);
+            }
+        }
 
         // ---- LAL pre-compilation (v2 ANTLR4 + Javassist) ----
-        compileLAL(outputDir, "lal");
+        compileLAL(outputDir, RuleCatalog.LAL.getDirectory());
+        exportOalScripts(outputDir, oalDefines);
+        exportRuleSources(outputDir, RuleCatalog.mergedByLoader().stream().filter(c -> c != RuleCatalog.TAL)
+                                                .collect(Collectors.toList()));
 
         // ---- TAL pre-compilation (v2 ANTLR4 + Javassist); its metrics share MAL's MeterSystem ----
-        compileTAL(outputDir, meterSystem, "tal");
+        compileTAL(outputDir, meterSystem, talPath, shipped);
+        exportRuleSources(outputDir, List.of(RuleCatalog.TAL));
 
         // ---- Hierarchy pre-compilation (v2 ANTLR4 + Javassist) ----
-        compileHierarchy(outputDir, "hierarchy-definition.yml");
-        exportRuleSources(outputDir, oalDefines);
+        compileHierarchy(outputDir, RuleCatalog.HIERARCHY_DEFINITION);
 
         // ---- The static rule registry the runtime reads instead of rule files and the manifests above ----
         RegistryGenerator.generate(Path.of(outputDir), registrySources);
 
         // ---- GraalVM native-image metadata generation ----
-        generateNativeImageConfig(outputDir);
+        generateNativeImageConfig(outputDir, scannedClassManifests);
 
         log.info("Precompiler: done");
     }
@@ -344,8 +427,8 @@ public class Precompiler {
      * MeterSystem generates its own Javassist meter function storage classes (orthogonal to MAL).
      */
     private static MeterSystem compileMAL(String outputDir,
-                                          ImmutableSet<ClassPath.ClassInfo> allClasses) throws Exception {
-        Map<String, Class<? extends AcceptableValue>> functionRegister = meterFunctionRegister(allClasses);
+                                          Map<String, Class<? extends AcceptableValue>> functionRegister)
+        throws Exception {
         log.info("MAL: built function register with {} entries", functionRegister.size());
 
         // Configure v2 DSL and FilterExpression generators to write .class files
@@ -354,44 +437,23 @@ public class Precompiler {
         malRtDir.mkdirs();
         DSL.setClassOutputDir(malRtDir);
         FilterExpression.setClassOutputDir(malRtDir);
+        DSL.clearCompiled();
+        FilterExpression.clearCompiled();
 
-        // Set up MeterSystem (unchanged — Javassist meter function storage class generation)
         MeterSystem.setFunctionRegister(functionRegister);
         MeterSystem.setOutputDirectory(outputDir);
 
         MeterSystem meterSystem = new MeterSystem(null);
         int totalRules = 0;
         Map<String, List<Rule>> rulesByPath = new LinkedHashMap<>();
-
-        // 1. Agent meter configs (meter-analyzer-config/*.yaml)
-        List<Rule> meterAnalyzerRules = loadAndCompileRules("meter-analyzer-config", ruleNames("meter-analyzer-config"), meterSystem);
-        totalRules += meterAnalyzerRules.size();
-        rulesByPath.put("meter-analyzer-config", meterAnalyzerRules);
-
-        // 2. OTel rules (otel-rules/*.yaml + otel-rules/**/*.yaml) — includes root-level files
-        List<Rule> otelRules = loadAndCompileRules("otel-rules", ruleNames("otel-rules"), meterSystem);
-        totalRules += otelRules.size();
-        rulesByPath.put("otel-rules", otelRules);
-
-        // 3. Log MAL rules (log-mal-rules/*.yaml)
-        List<Rule> logMalRules = loadAndCompileRules("log-mal-rules", ruleNames("log-mal-rules"), meterSystem);
-        totalRules += logMalRules.size();
-        rulesByPath.put("log-mal-rules", logMalRules);
-
-        // 4. Envoy metrics rules (envoy-metrics-rules/*.yaml)
-        List<Rule> envoyRules = loadAndCompileRules("envoy-metrics-rules", ruleNames("envoy-metrics-rules"), meterSystem);
-        totalRules += envoyRules.size();
-        rulesByPath.put("envoy-metrics-rules", envoyRules);
-
-        // 5. Telegraf rules (telegraf-rules/*.yaml)
-        List<Rule> telegrafRules = loadAndCompileRules("telegraf-rules", ruleNames("telegraf-rules"), meterSystem);
-        totalRules += telegrafRules.size();
-        rulesByPath.put("telegraf-rules", telegrafRules);
-
-        // 6. Zabbix rules (zabbix-rules/*.yaml)
-        List<Rule> zabbixRules = loadAndCompileZabbixRules("zabbix-rules", meterSystem);
-        totalRules += zabbixRules.size();
-        rulesByPath.put("zabbix-rules", zabbixRules);
+        for (RuleCatalog catalog : RuleCatalog.malRules()) {
+            String path = catalog.getDirectory();
+            List<Rule> rules = loadAndCompileRules(path, ruleNames(path), meterSystem);
+            totalRules += rules.size();
+            rulesByPath.put(path, rules);
+        }
+        // Zabbix rules, which the registry carries as ZabbixConfigs
+        totalRules += compileZabbixRules(RuleCatalog.ZABBIX_RULES.getDirectory(), meterSystem);
 
         // Write manifests
         Path metaInf = Path.of(outputDir, "META-INF");
@@ -403,36 +465,43 @@ public class Precompiler {
         List<String> malV2Classes = scanV2Classes(outputDir, MAL_RT_PACKAGE);
         writeManifest(metaInf.resolve("mal-v2-classes.txt"), malV2Classes);
 
-        // Write per-file MAL manifests (organized by original YAML file structure)
-        int expressionCount = writePerFileManifests(rulesByPath, metaInf);
+        writeMalRules(metaInf);
 
         log.info("MAL pre-compilation: {} rules, {} meter classes, {} v2 expression classes, {} filters",
             totalRules,
             meterSystem.getExportedClasses().size(),
-            expressionCount,
-            FilterExpression.FILTER_MAP.size());
+            DSL.COMPILED.size(),
+            FilterExpression.COMPILED.size());
 
-        // ---- Serialize config data as JSON for runtime loaders ----
+        // ---- Serialize config data as JSON, which the rule registry is generated from ----
         serializeMALConfigData(outputDir, rulesByPath);
         return meterSystem;
     }
 
     /**
-     * Every rule file of a MAL catalog by name (its path in the catalog without extension), enumerated so that a
-     * catalog an overlay emptied compiles to nothing: upstream's loader fails on a pattern that matches no file.
+     * Every rule file of a catalog by name (its path in the catalog without extension), enumerated so that a catalog
+     * an overlay emptied compiles to nothing: upstream's loader fails on a pattern that matches no file. A file that
+     * yields no rule is one too: upstream's loader reads it, and its setting lists it.
      */
     static List<String> ruleNames(final String catalog) throws IOException {
+        return rulePaths(catalog).stream().map(rel -> rel.substring(0, rel.lastIndexOf('.'))).collect(Collectors.toList());
+    }
+
+    /**
+     * @return every rule file of a catalog, by its path in the catalog, as the rules stager staged them (YAML files,
+     *     below the directory where its loader walks it)
+     */
+    static List<String> rulePaths(final String catalog) throws IOException {
         final Path dir = existingDirectory(catalog);
         if (dir == null) {
             return new ArrayList<>();
         }
-        // Zabbix, as upstream, reads the directory itself; MAL reads it and below.
-        final boolean zabbix = "zabbix-rules".equals(catalog);
-        try (Stream<Path> files = Files.walk(dir, zabbix ? 1 : Integer.MAX_VALUE)) {
+        final boolean recursive = RuleCatalog.ofDirectory(catalog)
+            .orElseThrow(() -> new IllegalArgumentException("Not a rule directory: " + catalog)).isRecursive();
+        try (Stream<Path> files = Files.walk(dir, recursive ? Integer.MAX_VALUE : 1)) {
             return files.filter(Files::isRegularFile)
                         .map(p -> dir.relativize(p).toString().replace(File.separatorChar, '/'))
                         .filter(rel -> !rel.startsWith(".") && (rel.endsWith(".yaml") || rel.endsWith(".yml")))
-                        .map(rel -> rel.substring(0, rel.lastIndexOf('.')))
                         .sorted()
                         .collect(Collectors.toList());
         }
@@ -540,23 +609,22 @@ public class Precompiler {
     }
 
     /**
-     * The {@code @MeterFunction} classes by function name, as upstream {@code MeterSystem} registers them.
+     * The {@code @MeterFunction} classes by function name, as upstream {@code MeterSystem}'s constructor registers
+     * them, and failing as it does on one that is no {@code AcceptableValue}.
      */
     @SuppressWarnings("unchecked")
     static Map<String, Class<? extends AcceptableValue>> meterFunctionRegister(
         Iterable<ClassPath.ClassInfo> classes) {
-        Map<String, Class<? extends AcceptableValue>> functionRegister = new HashMap<>();
+        Map<String, Class<? extends AcceptableValue>> functionRegister = new TreeMap<>();
         for (ClassPath.ClassInfo classInfo : classes) {
-            try {
-                Class<?> aClass = classInfo.load();
-                if (aClass.isAnnotationPresent(MeterFunction.class)) {
-                    MeterFunction mf = aClass.getAnnotation(MeterFunction.class);
-                    if (AcceptableValue.class.isAssignableFrom(aClass)) {
-                        functionRegister.put(
-                            mf.functionName(), (Class<? extends AcceptableValue>) aClass);
-                    }
+            Class<?> aClass = classInfo.load();
+            if (aClass.isAnnotationPresent(MeterFunction.class)) {
+                MeterFunction mf = aClass.getAnnotation(MeterFunction.class);
+                if (!AcceptableValue.class.isAssignableFrom(aClass)) {
+                    throw new IllegalArgumentException(
+                        "Function " + aClass.getCanonicalName() + " doesn't implement AcceptableValue.");
                 }
-            } catch (NoClassDefFoundError | Exception ignored) {
+                functionRegister.put(mf.functionName(), (Class<? extends AcceptableValue>) aClass);
             }
         }
         return functionRegister;
@@ -591,65 +659,33 @@ public class Precompiler {
     }
 
     /**
-     * Load Zabbix rules which use 'metrics' field instead of 'metricsRules'.
-     * Parses the YAML manually and maps into a Rule for MetricConvert.
-     * Returns the loaded rules for config data serialization.
+     * Compiles the Zabbix rule files as the Zabbix receiver does at boot: upstream's loader reads them and upstream's
+     * {@code ZabbixMetrics} initialises its host groups over them, compiling each file's expressions once a host
+     * pattern of it reaches them (once per coordinate and text, as the runtime registry holds them). A file without a
+     * host pattern compiles nothing; a host pattern that is no regular expression fails the build, as it fails the
+     * boot.
+     *
+     * @return the number of rule files
      */
-    @SuppressWarnings("unchecked")
-    private static List<Rule> loadAndCompileZabbixRules(String path,
-                                                        MeterSystem meterSystem) {
-        List<Rule> loadedRules = new ArrayList<>();
-        int count = 0;
+    static int compileZabbixRules(final String path, final MeterSystem meterSystem) throws IOException {
+        return compileZabbixRules(path, ruleNames(path), meterSystem);
+    }
+
+    static int compileZabbixRules(final String path, final List<String> names, final MeterSystem meterSystem) {
+        final List<ZabbixConfig> configs;
         try {
-            File[] files = filesOf(path);
-            for (File file : files) {
-                String name = file.getName();
-                if (!file.isFile() || !name.endsWith(".yaml") && !name.endsWith(".yml")) {
-                    continue;
-                }
-                String resourcePath = path + "/" + name;
-                try (InputStream is = Precompiler.class.getClassLoader()
-                        .getResourceAsStream(resourcePath)) {
-                    if (is == null) {
-                        throw new IllegalStateException("Zabbix rule " + resourcePath + " is listed but not on the classpath");
-                    }
-                    Map<String, Object> yamlMap = new Yaml().load(is);
-                    if (yamlMap == null) {
-                        // An empty document holds no rule; upstream ZabbixConfigs skips it too.
-                        continue;
-                    }
-                    Rule rule = new Rule();
-                    rule.setName(name.substring(0, name.lastIndexOf('.')));
-                    rule.setMetricPrefix((String) yamlMap.get("metricPrefix"));
-                    rule.setExpSuffix((String) yamlMap.get("expSuffix"));
-                    rule.setExpPrefix((String) yamlMap.get("expPrefix"));
-                    rule.setFilter((String) yamlMap.get("filter"));
-
-                    List<Map<String, String>> metrics =
-                        (List<Map<String, String>>) yamlMap.get("metrics");
-                    if (metrics != null) {
-                        List<MetricsRule> metricsRules = new ArrayList<>();
-                        for (Map<String, String> m : metrics) {
-                            metricsRules.add(MetricsRule.builder()
-                                .name(m.get("name"))
-                                .exp(m.get("exp"))
-                                .build());
-                        }
-                        rule.setMetricsRules(metricsRules);
-                    }
-
-                    new MetricConvert(rule, meterSystem);
-                    loadedRules.add(rule);
-                    count++;
-                } catch (Exception e) {
-                    throw new IllegalStateException("Failed to compile Zabbix rule " + resourcePath, e);
-                }
-            }
-            log.info("MAL: compiled {} rules from {}", count, path);
-        } catch (IOException e) {
+            configs = ZabbixConfigs.loadConfigs(path, names);
+        } catch (ModuleStartException e) {
             throw new IllegalStateException("Failed to load Zabbix rules from " + path, e);
         }
-        return loadedRules;
+        try {
+            new ZabbixMetrics(configs, meterSystem);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to initialise the Zabbix rules of " + path + " as the Zabbix "
+                + "receiver does", e);
+        }
+        log.info("MAL: compiled {} rules from {}", configs.size(), path);
+        return configs.size();
     }
 
     /**
@@ -735,7 +771,7 @@ public class Precompiler {
             // names ({file}_L{line}_{rule}) match the JVM distro.
             final Map<String, Integer> ruleLines =
                 DslYamlLineIndex.keyLines(yamlText, "auto-matching-rules");
-            final List<String> hierarchyRuleEntries = new ArrayList<>();
+            final Properties hierarchyRules = new Properties();
             if (yamlMap == null || !(yamlMap.get("auto-matching-rules") instanceof Map)) {
                 throw new IllegalStateException(definitionFile + " has no auto-matching-rules section");
             }
@@ -747,17 +783,15 @@ public class Precompiler {
             for (Map.Entry<String, String> entry : autoMatchingRules.entrySet()) {
                 String ruleName = entry.getKey();
                 String expression = entry.getValue();
-                if (!ruleName.matches("[A-Za-z0-9._-]+")) {
-                    throw new IllegalStateException(definitionFile + " auto-matching-rules: the rule name '" + ruleName
-                        + "' is not of letters, digits, '.', '_' and '-', which the rule registry carries; rename it");
-                }
                 try {
                     final Integer line = ruleLines.get(ruleName);
                     hierarchyGenerator.setSourceRef(DslSourceRef.ofRule(
                         "hierarchy-definition.yml", line == null ? 0 : line));
                     hierarchyGenerator.setClassNameHint(ruleName);
-                    hierarchyRuleEntries.add(ruleName + "="
-                        + hierarchyGenerator.compile(ruleName, expression).getClass().getName());
+                    final Object compiled = hierarchyGenerator.compile(ruleName, expression);
+                    GeneratedInstanceCheck.requireNoStateAfterConstruction(
+                        compiled, Set.of(), "Hierarchy rule " + ruleName);
+                    hierarchyRules.setProperty(ruleName, compiled.getClass().getName());
                     count++;
                     log.debug("Hierarchy: compiled rule {} -> {}", ruleName, expression);
                 } catch (Exception e) {
@@ -769,8 +803,8 @@ public class Precompiler {
             Path metaInf = Path.of(outputDir, "META-INF");
             List<String> hierarchyV2Classes = scanV2Classes(outputDir, HIERARCHY_RT_PACKAGE);
             writeManifest(metaInf.resolve("hierarchy-v2-classes.txt"), hierarchyV2Classes);
-            // ruleName=FQCN, the runtime HierarchyDefinitionService replacement looks rules up by name
-            writeManifest(metaInf.resolve("hierarchy-v2-rules.txt"), hierarchyRuleEntries);
+            // Rule name to class, escaped: a rule may be named anything upstream accepts
+            writeEscapedProperties(metaInf.resolve("hierarchy-v2-rules.txt"), hierarchyRules);
 
             log.info("Hierarchy pre-compilation: {} rules, {} v2 classes",
                 count, hierarchyV2Classes.size());
@@ -803,37 +837,22 @@ public class Precompiler {
     }
 
     /**
-     * Pre-compile all LAL (Log Analysis Language) scripts using v2 ANTLR4 + Javassist engine.
+     * Pre-compile every LAL rule file under {@code lalPath} with the v2 engine, exporting each class. Upstream's
+     * {@code DSL.of} makes a generator per call with no class output, so this pass drives one generator with what
+     * upstream's {@code LogFilterListener.Factory} passes it: the rule's {@link DslSourceRef}, its text, and the input
+     * and output types the factory resolves ({@link LalStaticRuleResolver}).
      *
-     * Creates a LALClassGenerator with classOutputDir set, then compiles each LAL rule
-     * directly. The v2 LAL DSL.of() creates a new generator per call, so we compile
-     * directly via our own generator for .class export.
+     * <p>{@code lal-v2-rules.txt} carries, per rule, the coordinates, the class, the effective input type and what the
+     * class was compiled from; {@code lal-io-classes.txt} the {@code LALSourceTypeProvider} and {@code LALOutputBuilder}
+     * implementations ServiceLoader instantiates; {@code lal-input-types.txt} every type a rule reads values from,
+     * which the reflection metadata walks.
      */
     static void compileLAL(String outputDir, String lalPath) throws Exception {
         LALClassGenerator lalGenerator = new LALClassGenerator();
         File lalRtDir = new File(outputDir, LAL_RT_PACKAGE.replace('.', '/'));
         lalRtDir.mkdirs();
         lalGenerator.setClassOutputDir(lalRtDir);
-
-        // Discover LALSourceTypeProvider implementations for inputType/outputType resolution
-        Map<String, LALSourceTypeProvider> spiProviders = new HashMap<>();
-        java.util.ServiceLoader<LALSourceTypeProvider> providers =
-            java.util.ServiceLoader.load(LALSourceTypeProvider.class);
-        for (LALSourceTypeProvider provider : providers) {
-            spiProviders.put(provider.layer().name(), provider);
-            log.info("LAL: discovered LALSourceTypeProvider for layer {} -> inputType={}, outputType={}",
-                provider.layer(), provider.inputType().getName(),
-                provider.outputType() != null ? provider.outputType().getName() : "default(Log)");
-        }
-
-        // Build LALOutputBuilder short-name map from SPI (same as LogFilterListener.Factory)
-        Map<String, Class<?>> outputBuilderNames = new HashMap<>();
-        for (org.apache.skywalking.oap.server.core.source.LALOutputBuilder builder :
-                java.util.ServiceLoader.load(org.apache.skywalking.oap.server.core.source.LALOutputBuilder.class)) {
-            String name = builder.name();
-            outputBuilderNames.put(name, builder.getClass());
-            log.info("LAL: LALOutputBuilder registered: name={}, class={}", name, builder.getClass().getName());
-        }
+        LalStaticRuleResolver boot = new LalStaticRuleResolver();
 
         // Enumerate all LAL YAML files from classpath
         File[] lalFiles = filesOf(lalPath);
@@ -845,94 +864,96 @@ public class Precompiler {
             }
         }
 
-        // Loaded a file at a time, so each file's configs are kept by its name, a file of no rule too: its
+        // Loaded a file at a time, so each file's configs are kept by its name, a file of an empty rule list too: its
         // layerDefinitions are registered when the runtime loads it, as upstream does for every listed file.
-        Map<String, LALConfigs> configsByFile = new LinkedHashMap<>();
+        Map<String, LALConfigs> byFile = new LinkedHashMap<>();
         for (Map.Entry<String, File> file : lalFileMap.entrySet()) {
             for (LALConfigs configs : LALConfigs.load(lalPath, List.of(file.getKey()))) {
-                configsByFile.put(file.getValue().getName(), configs);
+                byFile.put(file.getValue().getName(), configs);
             }
+        }
+        // In the order one upstream load over every file returns them, as the log analyzer loads its lalFiles (all of
+        // them): the order their rules run on a log, which the registry keeps and the boot returns them in
+        Map<String, LALConfigs> configsByFile = new LinkedHashMap<>();
+        for (LALConfigs configs : LALConfigs.load(lalPath, new ArrayList<>(lalFileMap.keySet()))) {
+            // No stamped source names a file without rules: files of one content are interchangeable
+            String file = configs.getRules().isEmpty()
+                ? byFile.entrySet().stream()
+                        .filter(e -> !configsByFile.containsKey(e.getKey())
+                            && StateComparison.firstDifference(configs, e.getValue(), "configs") == null)
+                        .map(Map.Entry::getKey).findFirst().orElse(null)
+                : configs.getRules().get(0).getSourceName();
+            if (file == null || !byFile.containsKey(file) || configsByFile.put(file, byFile.get(file)) != null) {
+                throw new IllegalStateException("Upstream's LAL loader returned a file of " + lalPath + " the LAL "
+                    + "pass did not load alone: " + (file == null ? configs : file));
+            }
+        }
+        if (!configsByFile.keySet().equals(byFile.keySet())) {
+            throw new IllegalStateException("Upstream's LAL loader returned the files " + configsByFile.keySet()
+                + " of " + lalPath + " loading them together, " + byFile.keySet() + " one at a time");
         }
 
         int totalRules = 0;
-        // Properties-style manifest: source YAML + line + rule name -> class + effective input type.
         Properties lalRules = new Properties();
-
-        final Set<String> registered = new HashSet<>();
+        Set<String> inputTypes = new TreeSet<>();
+        final Set<List<String>> registered = new HashSet<>();
+        // A rule without a name is compiled, as upstream compiles it: keys keep it apart from one named "null"
+        final Set<List<String>> compiledFrom = new HashSet<>();
         for (Map.Entry<String, LALConfigs> file : configsByFile.entrySet()) {
-            LALConfigs configs = file.getValue();
-            if (configs.getRules() == null) {
-                continue;
-            }
-            for (LALConfig rule : configs.getRules()) {
-                checkRegistration(rule, registered);
+            for (LALConfig rule : file.getValue().getRules()) {
+                if (!checkRegistration(rule, registered)) {
+                    continue;
+                }
+                // The DslSourceRef upstream's factory passes: its coordinates name the class ({yaml}_L{line}_{rule},
+                // as the JVM OAP names it) and key it for the runtime DSL, an unresolved line included.
+                final DslSourceRef sourceRef = DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo());
                 try {
-                    // Same coordinates upstream LogFilterListener.Factory.compile passes, so class
-                    // names ({yaml}_L{line}_{rule}) match the JVM distro.
-                    lalGenerator.setSourceRef(DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo()));
+                    final Class<?> inputType = boot.inputType(rule);
+                    final Class<?> outputType = boot.outputType(rule);
+                    final String dslSha256 = sha256Hex(rule.getDsl().getBytes(StandardCharsets.UTF_8));
+                    // The runtime DSL takes the class compiled at the rule's coordinates from the name, text and types
+                    // upstream passes: two rules agreeing on all of them (one line, two layers) compile to the same class,
+                    // the layer being no input of it, so both run instances of one class, as upstream runs two alike.
+                    if (!compiledFrom.add(Arrays.asList(sourceRef.describeYaml(), rule.getName(), dslSha256,
+                        typeName(inputType), typeName(outputType)))) {
+                        log.info("LAL rule {} of layer {} at {} is compiled as the rule of its name, text and types "
+                            + "on the same line", rule.getName(), rule.getLayer(), sourceRef.describeYaml());
+                        continue;
+                    }
+                    lalGenerator.setSourceRef(sourceRef);
                     lalGenerator.setClassNameHint(rule.getName());
                     // The holder's content, shown inline by the debugger (upstream DSL.of does the same).
                     lalGenerator.setContent(rule.getDsl());
-
-                    // Resolve inputType from rule config or SPI
-                    Class<?> inputType = null;
-                    if (rule.getInputType() != null && !rule.getInputType().isEmpty()) {
-                        try {
-                            inputType = Class.forName(rule.getInputType());
-                        } catch (ClassNotFoundException e) {
-                            throw new IllegalStateException("LAL rule '" + rule.getName() + "' declares inputType '"
-                                + rule.getInputType() + "' but the class was not found.", e);
-                        }
-                    } else if (rule.getLayer() != null) {
-                        LALSourceTypeProvider spi = spiProviders.get(rule.getLayer());
-                        if (spi != null) {
-                            inputType = spi.inputType();
-                        }
-                    }
                     lalGenerator.setInputType(inputType);
-
-                    // Resolve outputType from rule config or SPI
-                    Class<?> outputType = null;
-                    String yamlOutputType = rule.getOutputType();
-                    if (yamlOutputType != null && !yamlOutputType.isEmpty()) {
-                        // Try short name first
-                        if (!yamlOutputType.contains(".")) {
-                            outputType = outputBuilderNames.get(yamlOutputType);
-                        }
-                        // Fall back to FQCN
-                        if (outputType == null) {
-                            try {
-                                outputType = Class.forName(yamlOutputType);
-                            } catch (ClassNotFoundException e) {
-                                throw new IllegalStateException("LAL rule '" + rule.getName() + "' declares outputType '"
-                                    + yamlOutputType + "' but neither a registered LALOutputBuilder name nor a class was"
-                                    + " found.", e);
-                            }
-                        }
-                    } else if (rule.getLayer() != null) {
-                        LALSourceTypeProvider spi = spiProviders.get(rule.getLayer());
-                        if (spi != null && spi.outputType() != null) {
-                            outputType = spi.outputType();
-                        }
-                    }
                     lalGenerator.setOutputType(outputType);
 
                     LalExpression compiled = lalGenerator.compile(rule.getDsl());
+                    GeneratedInstanceCheck.requireNoStateAfterConstruction(compiled, Set.of(),
+                        "LAL rule " + rule.getName() + " (" + sourceRef.describeYaml() + ")");
                     final Class<?> effectiveInputType = lalGenerator.getEffectiveInputType();
                     final int idx = totalRules++;
-                    lalRules.setProperty("rule." + idx + ".source", rule.getSourcePath());
+                    lalRules.setProperty("rule." + idx + ".source", sourceRef.getYamlFile());
                     // The file itself: two files can share a source, which stamps .yaml onto another extension.
                     lalRules.setProperty("rule." + idx + ".file", file.getKey());
-                    lalRules.setProperty("rule." + idx + ".line", String.valueOf(rule.getLineNo()));
-                    lalRules.setProperty("rule." + idx + ".name", rule.getName());
+                    lalRules.setProperty("rule." + idx + ".line", String.valueOf(sourceRef.getYamlLine()));
+                    setRuleName(lalRules, "rule." + idx + ".", rule.getName());
                     lalRules.setProperty("rule." + idx + ".class", compiled.getClass().getName());
-                    lalRules.setProperty("rule." + idx + ".inputType",
-                        effectiveInputType == null ? "" : effectiveInputType.getName());
+                    lalRules.setProperty("rule." + idx + ".inputType", typeName(effectiveInputType));
+                    // What the class was compiled from, which the runtime DSL.of requires upstream to pass again.
+                    lalRules.setProperty("rule." + idx + ".dslSha256", dslSha256);
+                    lalRules.setProperty("rule." + idx + ".requestedInputType", typeName(inputType));
+                    lalRules.setProperty("rule." + idx + ".requestedOutputType", typeName(outputType));
+                    if (effectiveInputType != null) {
+                        inputTypes.add(effectiveInputType.getName());
+                    }
+                    if (inputType != null) {
+                        inputTypes.add(inputType.getName());
+                    }
                     log.debug("LAL: compiled rule {} -> {}", rule.getName(),
                         compiled.getClass().getName());
                 } catch (Exception e) {
                     throw new IllegalStateException("Failed to compile LAL rule " + rule.getName() + " ("
-                        + rule.getSourcePath() + ":" + rule.getLineNo() + ")", e);
+                        + sourceRef.describeYaml() + ")", e);
                 }
             }
         }
@@ -942,40 +963,58 @@ public class Precompiler {
         List<String> lalV2Classes = scanV2Classes(outputDir, LAL_RT_PACKAGE);
         writeManifest(metaInf.resolve("lal-v2-classes.txt"), lalV2Classes);
         writeEscapedProperties(metaInf.resolve("lal-v2-rules.txt"), lalRules);
+        Set<String> ioClasses = new TreeSet<>();
+        for (LALSourceTypeProvider provider : boot.sourceTypeProviders()) {
+            ioClasses.add(provider.getClass().getName());
+            // The layer's logs arrive as this type, whichever rule runs on them.
+            inputTypes.add(provider.inputType().getName());
+        }
+        LalStaticRuleResolver.outputBuilders().forEach(builder -> ioClasses.add(builder.getName()));
+        // The renderers JSON-print their input types whichever rules exist: a parser-only rule runs on every entry its
+        // layer receives, of either Envoy protocol.
+        for (LalInputDebugRenderer renderer : ServiceLoader.load(LalInputDebugRenderer.class)) {
+            ioClasses.add(renderer.getClass().getName());
+            inputTypes.add(renderer.inputType().getName());
+        }
+        writeManifest(metaInf.resolve("lal-io-classes.txt"), new ArrayList<>(ioClasses));
+        // The log a rule runs on by default; its log.* and parsed.<field> fallbacks read its trace context and tags.
+        inputTypes.add(LogData.class.getName());
+        writeManifest(metaInf.resolve("lal-input-types.txt"), new ArrayList<>(inputTypes));
 
         log.info("LAL pre-compilation: {} rules, {} v2 expression classes",
             totalRules, lalV2Classes.size());
 
-        // ---- Serialize LAL config data as JSON for runtime loader ----
         serializeLALConfigData(outputDir, configsByFile);
     }
 
+    private static String typeName(Class<?> type) {
+        return type == null ? "" : type.getName();
+    }
 
     /**
-     * What upstream {@code LogFilterListener.Factory.loadStaticRules} refuses at boot, which fails the build instead:
-     * {@code fallback} off a {@code layer: auto} rule, two rules of one name in a layer (or among the auto rules). Two
-     * rules on one line fail too: the runtime finds a rule's class by its file and line. A rule of an unregistered
-     * layer is compiled, as upstream skips it at boot with a warning.
+     * What upstream {@code LogFilterListener.Factory} refuses among the static rules at boot, which fails the build
+     * instead: {@code fallback} off a {@code layer: auto} rule, two rules of one name in a layer (or among the auto
+     * rules).
+     *
+     * @return false for a rule upstream skips at boot with a warning before it resolves or compiles anything
+     *     ({@link LalStaticRuleResolver#skippedAtBoot}, every rule file's inline layers registered by now). Not
+     *     compiled here either; its config stays in the registry, so the boot still warns.
      */
-    static void checkRegistration(final LALConfig rule, final Set<String> registered) {
+    static boolean checkRegistration(final LALConfig rule, final Set<List<String>> registered) {
+        if (LalStaticRuleResolver.skippedAtBoot(rule)) {
+            return false;
+        }
         final boolean auto = LALConfig.LAYER_AUTO.equalsIgnoreCase(rule.getLayer());
         final String at = "LAL rule " + rule.getName() + " of " + rule.getSourcePath();
-        if (!registered.add("@" + rule.getSourcePath() + ":" + rule.getLineNo())) {
-            throw new IllegalStateException(at + " starts on line " + rule.getLineNo() + " with another rule; give "
-                + "each rule a line of its own");
-        }
-        // Upstream skips a rule of an unregistered layer before it checks the rest.
-        if (!auto && (rule.getLayer() == null || rule.getLayer().isEmpty()
-            || Layer.nameOf(rule.getLayer()) == Layer.UNDEFINED)) {
-            return;
-        }
         if (rule.isFallback() && !auto) {
             throw new IllegalStateException(at + " declares fallback: true, which only a layer: auto rule may");
         }
-        if (!registered.add((auto ? "<auto>" : rule.getLayer()) + "|" + rule.getName())) {
+        // Upstream keys the rules of a layer by name in a map, where a rule without a name is one apart
+        if (!registered.add(Arrays.asList(auto ? null : rule.getLayer(), rule.getName()))) {
             throw new IllegalStateException(at + ": " + (auto ? "two auto-layer rules" : "two rules of layer "
                 + rule.getLayer()) + " are named " + rule.getName());
         }
+        return true;
     }
 
     /**
@@ -997,9 +1036,9 @@ public class Precompiler {
      * operator wrote there, resolving each rule's input and layer as upstream
      * {@code SpanFilterListener.Factory.compile} does, against a function registry bound as the factory binds its
      * own, and naming its class from the same {@link DslSourceRef}.
-     * Every file is loaded before any rule compiles, as upstream's {@code loadStaticRules} does, so a layer one
-     * file declares is registered for the rules of every file. A rule that fails here would fail the boot, so
-     * the build fails.
+     * Every file is loaded through upstream's loader before any rule compiles, as upstream's {@code loadRules} does, so
+     * a layer one file declares is registered for the rules of every file. A rule that fails here would fail the boot,
+     * so the build fails.
      *
      * <p>{@code tal-v2-rules.txt} carries, per rule, the coordinates, the class, the input type and alias, the
      * registry key of every function object the class holds, and the metric declarations the same-FQCN
@@ -1007,12 +1046,13 @@ public class Precompiler {
      * through {@code createMetrics} and listed in {@code tal-meter-classes.txt}. {@code tal-io-classes.txt} lists the
      * input types, providers and function objects, for reflection metadata.
      */
-    static void compileTAL(String outputDir, MeterSystem meterSystem, String talPath) throws Exception {
+    static void compileTAL(String outputDir, MeterSystem meterSystem, String talPath, ModuleManager modules)
+        throws Exception {
         File talRtDir = new File(outputDir, TAL_RT_PACKAGE.replace('.', '/'));
         talRtDir.mkdirs();
 
         Map<String, TALSourceTypeProvider> inputProviders = new LinkedHashMap<>();
-        for (TALSourceTypeProvider provider : java.util.ServiceLoader.load(TALSourceTypeProvider.class)) {
+        for (TALSourceTypeProvider provider : ServiceLoader.load(TALSourceTypeProvider.class)) {
             inputProviders.put(provider.alias(), provider);
         }
         // Discovered and bound in the factory's order (ServiceLoader's), which the registry keys depend on; no module
@@ -1021,26 +1061,32 @@ public class Precompiler {
         registry.bind(null, inputProviders.values());
         log.info("TAL: input providers {}, function modules {}", inputProviders.keySet(), registry.modules());
 
-        // Every file, as upstream's loader takes any file whose name without extension talFiles lists. Upstream
-        // keys the files by that stem, so two files sharing one would silently shadow each other: refuse them.
-        // In listing order, which upstream's loader inserts the files in (see the runtime TALConfigs).
-        Map<String, String> fileByStem = new LinkedHashMap<>();
-        for (File f : filesOf(talPath)) {
-            String name = f.getName();
-            if (!f.isFile() || name.startsWith(".")) {
+        // Each name talFiles can list, loaded through upstream's loader with the modules the image ships, which picks
+        // the file of the name (or fails where it cannot), keyed by the name of the file it read. A file requiring a
+        // module the image does not ship is never loaded at boot: it registers no layer, compiles no rule and is not
+        // carried.
+        Map<String, TALConfigs> configsByFile = new LinkedHashMap<>();
+        for (String stem : talStems(talPath)) {
+            List<TALConfigs> loaded = TALConfigs.load(talPath, List.of(stem), modules);
+            if (!loaded.isEmpty()) {
+                TALConfigs configs = loaded.get(0);
+                configsByFile.put(configs.getRules().isEmpty() ? onlyTalFile(talPath, stem).getName()
+                    : configs.getRules().get(0).getSourceName(), configs);
                 continue;
             }
-            String previous = fileByStem.put(getNameWithoutExtension(name), name);
-            if (previous != null) {
-                throw new IllegalStateException("TAL rule files " + previous + " and " + name + " under " + talPath
-                    + " share the name " + getNameWithoutExtension(name) + ", which talFiles selects them by");
+            // Skipped for its modules as upstream's loader decides it, on the requiredModules it bound (not
+            // requiredModulesOf's own read of the key, which differs for a value of another shape)
+            File file = onlyTalFile(talPath, stem);
+            TALConfigs typed = talFileConfigs(file.toPath());
+            if (!typed.requiredModulesLoaded(modules)) {
+                log.info("TAL: {} requires the modules {}, which the image does not all ship; upstream's boot skips it",
+                    stem, typed.getRequiredModules());
+                continue;
             }
-        }
-        // Keyed by the file name with its extension, which the runtime TALConfigs re-stamps sourcePath from.
-        Map<String, TALConfigs> configsByFile = new LinkedHashMap<>();
-        for (Map.Entry<String, String> file : fileByStem.entrySet()) {
-            for (TALConfigs configs : TALConfigs.load(talPath, List.of(file.getKey()))) {
-                configsByFile.put(file.getValue(), configs);
+            // Upstream's loader reads a file without rules (passing it through RuleSetMerger), registers its
+            // layerDefinitions and returns nothing for it: the registry carries the file, so the boot does the same.
+            if (typed.getRules() == null) {
+                configsByFile.put(file.getName(), typed);
             }
         }
 
@@ -1048,10 +1094,14 @@ public class Precompiler {
         int meterClassesBefore = meterSystem.getExportedClasses().size();
         Properties talRules = new Properties();
         Set<String> ioClasses = new TreeSet<>();
+        // What each recorded rule's class was compiled from, to the wiring recorded with it
+        Map<List<String>, String> wiringByInputs = new HashMap<>();
+        Map<String, Boolean> nativeByFile = new HashMap<>();
+        Map<String, String> nativeRuleSources = new HashMap<>();
         int totalRules = 0;
         for (Map.Entry<String, TALConfigs> file : configsByFile.entrySet()) {
             TALConfigs configs = file.getValue();
-            for (TALConfig rule : configs.getRules()) {
+            for (TALConfig rule : configs.getRules() == null ? List.<TALConfig>of() : configs.getRules()) {
                 List<String> declaredInputs = rule.inputTypes();
                 if (declaredInputs.size() != 1) {
                     throw new IllegalStateException("TAL rule " + rule.getName() + " declares "
@@ -1060,10 +1110,19 @@ public class Precompiler {
                 TALSourceTypeProvider input = resolveTalInput(rule, declaredInputs.get(0), inputProviders);
                 Class<?> inputType = input.inputType();
                 resolveTalLayer(rule);
+                // Over every rule as upstream's factory sees it, before rules alike share a class
+                checkTalActivation(file.getKey(), rule.getName(), input.alias(), nativeByFile, nativeRuleSources);
 
                 DslSourceRef sourceRef = DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo());
+                // The runtime TalDSL takes the class recorded at the rule's coordinates for the name, text, input and
+                // prefix upstream passes: a second rule agreeing on all of them (one line, two layers) runs that class,
+                // as upstream runs its own alike class, only when the wiring recorded with it is its own too.
+                List<String> inputs = Arrays.asList(sourceRef.describeYaml(), rule.getName(),
+                    sha256Hex(rule.getDsl().getBytes(StandardCharsets.UTF_8)), inputType.getName(), input.alias(),
+                    rule.getMetricPrefix() == null ? "" : rule.getMetricPrefix());
+                String recordedWiring = wiringByInputs.get(inputs);
                 TALClassGenerator generator = new TALClassGenerator();
-                generator.setClassOutputDir(talRtDir);
+                generator.setClassOutputDir(recordedWiring == null ? talRtDir : null);
                 generator.setInputType(inputType);
                 generator.setClassNameHint(rule.getName());
                 generator.setSourceRef(sourceRef);
@@ -1072,17 +1131,49 @@ public class Precompiler {
                 generator.setInputAlias(input.alias());
                 generator.setFunctionRegistry(registry);
                 TalExpression compiled = generator.compile(rule.getDsl());
+                if (recordedWiring != null) {
+                    String wiring = talWiring(talFunctionFields(rule, compiled, registry, inputProviders.keySet()),
+                        generator.getMetricDeclarations());
+                    if (!wiring.equals(recordedWiring)) {
+                        throw new IllegalStateException("Two TAL rules named " + rule.getName() + " start at "
+                            + sourceRef.describeYaml() + " with the same DSL text, input and metric prefix, but "
+                            + "compile to classes wired differently, which the image cannot tell apart; give one of "
+                            + "them a line of its own");
+                    }
+                    log.info("TAL rule {} of layer {} at {} runs the class of the rule of its name, text, input and "
+                        + "prefix on the same line", rule.getName(), rule.getLayer(), sourceRef.describeYaml());
+                    continue;
+                }
                 metricShapes.claim(sourceRef + "#" + rule.getName(), generator.getMetricDeclarations());
-                generator.createMetrics(meterSystem);
+                List<String> created = meterSystem.recordCalls(false, () -> generator.createMetrics(meterSystem));
+                // The runtime rebuilds each declaration from the fields recorded below: rebuild it so here, and a field
+                // upstream adds would show as a difference instead of resetting to its default at boot.
+                List<TALMetricDeclaration> rebuilt = new ArrayList<>();
+                for (TALMetricDeclaration d : generator.getMetricDeclarations()) {
+                    TALMetricDeclaration copy = new TALMetricDeclaration(d.fullName, d.function, d.scopeType,
+                        d.declaredName, d.buckets, d.ranks, d.labelLimit);
+                    String difference = StateComparison.firstDifference(d, copy, "TAL metric " + d.fullName);
+                    if (difference != null) {
+                        throw new IllegalStateException("TAL rule " + rule.getName() + ": the registry does not "
+                            + "carry " + difference);
+                    }
+                    rebuilt.add(copy);
+                }
+                List<String> replayed = meterSystem.recordCalls(true, () -> TalMetrics.create(meterSystem, rebuilt));
+                if (!created.equals(replayed)) {
+                    throw new IllegalStateException("TAL rule " + rule.getName() + ": upstream createMetrics makes "
+                        + created + ", but the runtime replays " + replayed + " from the recorded declarations; "
+                        + "update TalMetrics");
+                }
 
-                // Coordinates alone are not an identity: two rules can share a line in flow-style YAML. Every input
-                // the class was compiled from is recorded, and the runtime TalDSL requires all of them to match.
+                // Keyed by the DslSourceRef the runtime TalDSL is given. Coordinates alone are not an identity: two
+                // rules can share a line in flow-style YAML, so every input the class was compiled from is recorded,
+                // and the runtime TalDSL requires all of them to match.
                 String prefix = "rule." + totalRules++ + ".";
-                talRules.setProperty(prefix + "source", rule.getSourcePath());
-                // The file itself: two files can share a source, which stamps .yaml onto another extension.
+                talRules.setProperty(prefix + "source", sourceRef.getYamlFile());
                 talRules.setProperty(prefix + "file", file.getKey());
-                talRules.setProperty(prefix + "line", String.valueOf(rule.getLineNo()));
-                talRules.setProperty(prefix + "name", rule.getName());
+                talRules.setProperty(prefix + "line", String.valueOf(sourceRef.getYamlLine()));
+                setRuleName(talRules, prefix, rule.getName());
                 talRules.setProperty(prefix + "class", compiled.getClass().getName());
                 talRules.setProperty(prefix + "inputType", inputType.getName());
                 talRules.setProperty(prefix + "inputAlias", input.alias());
@@ -1090,6 +1181,10 @@ public class Precompiler {
                 talRules.setProperty(prefix + "dslSha256", sha256Hex(rule.getDsl().getBytes(StandardCharsets.UTF_8)));
                 ioClasses.add(inputType.getName());
                 List<String[]> functions = talFunctionFields(rule, compiled, registry, inputProviders.keySet());
+                wiringByInputs.put(inputs, talWiring(functions, generator.getMetricDeclarations()));
+                GeneratedInstanceCheck.requireNoStateAfterConstruction(compiled,
+                    functions.stream().map(f -> f[0]).collect(Collectors.toSet()),
+                    "TAL rule " + rule.getName() + " (" + sourceRef.describeYaml() + ")");
                 for (int f = 0; f < functions.size(); f++) {
                     String functionPrefix = prefix + "function." + f + ".";
                     talRules.setProperty(functionPrefix + "field", functions.get(f)[0]);
@@ -1129,7 +1224,7 @@ public class Precompiler {
             ioClasses.add(provider.getClass().getName());
             provider.helperFunctions().forEach(helper -> ioClasses.add(helper.getClass().getName()));
         }
-        for (TALFunctionProvider provider : java.util.ServiceLoader.load(TALFunctionProvider.class)) {
+        for (TALFunctionProvider provider : ServiceLoader.load(TALFunctionProvider.class)) {
             ioClasses.add(provider.getClass().getName());
         }
         writeManifest(metaInf.resolve("tal-io-classes.txt"), new ArrayList<>(ioClasses));
@@ -1139,7 +1234,62 @@ public class Precompiler {
         ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
         Path configDataDir = metaInf.resolve("config-data");
         Files.createDirectories(configDataDir);
-        mapper.writeValue(configDataDir.resolve("tal.json").toFile(), configsByFile);
+        writeConfigData(mapper, configDataDir.resolve("tal.json"), configsByFile,
+            new TypeReference<LinkedHashMap<String, TALConfigs>>() {
+            });
+    }
+
+    /**
+     * Every compiled TAL file is active, in {@code nativeTalFiles} (its rules are {@code sw-native}) or in
+     * {@code talFiles}. Fails on a file that list would refuse, as upstream's boot does: a native file holding a rule of
+     * another input, and two native rules of one name (upstream's factory keys them by name in a map, where a rule
+     * without a name is one apart). The TAL pass compiles no file requiring a module the image does not ship.
+     *
+     * @param nativeByFile      whether each file seen so far holds native rules
+     * @param nativeRuleSources the file of each native rule seen so far, by name
+     */
+    static void checkTalActivation(String file, String ruleName, String inputAlias, Map<String, Boolean> nativeByFile,
+                                   Map<String, String> nativeRuleSources) {
+        String source = RuleCatalog.TAL.getDirectory() + "/" + file;
+        boolean isNative = TALFunctionProvider.SW_NATIVE_INPUT_TYPE.equals(inputAlias);
+        Boolean fileIsNative = nativeByFile.putIfAbsent(source, isNative);
+        if (fileIsNative != null && fileIsNative != isNative) {
+            throw new IllegalStateException("TAL file " + source + " mixes " + TALFunctionProvider.SW_NATIVE_INPUT_TYPE
+                + " rules with rules of another input; native rules and span rules of other inputs go in separate files");
+        }
+        if (isNative && nativeRuleSources.containsKey(ruleName)) {
+            throw new IllegalStateException("The TAL native rules of " + nativeRuleSources.get(ruleName) + " and "
+                + source + " are both named " + ruleName);
+        }
+        if (isNative) {
+            nativeRuleSources.put(ruleName, source);
+        }
+    }
+
+    /**
+     * Writes a rule's name into a build manifest, a rule without one (which upstream's factories compile) as such:
+     * {@code unnamed=true} and no {@code name}, so it is told apart from a rule named {@code ""} or {@code "null"}.
+     */
+    static void setRuleName(Properties manifest, String prefix, String name) {
+        if (name == null) {
+            manifest.setProperty(prefix + "unnamed", "true");
+        } else {
+            manifest.setProperty(prefix + "name", name);
+        }
+    }
+
+    /**
+     * @return the function fields and metric declarations the runtime wires a TAL rule's class with, as text
+     */
+    private static String talWiring(List<String[]> functions, List<TALMetricDeclaration> declarations) {
+        StringBuilder wiring = new StringBuilder();
+        functions.forEach(f -> wiring.append(String.join("|", f)).append('\n'));
+        for (TALMetricDeclaration d : declarations) {
+            wiring.append(d.fullName).append('|').append(d.function).append('|').append(d.scopeType).append('|')
+                  .append(d.declaredName).append('|').append(d.buckets).append('|').append(d.ranks).append('|')
+                  .append(d.labelLimit).append('\n');
+        }
+        return wiring.toString();
     }
 
     /**
@@ -1184,11 +1334,15 @@ public class Precompiler {
             if (Modifier.isStatic(field.getModifiers())) {
                 continue;
             }
+            // The generator's function slots are _fn<N>; every other field goes through GeneratedInstanceCheck.
+            if (!field.getName().matches("_fn\\d+")) {
+                continue;
+            }
             field.setAccessible(true);
             Object owner = field.get(compiled);
             if (owner == null) {
-                throw new IllegalStateException("TAL rule " + rule.getName() + ": field " + field.getName()
-                    + " of " + compiled.getClass().getName() + " was left unset by the generator");
+                throw new IllegalStateException("TAL rule " + rule.getName() + ": the generator left function slot "
+                    + field.getName() + " of " + compiled.getClass().getName() + " unset");
             }
             String byClass = owner.getClass().getName();
             List<String> candidates = new ArrayList<>();
@@ -1223,59 +1377,138 @@ public class Precompiler {
         if (!missing.isEmpty()) {
             throw new IllegalStateException(
                 "OAL script files not found on classpath. "
-                + "Ensure the skywalking submodule resource directory is on the classpath.\n"
+                + "Ensure the staged rule tree is on the classpath.\n"
                 + "Missing:\n  " + String.join("\n  ", missing));
         }
         log.info("Validated: all {} OAL scripts found on classpath", oalDefines.length);
     }
 
     /**
-     * Scan a subdirectory under the generated package path for .class files
-     * and compute fully-qualified class names.
+     * Every OAL script of the staged rule tree compiles through a define: one an {@code OALDefine} class names, or
+     * the define of a script the rules overlay added. A script no define names would be left out of the image.
      */
-    private static List<String> scanClassNames(
-        String outputDir, String subDir, String packagePrefix) throws IOException {
-
-        Path dir = Path.of(outputDir,
-            "org/apache/skywalking/oap/server/core/source/oal/rt", subDir);
-        if (!Files.isDirectory(dir)) {
-            return Collections.emptyList();
+    static void requireEveryScriptCompiled(final OALDefine[] defines, final Collection<String> scripts) {
+        final Set<String> compiled = Arrays.stream(defines).map(OALDefine::getConfigFile).collect(Collectors.toSet());
+        final List<String> uncompiled = scripts.stream().filter(script -> !compiled.contains(script)).sorted()
+                                               .collect(Collectors.toList());
+        if (!uncompiled.isEmpty()) {
+            throw new IllegalStateException("No OALDefine on the precompiler's class path names the OAL scripts "
+                + uncompiled + ": the precompiler is missing the module that declares their define");
         }
-
-        List<String> classNames = new ArrayList<>();
-        try (Stream<Path> files = Files.list(dir)) {
-            files.filter(p -> p.toString().endsWith(".class"))
-                 .filter(p -> Files.isRegularFile(p))
-                 .forEach(p -> {
-                     String fileName = p.getFileName().toString();
-                     String simpleName = fileName.substring(0, fileName.length() - ".class".length());
-                     classNames.add(packagePrefix + simpleName);
-                 });
-        }
-        Collections.sort(classNames);
-        return classNames;
     }
 
     /**
-     * Read disabled source names from DisableRegister singleton via reflection.
+     * @return the {@code oal/*.oal} files of the staged rule tree
      */
-    @SuppressWarnings("unchecked")
-    private static String added(final List<String> before, final List<String> after) {
-        final Set<String> previous = new HashSet<>(before);
-        return after.stream().filter(name -> !previous.contains(name)).collect(Collectors.joining(","));
-    }
-
-    private static List<String> getDisabledSources() throws Exception {
-        Field field = DisableRegister.class.getDeclaredField("disableEntitySet");
-        field.setAccessible(true);
-        Set<String> disabledSet = (Set<String>) field.get(DisableRegister.INSTANCE);
-        List<String> result = new ArrayList<>(disabledSet);
-        Collections.sort(result);
-        return result;
+    static List<String> stagedOalScripts() throws IOException {
+        final List<String> scripts = new ArrayList<>();
+        for (final File f : filesOf(RuleCatalog.OAL.getDirectory())) {
+            if (f.isFile() && !f.getName().startsWith(".") && f.getName().endsWith(".oal")) {
+                scripts.add("oal/" + f.getName());
+            }
+        }
+        return scripts;
     }
 
     /**
-     * Scan for classes annotated with the given annotation type.
+     * @return the sources the script disables, as upstream's parser reads them for the generator to register
+     */
+    private static List<String> scriptDisables(final OALDefine define) throws IOException {
+        try (Reader reader = ResourceUtils.read(define.getConfigFile())) {
+            return OALScriptParserV2.parse(reader, define.getConfigFile()).getDisabledSources();
+        }
+    }
+
+    /**
+     * @return the names {@code talFiles} can list a file under {@code talPath} by: its name without the extension
+     */
+    static Set<String> talStems(final String talPath) throws IOException {
+        Set<String> stems = new TreeSet<>();
+        for (File f : filesOf(talPath)) {
+            if (f.isFile() && !f.getName().startsWith(".")) {
+                stems.add(getNameWithoutExtension(f.getName()));
+            }
+        }
+        return stems;
+    }
+
+    /**
+     * The file of a name upstream's loader returned no rule of, so no stamped source name says which file it read.
+     */
+    private static File onlyTalFile(final String talPath, final String stem) throws IOException {
+        List<File> files = Arrays.stream(filesOf(talPath))
+                                 .filter(f -> f.isFile() && getNameWithoutExtension(f.getName()).equals(stem))
+                                 .collect(Collectors.toList());
+        if (files.size() != 1) {
+            throw new IllegalStateException("TAL rule files " + files.stream().map(File::getName).sorted()
+                .collect(Collectors.toList()) + " under " + talPath + " all name the rule file " + stem
+                + ", which holds no rule, so upstream's loader does not tell which one it reads; keep one");
+        }
+        return files.get(0);
+    }
+
+    /**
+     * @return the configs of a file as upstream's loader binds them (empty for a document of comments only)
+     */
+    static TALConfigs talFileConfigs(final Path file) throws IOException {
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            TALConfigs configs = new Yaml().loadAs(reader, TALConfigs.class);
+            // A document of comments only binds nothing, as upstream reads it
+            return configs == null ? new TALConfigs() : configs;
+        }
+    }
+
+    /**
+     * @return the annotation of every concrete AnnotationListener, by its simple name, the manifest name AnnotationScan
+     * reads; each listener's own annotation(), on its singleton {@code INSTANCE} or an instance its constructor builds
+     * from nulls (listeners keep their arguments for notify)
+     */
+    static Collection<Class<? extends Annotation>> listenedAnnotations(ImmutableSet<ClassPath.ClassInfo> allClasses)
+        throws ReflectiveOperationException {
+        Map<String, Class<? extends Annotation>> annotations = new TreeMap<>();
+        List<Class<?>> candidates = new ArrayList<>();
+        for (ClassPath.ClassInfo classInfo : allClasses) {
+            collectNested(classInfo.load(), candidates);
+        }
+        for (Class<?> type : candidates) {
+            if (!AnnotationListener.class.isAssignableFrom(type) || type.isInterface()
+                || Modifier.isAbstract(type.getModifiers())) {
+                continue;
+            }
+            Class<? extends Annotation> annotation = listenerInstance(type).annotation();
+            Class<? extends Annotation> clash = annotations.put(annotation.getSimpleName(), annotation);
+            if (clash != null && clash != annotation) {
+                throw new IllegalStateException("Two listened annotations share the manifest name "
+                    + annotation.getSimpleName() + ": " + clash.getName() + ", " + annotation.getName());
+            }
+        }
+        return annotations.values();
+    }
+
+    private static void collectNested(Class<?> type, List<Class<?>> into) {
+        into.add(type);
+        for (Class<?> nested : type.getDeclaredClasses()) {
+            collectNested(nested, into);
+        }
+    }
+
+    private static AnnotationListener listenerInstance(Class<?> type) throws ReflectiveOperationException {
+        for (Field field : type.getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers()) && field.getType() == type) {
+                field.setAccessible(true);
+                return (AnnotationListener) field.get(null);
+            }
+        }
+        Constructor<?> constructor = Arrays.stream(type.getDeclaredConstructors())
+            .min(Comparator.comparingInt(Constructor::getParameterCount))
+            .orElseThrow();
+        constructor.setAccessible(true);
+        return (AnnotationListener) constructor.newInstance(new Object[constructor.getParameterCount()]);
+    }
+
+    /**
+     * Scan for classes annotated with the given annotation type. As upstream's scans, a class that does not load fails
+     * the build: every class scanned here is on the image's class path.
      */
     private static List<String> scanAnnotation(
         ImmutableSet<ClassPath.ClassInfo> allClasses,
@@ -1283,13 +1516,9 @@ public class Precompiler {
 
         List<String> result = new ArrayList<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
-            try {
-                Class<?> aClass = classInfo.load();
-                if (aClass.isAnnotationPresent(annotationType)) {
-                    result.add(aClass.getName());
-                }
-            } catch (NoClassDefFoundError | Exception ignored) {
-                // Some classes may fail to load due to missing optional dependencies
+            Class<?> aClass = classInfo.load();
+            if (aClass.isAnnotationPresent(annotationType)) {
+                result.add(aClass.getName());
             }
         }
         Collections.sort(result);
@@ -1298,55 +1527,37 @@ public class Precompiler {
     }
 
     /**
-     * Scan for concrete classes implementing the given interface.
+     * Scan for concrete classes implementing or extending the given type.
      */
-    private static List<String> scanInterface(
-        ImmutableSet<ClassPath.ClassInfo> allClasses, Class<?> interfaceType) {
+    private static List<String> scanImplementations(
+        ImmutableSet<ClassPath.ClassInfo> allClasses, Class<?> type) {
 
         List<String> result = new ArrayList<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
-            try {
-                Class<?> aClass = classInfo.load();
-                if (!aClass.isInterface()
-                    && !Modifier.isAbstract(aClass.getModifiers())
-                    && interfaceType.isAssignableFrom(aClass)) {
-                    result.add(aClass.getName());
-                }
-            } catch (NoClassDefFoundError | Exception ignored) {
-                // Some classes may fail to load due to missing optional dependencies
+            Class<?> aClass = classInfo.load();
+            if (!aClass.isInterface()
+                && !Modifier.isAbstract(aClass.getModifiers())
+                && type.isAssignableFrom(aClass)) {
+                result.add(aClass.getName());
             }
         }
         Collections.sort(result);
-        log.info("Scanned {}: {} classes", interfaceType.getSimpleName(), result.size());
+        log.info("Scanned {}: {} classes", type.getSimpleName(), result.size());
         return result;
     }
 
     /**
-     * Scan for @MeterFunction-annotated classes that implement AcceptableValue.
-     * Returns lines in format "functionName=FQCN".
+     * @return every concrete {@link StreamData} class, nested ones included
      */
-    private static List<String> scanMeterFunctions(
-        ImmutableSet<ClassPath.ClassInfo> allClasses) {
-
-        List<String> result = new ArrayList<>();
+    private static List<String> scanStreamData(ImmutableSet<ClassPath.ClassInfo> allClasses) {
+        List<Class<?>> classes = new ArrayList<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
-            try {
-                Class<?> aClass = classInfo.load();
-                if (aClass.isAnnotationPresent(MeterFunction.class)) {
-                    MeterFunction mf = aClass.getAnnotation(MeterFunction.class);
-                    if (!AcceptableValue.class.isAssignableFrom(aClass)) {
-                        log.warn("@MeterFunction class {} doesn't implement AcceptableValue, skipping",
-                            aClass.getName());
-                        continue;
-                    }
-                    result.add(mf.functionName() + "=" + aClass.getName());
-                }
-            } catch (NoClassDefFoundError | Exception ignored) {
-                // Some classes may fail to load due to missing optional dependencies
-            }
+            collectNested(classInfo.load(), classes);
         }
-        Collections.sort(result);
-        log.info("Scanned @MeterFunction: {} classes", result.size());
+        List<String> result = classes.stream()
+            .filter(c -> StreamData.class.isAssignableFrom(c) && !Modifier.isAbstract(c.getModifiers()))
+            .map(Class::getName).sorted().collect(Collectors.toList());
+        log.info("Scanned StreamData: {} classes", result.size());
         return result;
     }
 
@@ -1361,27 +1572,22 @@ public class Precompiler {
 
         List<String> result = new ArrayList<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
-            try {
-                Class<?> aClass = classInfo.load();
-                // @Stream-annotated classes declare builder in annotation
-                if (aClass.isAnnotationPresent(org.apache.skywalking.oap.server.core.analysis.Stream.class)) {
-                    org.apache.skywalking.oap.server.core.analysis.Stream stream =
-                        aClass.getAnnotation(org.apache.skywalking.oap.server.core.analysis.Stream.class);
-                    Class<?> builderClass = stream.builder();
-                    if (builderClass != null && builderClass != void.class) {
-                        result.add(builderClass.getName());
+            Class<?> aClass = classInfo.load();
+            // @Stream-annotated classes declare builder in annotation
+            if (aClass.isAnnotationPresent(org.apache.skywalking.oap.server.core.analysis.Stream.class)) {
+                Class<?> builderClass =
+                    aClass.getAnnotation(org.apache.skywalking.oap.server.core.analysis.Stream.class).builder();
+                if (builderClass != null && builderClass != void.class) {
+                    result.add(builderClass.getName());
+                }
+            }
+            // @MeterFunction classes have StorageBuilder inner classes
+            if (aClass.isAnnotationPresent(MeterFunction.class)) {
+                for (Class<?> inner : aClass.getDeclaredClasses()) {
+                    if (StorageBuilder.class.isAssignableFrom(inner)) {
+                        result.add(inner.getName());
                     }
                 }
-                // @MeterFunction classes have StorageBuilder inner classes
-                if (aClass.isAnnotationPresent(MeterFunction.class)) {
-                    for (Class<?> inner : aClass.getDeclaredClasses()) {
-                        if (org.apache.skywalking.oap.server.core.storage.type.StorageBuilder.class
-                                .isAssignableFrom(inner)) {
-                            result.add(inner.getName());
-                        }
-                    }
-                }
-            } catch (NoClassDefFoundError | Exception ignored) {
             }
         }
         // Deduplicate (multiple @Stream classes may share the same builder)
@@ -1393,69 +1599,44 @@ public class Precompiler {
     /**
      * Scan for Armeria HTTP handler classes — classes with methods annotated with
      * {@code @Post}, {@code @Get}, or {@code @Path} from {@code com.linecorp.armeria.server.annotation}.
-     * Also collects classes referenced in {@code @ExceptionHandler}, {@code @RequestConverter} and {@code @Decorator}.
+     * Also collects the classes {@code @ExceptionHandler}, {@code @Decorator}, {@code @RequestConverter} and
+     * {@code @ResponseConverter} name.
      * Armeria's annotatedService().build(handler) uses reflection to discover these annotations;
      * without reflection metadata, routes are silently not registered (returning 404).
      */
     private static List<String> scanArmeriaHandlers(
         ImmutableSet<ClassPath.ClassInfo> allClasses) {
 
-        // Load Armeria annotation classes if available
-        Class<? extends Annotation> postAnno = loadAnnotation("com.linecorp.armeria.server.annotation.Post");
-        Class<? extends Annotation> getAnno = loadAnnotation("com.linecorp.armeria.server.annotation.Get");
-        Class<? extends Annotation> pathAnno = loadAnnotation("com.linecorp.armeria.server.annotation.Path");
-
-        if (postAnno == null && getAnno == null && pathAnno == null) {
-            log.warn("Armeria annotations not found on classpath, skipping HTTP handler scan");
-            return Collections.emptyList();
-        }
-
         Set<String> result = new HashSet<>();
         for (ClassPath.ClassInfo classInfo : allClasses) {
-            try {
-                Class<?> aClass = classInfo.load();
-                if (aClass.isInterface() || Modifier.isAbstract(aClass.getModifiers())) {
-                    continue;
-                }
-                // Check if any method (including inherited) has Armeria routing annotations
-                boolean matched = false;
-                for (Method method : aClass.getMethods()) {
-                    if ((postAnno != null && method.isAnnotationPresent(postAnno))
-                        || (getAnno != null && method.isAnnotationPresent(getAnno))
-                        || (pathAnno != null && method.isAnnotationPresent(pathAnno))) {
-                        matched = true;
-                        // Include declaring class of inherited annotated methods (e.g. abstract base handlers)
-                        // so Armeria can reflect on their @Get/@Path annotations at runtime
-                        Class<?> declaring = method.getDeclaringClass();
-                        if (declaring != aClass && declaring != Object.class) {
-                            result.add(declaring.getName());
-                        }
+            Class<?> aClass = classInfo.load();
+            if (aClass.isInterface() || Modifier.isAbstract(aClass.getModifiers())) {
+                continue;
+            }
+            // Check if any method (including inherited) has Armeria routing annotations
+            boolean matched = false;
+            for (Method method : aClass.getMethods()) {
+                if (isRoute(method)) {
+                    matched = true;
+                    // Include declaring class of inherited annotated methods (e.g. abstract base handlers)
+                    // so Armeria can reflect on their @Get/@Path annotations at runtime
+                    Class<?> declaring = method.getDeclaringClass();
+                    if (declaring != aClass && declaring != Object.class) {
+                        result.add(declaring.getName());
                     }
                 }
-                if (matched) {
-                    result.add(aClass.getName());
-                    collectExceptionHandlerClasses(aClass, result);
-                    collectDecoratorClasses(aClass, result);
-                }
-            } catch (NoClassDefFoundError | Exception ignored) {
+            }
+            if (matched) {
+                result.add(aClass.getName());
+                collectNamedClasses(aClass, ExceptionHandler.class, result);
+                collectNamedClasses(aClass, Decorator.class, result);
+                collectNamedClasses(aClass, RequestConverter.class, result);
+                collectNamedClasses(aClass, ResponseConverter.class, result);
             }
         }
 
         // Also scan for ExceptionHandlerFunction implementations (instantiated by Armeria via reflection)
-        Class<?> ehfInterface = loadClass("com.linecorp.armeria.server.annotation.ExceptionHandlerFunction");
-        if (ehfInterface != null) {
-            for (ClassPath.ClassInfo classInfo : allClasses) {
-                try {
-                    Class<?> aClass = classInfo.load();
-                    if (!aClass.isInterface()
-                        && !Modifier.isAbstract(aClass.getModifiers())
-                        && ehfInterface.isAssignableFrom(aClass)) {
-                        result.add(aClass.getName());
-                    }
-                } catch (NoClassDefFoundError | Exception ignored) {
-                }
-            }
-        }
+        result.addAll(scanImplementations(allClasses, ExceptionHandlerFunction.class));
 
         List<String> sorted = new ArrayList<>(result);
         Collections.sort(sorted);
@@ -1463,53 +1644,89 @@ public class Precompiler {
         return sorted;
     }
 
+    private static boolean isRoute(Method method) {
+        return method.isAnnotationPresent(Get.class) || method.isAnnotationPresent(Post.class)
+            || method.isAnnotationPresent(com.linecorp.armeria.server.annotation.Path.class);
+    }
+
     /**
-     * Collect classes referenced by @ExceptionHandler annotation on the handler class.
-     * Also scans @RequestConverter classes referenced on methods.
+     * Collect the classes the {@code annotation}s on the handler class and its methods name ({@code value()}): Armeria
+     * instantiates them reflectively while building the annotated service, and a miss fails the boot.
      */
-    private static void collectExceptionHandlerClasses(Class<?> handlerClass, Set<String> result) {
-        try {
-            Class<? extends Annotation> ehAnno = loadAnnotation(
-                "com.linecorp.armeria.server.annotation.ExceptionHandler");
-            if (ehAnno == null) {
-                return;
+    private static void collectNamedClasses(Class<?> handlerClass, Class<? extends Annotation> annotation,
+                                            Set<String> result) {
+        List<Annotation> annotations = new ArrayList<>(List.of(handlerClass.getAnnotationsByType(annotation)));
+        for (Method method : handlerClass.getMethods()) {
+            annotations.addAll(List.of(method.getAnnotationsByType(annotation)));
+        }
+        for (Annotation anno : annotations) {
+            Object value;
+            try {
+                value = annotation.getMethod("value").invoke(anno);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Cannot read the @" + annotation.getSimpleName() + " of "
+                    + handlerClass.getName(), e);
             }
-            // Check class-level @ExceptionHandler
-            for (Annotation anno : handlerClass.getAnnotations()) {
-                if (ehAnno.isInstance(anno)) {
-                    try {
-                        Method valueMethod = anno.getClass().getMethod("value");
-                        Class<?>[] handlerClasses = (Class<?>[]) valueMethod.invoke(anno);
-                        for (Class<?> hc : handlerClasses) {
-                            result.add(hc.getName());
-                        }
-                    } catch (Exception ignored) {
-                    }
-                }
+            for (Class<?> named : value instanceof Class[] ? (Class<?>[]) value : new Class<?>[] {(Class<?>) value}) {
+                result.add(named.getName());
             }
-        } catch (NoClassDefFoundError | Exception ignored) {
         }
     }
 
     /**
-     * Collect {@code @Decorator} targets on the handler class and its methods; Armeria instantiates
-     * them reflectively while building the annotated service, and a miss fails the boot.
+     * The classes Armeria binds a route's request and response bodies to: each route's parameters that are no
+     * {@code @Param} or {@code @Header} value, its return type, the classes their fields hold and their superclasses, as
+     * far as they are this project's classes, its enums included (Gson reads their fields); a protobuf message of any
+     * package, which Armeria converts through {@code JsonFormat}, stands for its descriptor closure. A body a route
+     * builds itself (an {@code HttpResponse} of an object) is not in a signature: its class stays on the
+     * {@code configPojos} list by hand.
      */
-    private static void collectDecoratorClasses(Class<?> handlerClass, Set<String> result) {
-        Class<? extends Annotation> decoratorAnno = loadAnnotation(
-            "com.linecorp.armeria.server.annotation.Decorator");
-        if (decoratorAnno == null) {
-            return;
+    static List<String> scanHttpBodyTypes(List<String> handlers) {
+        Set<Class<?>> bodies = new LinkedHashSet<>();
+        for (String handler : handlers) {
+            Class<?> handlerClass = loadClass(handler);
+            // A route a generic superclass declares binds the bodies the handler gives its type variables
+            Map<TypeVariable<?>, Type> bindings = typeBindings(handlerClass);
+            for (Method method : handlerClass.getMethods()) {
+                if (!isRoute(method)) {
+                    continue;
+                }
+                for (Parameter parameter : method.getParameters()) {
+                    if (!parameter.isAnnotationPresent(Param.class) && !parameter.isAnnotationPresent(Header.class)) {
+                        collectBodyTypes(parameter.getParameterizedType(), bindings, bodies);
+                    }
+                }
+                collectBodyTypes(method.getGenericReturnType(), bindings, bodies);
+            }
         }
-        List<Annotation> decorators = new ArrayList<>(List.of(handlerClass.getAnnotationsByType(decoratorAnno)));
-        for (Method method : handlerClass.getMethods()) {
-            decorators.addAll(List.of(method.getAnnotationsByType(decoratorAnno)));
-        }
-        for (Annotation anno : decorators) {
-            try {
-                Class<?> decorator = (Class<?>) anno.annotationType().getMethod("value").invoke(anno);
-                result.add(decorator.getName());
-            } catch (Exception ignored) {
+        List<String> result = bodies.stream().map(Class::getName).sorted().collect(Collectors.toList());
+        log.info("Scanned HTTP body types: {} classes", result.size());
+        return result;
+    }
+
+    private static void collectBodyTypes(Type type, Map<TypeVariable<?>, Type> bindings, Set<Class<?>> bodies) {
+        for (Class<?> element : valueTypes(type, bindings)) {
+            Class<?> message = generatedMessage(element);
+            if (message != null) {
+                bodies.add(message);
+                continue;
+            }
+            // An enum's own fields are what Gson reads; it holds no other body
+            if (!element.getName().startsWith("org.apache.skywalking.") || element.isInterface()
+                || element.isAnnotation() || !bodies.add(element) || element.isEnum()
+                || Message.class.isAssignableFrom(element)) {
+                continue;
+            }
+            // Jackson and Gson read the fields and accessors each class of the hierarchy declares
+            Map<TypeVariable<?>, Type> hierarchy = typeBindings(element);
+            for (Class<?> declaring = element; declaring != null
+                && declaring.getName().startsWith("org.apache.skywalking."); declaring = declaring.getSuperclass()) {
+                bodies.add(declaring);
+                for (Field field : declaring.getDeclaredFields()) {
+                    if (!Modifier.isStatic(field.getModifiers()) && !Modifier.isTransient(field.getModifiers())) {
+                        collectBodyTypes(field.getGenericType(), hierarchy, bodies);
+                    }
+                }
             }
         }
     }
@@ -1544,19 +1761,16 @@ public class Precompiler {
             if (!queryEntity && !adminResponse && !debuggingResponse && !alarmStatus) {
                 continue;
             }
-            try {
-                Class<?> aClass = classInfo.load();
-                if (aClass.isInterface()) {
-                    continue;
+            Class<?> aClass = classInfo.load();
+            if (aClass.isInterface()) {
+                continue;
+            }
+            result.add(aClass.getName());
+            // Also include inner static classes (e.g. SearchResponse$Trace, StreamLog$Result)
+            for (Class<?> inner : aClass.getDeclaredClasses()) {
+                if (!inner.isInterface()) {
+                    result.add(inner.getName());
                 }
-                result.add(aClass.getName());
-                // Also include inner static classes (e.g. SearchResponse$Trace, StreamLog$Result)
-                for (Class<?> inner : aClass.getDeclaredClasses()) {
-                    if (!inner.isInterface()) {
-                        result.add(inner.getName());
-                    }
-                }
-            } catch (NoClassDefFoundError | Exception ignored) {
             }
         }
 
@@ -1564,18 +1778,6 @@ public class Precompiler {
         Collections.sort(sorted);
         log.info("Scanned query entity classes: {} classes", sorted.size());
         return sorted;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Class<? extends Annotation> loadAnnotation(String fqcn) {
-        try {
-            Class<?> c = Class.forName(fqcn);
-            if (c.isAnnotation()) {
-                return (Class<? extends Annotation>) c;
-            }
-        } catch (ClassNotFoundException | NoClassDefFoundError ignored) {
-        }
-        return null;
     }
 
     /**
@@ -1587,31 +1789,10 @@ public class Precompiler {
     private static List<String> scanGraphQLResolvers(
         ImmutableSet<ClassPath.ClassInfo> allClasses) {
 
-        Class<?> queryResolver = loadClass("graphql.kickstart.tools.GraphQLQueryResolver");
-        Class<?> mutationResolver = loadClass("graphql.kickstart.tools.GraphQLMutationResolver");
-
-        if (queryResolver == null && mutationResolver == null) {
-            log.warn("GraphQL resolver interfaces not found on classpath, skipping resolver scan");
-            return Collections.emptyList();
-        }
-
-        List<String> result = new ArrayList<>();
-        for (ClassPath.ClassInfo classInfo : allClasses) {
-            try {
-                Class<?> aClass = classInfo.load();
-                if (aClass.isInterface() || Modifier.isAbstract(aClass.getModifiers())) {
-                    continue;
-                }
-                if ((queryResolver != null && queryResolver.isAssignableFrom(aClass))
-                    || (mutationResolver != null && mutationResolver.isAssignableFrom(aClass))) {
-                    result.add(aClass.getName());
-                }
-            } catch (NoClassDefFoundError | Exception ignored) {
-            }
-        }
-        Collections.sort(result);
+        Set<String> result = new TreeSet<>(scanImplementations(allClasses, GraphQLQueryResolver.class));
+        result.addAll(scanImplementations(allClasses, GraphQLMutationResolver.class));
         log.info("Scanned GraphQL resolvers: {} classes", result.size());
-        return result;
+        return new ArrayList<>(result);
     }
 
     /**
@@ -1621,7 +1802,7 @@ public class Precompiler {
      * reflection is used to access fields/getters for field resolution.
      */
     private static List<String> scanGraphQLTypes(
-        ImmutableSet<ClassPath.ClassInfo> allClasses) {
+        ImmutableSet<ClassPath.ClassInfo> allClasses) throws IOException {
 
         // Build simple name → list of FQCNs index for all SkyWalking classes.
         // Multiple classes can share a simple name (e.g., AlarmMessage exists in
@@ -1638,10 +1819,8 @@ public class Precompiler {
         Set<String> graphqlTypeNames = new HashSet<>();
         Pattern typePattern = Pattern.compile("^\\s*(type|input|enum)\\s+(\\w+)");
 
-        String[] schemaFiles = listGraphQLSchemaFiles();
-        for (String schemaFile : schemaFiles) {
-            try (InputStream is = Precompiler.class.getClassLoader().getResourceAsStream(schemaFile);
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+        for (String schemaFile : listGraphQLSchemaFiles()) {
+            try (BufferedReader reader = new BufferedReader(ResourceUtils.read(schemaFile))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     Matcher m = typePattern.matcher(line);
@@ -1649,8 +1828,6 @@ public class Precompiler {
                         graphqlTypeNames.add(m.group(2));
                     }
                 }
-            } catch (Exception e) {
-                log.warn("Failed to parse GraphQL schema file: {}", schemaFile, e);
             }
         }
 
@@ -1685,147 +1862,74 @@ public class Precompiler {
      * Scans both filesystem directories and JAR entries since the schema files
      * are packaged inside the query-graphql-plugin JAR.
      */
-    private static String[] listGraphQLSchemaFiles() {
-        Set<String> files = new HashSet<>();
-        try {
-            java.util.Enumeration<java.net.URL> urls =
-                Precompiler.class.getClassLoader().getResources("query-protocol");
-            while (urls.hasMoreElements()) {
-                java.net.URL url = urls.nextElement();
-                if ("file".equals(url.getProtocol())) {
-                    // Filesystem directory
-                    File dir = new File(url.toURI());
-                    File[] children = dir.listFiles();
-                    if (children != null) {
-                        for (File f : children) {
-                            if (f.getName().endsWith(".graphqls")) {
-                                files.add("query-protocol/" + f.getName());
-                            }
-                        }
-                    }
-                } else if ("jar".equals(url.getProtocol())) {
-                    // JAR entry: jar:file:/path/to/jar.jar!/query-protocol
-                    String jarPath = url.getPath();
-                    String jarFile = jarPath.substring(5, jarPath.indexOf('!'));
-                    try (java.util.jar.JarFile jar = new java.util.jar.JarFile(jarFile)) {
-                        java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
-                        while (entries.hasMoreElements()) {
-                            String name = entries.nextElement().getName();
-                            if (name.startsWith("query-protocol/") && name.endsWith(".graphqls")) {
-                                files.add(name);
-                            }
+    private static List<String> listGraphQLSchemaFiles() throws IOException {
+        Set<String> files = new TreeSet<>();
+        for (URL url : Collections.list(Precompiler.class.getClassLoader().getResources("query-protocol"))) {
+            if ("file".equals(url.getProtocol())) {
+                try (Stream<Path> children = Files.list(Path.of(url.toURI()))) {
+                    children.map(f -> f.getFileName().toString()).filter(name -> name.endsWith(".graphqls"))
+                            .forEach(name -> files.add("query-protocol/" + name));
+                } catch (URISyntaxException e) {
+                    throw new IOException("Unreadable schema directory " + url, e);
+                }
+            } else if ("jar".equals(url.getProtocol())) {
+                JarURLConnection connection = (JarURLConnection) url.openConnection();
+                connection.setUseCaches(false);
+                try (JarFile jar = connection.getJarFile()) {
+                    for (JarEntry entry : Collections.list(jar.entries())) {
+                        if (entry.getName().startsWith("query-protocol/") && entry.getName().endsWith(".graphqls")) {
+                            files.add(entry.getName());
                         }
                     }
                 }
+            } else {
+                throw new IllegalStateException("query-protocol/ is at " + url + ", which the scan cannot list");
             }
-        } catch (Exception e) {
-            log.warn("Failed to enumerate query-protocol/ directory", e);
         }
         if (files.isEmpty()) {
-            log.warn("No .graphqls files found in query-protocol/");
+            throw new IllegalStateException("No query-protocol/*.graphqls on the precompiler's class path: the "
+                + "GraphQL types the image reflects on are read from them");
         }
-        return files.toArray(new String[0]);
+        return new ArrayList<>(files);
     }
 
     private static Class<?> loadClass(String fqcn) {
         try {
             return Class.forName(fqcn);
-        } catch (ClassNotFoundException | NoClassDefFoundError ignored) {
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(fqcn + " is not on the precompiler's class path", e);
         }
-        return null;
     }
 
     /**
-     * Write per-file MAL manifests organized by original YAML file structure.
-     *
-     * <p>Creates:
-     * <ul>
-     *   <li>{@code META-INF/mal-v2.manifest} — lists all per-file config paths</li>
-     *   <li>{@code META-INF/mal-v2/{path}/{ruleName}.yaml} — per-file properties with
-     *       rule names, expressions, filter, and compiled class FQCNs</li>
-     * </ul>
-     *
-     * @return total number of expression entries written
+     * {@code mal-v2-rules.txt}: every MAL expression and filter the pass compiled, with the coordinates, metric name
+     * and text {@code MetricConvert} passed, by which the rule registry keys the classes.
      */
-    private static int writePerFileManifests(Map<String, List<Rule>> rulesByPath,
-                                             Path metaInf) throws Exception {
-        Path malV2Dir = metaInf.resolve("mal-v2");
-        List<String> manifestEntries = new ArrayList<>();
-        int totalExpressions = 0;
-
-        for (Map.Entry<String, List<Rule>> pathEntry : rulesByPath.entrySet()) {
-            String path = pathEntry.getKey();
-            for (Rule rule : pathEntry.getValue()) {
-                String ruleName = rule.getName();
-                String configFile = path + "/" + ruleName + ".yaml";
-                manifestEntries.add(configFile);
-
-                List<String> lines = new ArrayList<>();
-                lines.add("# Source: " + configFile);
-
-                // Filter
-                String filterText = rule.getFilter();
-                if (filterText != null && !filterText.isEmpty()) {
-                    String filterClassName = FilterExpression.FILTER_MAP.get(filterText);
-                    lines.add("filter=" + escapePropertiesValue(filterText));
-                    lines.add("filter.class=" + (filterClassName != null ? filterClassName : ""));
-                } else {
-                    lines.add("filter=");
-                    lines.add("filter.class=");
-                }
-
-                // Rules
-                List<MetricsRule> metricsRules = rule.getMetricsRules();
-                if (metricsRules != null) {
-                    for (int i = 0; i < metricsRules.size(); i++) {
-                        MetricsRule mr = metricsRules.get(i);
-                        String metricName = rule.getMetricPrefix() + "_" + mr.getName();
-                        // Must use the real formatExp: this text keys COMPILE_MAP at compile time
-                        // and is what MetricConvert passes to DSL.parse at runtime — a replica drifts.
-                        String fullExp = MetricConvert.formatExp(
-                            rule.getExpPrefix(), rule.getExpSuffix(), mr.getExp());
-                        String exprKey = DSL.expressionKey(fullExp, metricName);
-                        String className = DSL.COMPILE_MAP.get(exprKey);
-
-                        lines.add("rule." + i + ".name=" + metricName);
-                        lines.add("rule." + i + ".exp=" + escapePropertiesValue(fullExp));
-                        lines.add("rule." + i + ".class=" + (className != null ? className : ""));
-                        totalExpressions++;
-                    }
-                }
-
-                Path configPath = malV2Dir.resolve(configFile);
-                Files.createDirectories(configPath.getParent());
-                Files.write(configPath, lines, StandardCharsets.UTF_8);
-            }
+    private static void writeMalRules(Path metaInf) throws IOException {
+        Properties rules = new Properties();
+        int i = 0;
+        for (DSL.Compiled compiled : DSL.COMPILED) {
+            String p = "expression." + i++ + ".";
+            rules.setProperty(p + "source", compiled.sourceRef().getYamlFile());
+            rules.setProperty(p + "line", String.valueOf(compiled.sourceRef().getYamlLine()));
+            rules.setProperty(p + "name", compiled.metricName());
+            rules.setProperty(p + "text", compiled.expression());
+            rules.setProperty(p + "class", compiled.className());
         }
-
-        // Write top-level manifest listing all config files
-        List<String> manifestLines = new ArrayList<>();
-        manifestLines.add("# Auto-generated by Precompiler — lists all MAL per-file configs");
-        manifestLines.addAll(manifestEntries);
-        Files.write(metaInf.resolve("mal-v2.manifest"), manifestLines, StandardCharsets.UTF_8);
-
-        log.info("MAL: wrote {} per-file configs with {} expressions to mal-v2/",
-            manifestEntries.size(), totalExpressions);
-        return totalExpressions;
-    }
-
-    static String escapePropertiesValue(String value) {
-        // Escape what Properties.load would read otherwise: backslashes, line breaks, and leading whitespace (the
-        // registry looks an expression and a filter up by their exact text).
-        final String escaped = value.replace("\\", "\\\\")
-                                    .replace("\n", "\\n")
-                                    .replace("\r", "\\r")
-                                    .replace("\t", "\\t")
-                                    .replace("\f", "\\f");
-        return escaped.startsWith(" ") ? "\\" + escaped : escaped;
+        i = 0;
+        for (FilterExpression.Compiled compiled : FilterExpression.COMPILED) {
+            String p = "filter." + i++ + ".";
+            rules.setProperty(p + "source", compiled.sourceRef().getYamlFile());
+            rules.setProperty(p + "line", String.valueOf(compiled.sourceRef().getYamlLine()));
+            rules.setProperty(p + "text", compiled.literal());
+            rules.setProperty(p + "class", compiled.className());
+        }
+        writeEscapedProperties(metaInf.resolve("mal-v2-rules.txt"), rules);
     }
 
     /**
-     * Serialize MAL config data (Rules) as JSON for runtime loaders.
-     * At runtime, replacement loader classes deserialize from these JSON files instead
-     * of reading YAML from the filesystem.
+     * Serialize what upstream's loader read from the MAL rule files (Rules) as JSON, which the rule registry is
+     * generated from.
      */
     private static void serializeMALConfigData(String outputDir,
                                                Map<String, List<Rule>> rulesByPath) throws Exception {
@@ -1833,19 +1937,38 @@ public class Precompiler {
         Path configDataDir = Path.of(outputDir, "META-INF", "config-data");
         Files.createDirectories(configDataDir);
 
-        // Serialize Rule lists for each path (runtime uses Rules.loadRules; since 11.0.0 upstream
-        // loads meter-analyzer-config through the same Rules path, so it is no special case)
+        // Since 11.0.0 upstream loads meter-analyzer-config through the same Rules path, so it is no special case
         for (Map.Entry<String, List<Rule>> entry : rulesByPath.entrySet()) {
             String path = entry.getKey();
             List<Rule> rules = entry.getValue();
-            mapper.writeValue(configDataDir.resolve(path + ".json").toFile(), rules);
+            writeConfigData(mapper, configDataDir.resolve(path + ".json"), rules, new TypeReference<List<Rule>>() {
+            });
             log.info("Serialized {} Rule entries from {} to config-data JSON", rules.size(), path);
         }
     }
 
     /**
-     * Serialize LAL config data as JSON for runtime loader.
-     * At runtime, the replacement LALConfigs.load() deserializes from this JSON file.
+     * The rule registry is generated from this JSON, so it has to hold all upstream's loader read: write it, read it
+     * back and require the same state, or a property Jackson cannot see (a setter without a getter) would vanish
+     * before the registry is generated.
+     */
+    private static void writeConfigData(ObjectMapper mapper, Path file, Object value, TypeReference<?> type)
+        throws Exception {
+        byte[] json = mapper.writeValueAsBytes(value);
+        // Read back as RegistryGenerator reads it: a computed getter (Rule#getSourceName) is written, never read.
+        Object readBack = mapper.copy().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                                .readValue(json, type);
+        String difference = StateComparison.firstDifference(value, readBack, file.getFileName().toString());
+        if (difference != null) {
+            throw new IllegalStateException("Rule data does not survive its JSON copy, at " + difference
+                + ": the rule registry would lose it; teach the precompiler to carry it");
+        }
+        Files.write(file, json);
+    }
+
+    /**
+     * Write the LAL configs upstream's loader returned as {@code lal.json}, the build intermediate the rule registry
+     * is generated from.
      */
     private static void serializeLALConfigData(String outputDir,
                                                Map<String, LALConfigs> lalConfigMap) throws Exception {
@@ -1853,78 +1976,71 @@ public class Precompiler {
         Path configDataDir = Path.of(outputDir, "META-INF", "config-data");
         Files.createDirectories(configDataDir);
 
-        // Keyed by the file's own name (a stem would lose `.yml` and any dot in the name). These are the configs
-        // upstream LALConfigs.load stamped (sourceName/sourcePath/lineNo), so the runtime replacement hands
-        // LogFilterListener the same DslSourceRef the JVM distro would.
-        mapper.writeValue(configDataDir.resolve("lal.json").toFile(), lalConfigMap);
+        // Keyed by the file's own name (a stem would lose `.yml` and any dot in the name). The configs carry what
+        // upstream LALConfigs.load stamped (sourceName/sourcePath/lineNo), which LogFilterListener builds the
+        // DslSourceRef from at boot.
+        writeConfigData(mapper, configDataDir.resolve("lal.json"), lalConfigMap,
+            new TypeReference<LinkedHashMap<String, LALConfigs>>() {
+            });
         log.info("Serialized {} LALConfigs entries from lal to config-data JSON", lalConfigMap.size());
     }
 
-    // The catalogs upstream's runtime-rule module manages (its Catalog enum minus OAL, which has
-    // its own /runtime/oal listing). Same wire names Horizon and swctl send.
-    private static final String[] RULE_CATALOGS = {
-        "otel-rules", "log-mal-rules", "telegraf-rules", "meter-analyzer-config", "lal"
-    };
-
     /**
-     * Exports every bundled MAL/LAL rule file verbatim under {@code META-INF/rule-source/} plus
-     * an index, so the distro can serve the read-only {@code /runtime/rule} catalog Horizon
-     * browses (upstream serves it from {@code StaticRuleRegistry}, which only the YAML loaders
-     * this distro replaces populate), and copies the OAL scripts to their classpath paths for
-     * the dsl-debugging module's OAL listing.
-     *
-     * <p>{@code index.txt}: {@code catalog|name|relativePath|sha256} per MAL/LAL file, where
-     * {@code name} is the path without extension (the runtime-rule rule name).
+     * Exports the rule files the image was compiled from, of the catalogs whose upstream loader records the files it
+     * reads ({@link RuleCatalog#mergedByLoader}), verbatim under {@code META-INF/rule-source/}, with a line each in its
+     * {@code index.txt}: {@code catalog|relativePath}, the rule name being the path without extension. The replacement
+     * loaders record the files they load from these, as upstream's loaders record the files they read, which the
+     * read-only {@code /runtime/rule} catalog lists. The files are every staged one, a file yielding no rule too, as
+     * upstream's loaders record every file they read.
      */
-    private static void exportRuleSources(String outputDir, OALDefine[] oalDefines) throws Exception {
+    private static void exportRuleSources(String outputDir, List<RuleCatalog> catalogs) throws Exception {
         Path root = Path.of(outputDir, "META-INF", "rule-source");
         Files.createDirectories(root);
+        Path configData = Path.of(outputDir, "META-INF", "config-data");
+        ObjectMapper mapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
         List<String> index = new ArrayList<>();
-        for (String catalog : RULE_CATALOGS) {
-            Path dir;
-            try {
-                dir = ResourceUtils.getPath(catalog);
-            } catch (Exception e) {
-                log.warn("Rule sources: catalog directory {} not on classpath, skipping", catalog);
-                continue;
+        for (RuleCatalog ruleCatalog : catalogs) {
+            String catalog = ruleCatalog.getDirectory();
+            // Every staged file the loader reads, a file yielding no rule too, as upstream's loader records it; of TAL,
+            // the files the TAL pass carries (none requiring a module the image does not ship).
+            List<String> files = new ArrayList<>();
+            if (ruleCatalog.getEngine() == RuleCatalog.Engine.TAL) {
+                mapper.readTree(configData.resolve(catalog + ".json").toFile()).fieldNames().forEachRemaining(files::add);
+            } else {
+                files.addAll(rulePaths(catalog));
             }
-            List<Path> files;
-            try (Stream<Path> stream = Files.walk(dir)) {
-                files = stream.filter(Files::isRegularFile)
-                    .filter(p -> p.toString().endsWith(".yaml") || p.toString().endsWith(".yml"))
-                    .sorted()
-                    .collect(Collectors.toList());
-            }
-            for (Path file : files) {
-                String rel = dir.relativize(file).toString().replace(File.separatorChar, '/');
-                String name = rel.substring(0, rel.lastIndexOf('.'));
-                byte[] bytes = Files.readAllBytes(file);
+            Path dir = existingDirectory(catalog);
+            for (String rel : files) {
                 Path out = root.resolve(catalog).resolve(rel);
                 Files.createDirectories(out.getParent());
-                Files.write(out, bytes);
-                index.add(catalog + "|" + name + "|" + rel + "|" + sha256Hex(bytes));
+                Files.write(out, Files.readAllBytes(dir.resolve(rel)));
+                index.add(catalog + "|" + rel);
             }
         }
-        writeManifest(root.resolve("index.txt"), index);
+        Files.write(root.resolve("index.txt"), index, StandardCharsets.UTF_8, StandardOpenOption.CREATE,
+            StandardOpenOption.APPEND);
+        log.info("Rule sources: exported {} files of {}", index.size(), catalogs);
+    }
 
-        // OAL scripts as classpath resources at their upstream paths (oal/core.oal ...): the
-        // dsl-debugging module's RuntimeOalRestHandler reads them for GET /runtime/oal/files/{name}.
-        int oalFiles = 0;
+    /**
+     * Copies the OAL scripts to their upstream classpath paths ({@code oal/core.oal} ...): the dsl-debugging module's
+     * {@code RuntimeOalRestHandler} reads them for {@code GET /runtime/oal/files/{name}}.
+     */
+    private static void exportOalScripts(String outputDir, OALDefine[] oalDefines) throws IOException {
         ClassLoader cl = Precompiler.class.getClassLoader();
         for (OALDefine define : oalDefines) {
             String configFile = define.getConfigFile();
             try (InputStream is = cl.getResourceAsStream(configFile)) {
                 if (is == null) {
-                    continue;
+                    throw new IllegalStateException("The OAL script " + configFile + " is not on the classpath");
                 }
                 Path out = Path.of(outputDir, configFile);
                 Files.createDirectories(out.getParent());
                 Files.write(out, is.readAllBytes());
-                oalFiles++;
             }
         }
-        log.info("Rule sources: exported {} MAL/LAL files, {} OAL scripts", index.size(), oalFiles);
+        log.info("Rule sources: exported {} OAL scripts", oalDefines.length);
     }
 
     private static void deleteRecursively(final Path dir) throws IOException {
@@ -1968,38 +2084,19 @@ public class Precompiler {
     }
 
     /**
-     * Write a key=value properties manifest file.
-     * Keys and values are escaped for Java Properties format.
-     */
-    private static void writePropertiesManifest(Path path, Map<String, String> map) throws IOException {
-        List<String> lines = new ArrayList<>();
-        lines.add("# Auto-generated by Precompiler");
-        map.entrySet().stream()
-            .sorted(Map.Entry.comparingByKey())
-            .forEach(e -> lines.add(escapePropertiesKey(e.getKey()) + "=" + e.getValue()));
-        Files.write(path, lines, StandardCharsets.UTF_8);
-    }
-
-    private static String escapePropertiesKey(String key) {
-        return key.replace("\\", "\\\\")
-                  .replace("=", "\\=")
-                  .replace(":", "\\:")
-                  .replace(" ", "\\ ");
-    }
-
-    /**
      * Generate GraalVM native-image metadata (reflect-config.json and resource-config.json)
      * from the manifests already produced by the precompiler.
      *
      * This gives native-image 100% coverage of all pre-compiled classes — unlike the tracing
      * agent which only captures code paths exercised during a traced run.
      */
-    private static void generateNativeImageConfig(String outputDir) throws IOException {
+    private static void generateNativeImageConfig(String outputDir, List<String> scannedClassManifests)
+        throws IOException {
         Path nativeImageDir = Path.of(outputDir,
             "META-INF", "native-image", "org.apache.skywalking", "oap-graalvm-distro");
         Files.createDirectories(nativeImageDir);
 
-        generateReflectConfig(outputDir, nativeImageDir);
+        generateReflectConfig(outputDir, nativeImageDir, scannedClassManifests);
         generateResourceConfig(nativeImageDir);
     }
 
@@ -2012,59 +2109,33 @@ public class Precompiler {
      * Script/metric/dispatcher classes get constructor-only access since they are loaded
      * via Class.forName() + getDeclaredConstructor().newInstance().
      */
-    private static void generateReflectConfig(String outputDir, Path nativeImageDir) throws IOException {
+    private static void generateReflectConfig(String outputDir, Path nativeImageDir,
+                                              List<String> scannedClassManifests) throws IOException {
         Path metaInf = Path.of(outputDir, "META-INF");
         Path annotationScanDir = metaInf.resolve("annotation-scan");
 
         List<Map<String, Object>> entries = new ArrayList<>();
 
         // Annotation-scanned classes — full reflection access
-        String[] fullAccessManifests = {
-            "ScopeDeclaration.txt", "Stream.txt", "Disable.txt", "MultipleDisable.txt",
-            "SourceDispatcher.txt", "ISourceDecorator.txt"
-        };
-        for (String manifest : fullAccessManifests) {
-            Path file = annotationScanDir.resolve(manifest);
-            if (Files.exists(file)) {
-                for (String className : readClassNames(file)) {
-                    entries.add(fullAccessEntry(className));
-                }
+        for (String manifest : scannedClassManifests) {
+            for (String className : readClassNames(annotationScanDir.resolve(manifest))) {
+                entries.add(fullAccessEntry(className));
             }
         }
 
         // Armeria HTTP handlers — full access (Armeria reflects on @Post/@Get/@Path method annotations)
         // Query entity classes — full access (Jackson serializes @Data POJOs in HTTP responses)
         String[] httpHandlerManifests = {
-            "ArmeriaHandlers.txt", "GraphQLResolvers.txt", "GraphQLTypes.txt",
-            "QueryEntityClasses.txt"
+            "ArmeriaHandlers.txt", "GraphQLResolvers.txt", "GraphQLTypes.txt", "QueryEntityClasses.txt"
         };
         for (String manifest : httpHandlerManifests) {
-            Path file = annotationScanDir.resolve(manifest);
-            if (Files.exists(file)) {
-                for (String className : readClassNames(file)) {
-                    entries.add(fullAccessEntry(className));
-                }
+            for (String className : readClassNames(annotationScanDir.resolve(manifest))) {
+                entries.add(fullAccessEntry(className));
             }
         }
 
-        // Config POJOs deserialized by Jackson/SnakeYAML at runtime — full access
+        // Classes reflected on at runtime that no scan finds, each with its reason — full access
         String[] configPojos = {
-            "org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs",
-            "org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig",
-            "org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs",
-            "org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfig",
-            // Inline layer registrations in LAL/TAL rule files, deserialized with their configs
-            "org.apache.skywalking.oap.server.core.analysis.LayerDefinition",
-            "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule",
-            "org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule",
-            "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuInitializer$MenuData",
-            "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuItemSetting",
-            "org.apache.skywalking.oap.server.receiver.telegraf.provider.handler.pojo.TelegrafData",
-            "org.apache.skywalking.oap.server.receiver.telegraf.provider.handler.pojo.TelegrafDatum",
-            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig",
-            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$Entities",
-            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$EntityLabel",
-            "org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig$Metric",
             // Zabbix protocol: Gson serializes ActiveChecks response to agent
             "org.apache.skywalking.oap.server.receiver.zabbix.provider.protocol.bean.ZabbixResponse$ActiveChecks",
             // Zabbix protocol: Gson deserializes AgentData from agent push
@@ -2082,24 +2153,11 @@ public class Precompiler {
             "org.apache.skywalking.oap.server.core.alarm.AlarmMessage",
             // Alarm recovery: extends AlarmMessage with recoveryTime field, serialized by Gson
             "org.apache.skywalking.oap.server.core.alarm.AlarmRecoveryMessage",
-            // LALOutputBuilder SPI: ServiceLoader instantiates to call name() for short-name resolution
-            "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.DatabaseSlowStatementBuilder",
-            "org.apache.skywalking.oap.server.analyzer.provider.trace.parser.listener.SampledTraceBuilder",
-            "org.apache.skywalking.oap.server.receiver.envoy.persistence.EnvoyAccessLogBuilder",
-            "org.apache.skywalking.oap.server.ai.agent.conversation.ingest.ConversationFileBuilder",
-            // LALSourceTypeProvider SPI: ServiceLoader instantiates for per-layer input/output type resolution
-            "org.apache.skywalking.oap.server.receiver.envoy.EnvoyHTTPLALSourceTypeProvider",
-            // TTL status REST endpoint: Jackson serializes TTLDefinition returned by /status/config/ttl
-            "org.apache.skywalking.oap.server.core.storage.ttl.TTLDefinition",
             // Cluster status REST endpoint: Jackson serializes the node Addresses /status/cluster/nodes returns
             "org.apache.skywalking.oap.server.core.remote.client.Address",
-            // AWS Firehose receiver: Jackson reads the request body and writes the response
-            "org.apache.skywalking.oap.server.receiver.aws.firehose.FirehoseReq",
-            "org.apache.skywalking.oap.server.receiver.aws.firehose.RequestData",
+            // AWS Firehose receiver: Jackson writes the response the route builds
             "org.apache.skywalking.oap.server.receiver.aws.firehose.FirehoseRes",
-            // UI template REST (/ui-management/templates): Jackson reads the request body and writes the answers.
-            // No longer GraphQL types, since upstream removed ui-configuration.graphqls in 11.0.0
-            "org.apache.skywalking.oap.server.core.query.input.DashboardSetting",
+            // UI template REST (/ui-management/templates): Jackson writes the answers the routes build
             "org.apache.skywalking.oap.server.core.query.type.DashboardConfiguration",
             "org.apache.skywalking.oap.server.core.query.type.TemplateChangeStatus"
         };
@@ -2126,17 +2184,25 @@ public class Precompiler {
                 entries.add(fullAccessEntry(className));
             }
         }
+        try (InputStream setByField = Precompiler.class.getResourceAsStream("/META-INF/module-config-field-set.txt")) {
+            if (setByField == null) {
+                throw new IllegalStateException("META-INF/module-config-field-set.txt not found on classpath. "
+                    + "Run config-generator first to produce it.");
+            }
+            entries.addAll(configFieldSetEntries(
+                new BufferedReader(new InputStreamReader(setByField, StandardCharsets.UTF_8)).lines()
+                    .map(String::trim).filter(line -> !line.isEmpty()).toList()));
+        }
 
         // MeterFunction manifest — key=value format, full access (MeterSystem inspects annotations)
-        Path meterFunctionFile = annotationScanDir.resolve("MeterFunction.txt");
-        if (Files.exists(meterFunctionFile)) {
-            for (String className : readValueFromKeyValue(meterFunctionFile)) {
-                entries.add(fullAccessEntry(className));
-            }
+        for (String className : readValueFromKeyValue(annotationScanDir.resolve("MeterFunction.txt"))) {
+            entries.add(fullAccessEntry(className));
         }
 
         // StorageBuilder classes — constructor-only (instantiated via getDeclaredConstructor().newInstance())
         addConstructorEntries(entries, annotationScanDir.resolve("StorageBuilders.txt"));
+        // Stream data RemoteHandleWorker rebuilds — constructor-only
+        addConstructorEntries(entries, annotationScanDir.resolve("StreamData.txt"));
 
         // OAL metrics, their storage builders and dispatchers — constructor-only. The builders are generated here
         // too, so a rules overlay's OAL script gets them.
@@ -2155,17 +2221,12 @@ public class Precompiler {
         // The input types, providers and function objects the TAL rules were resolved through: ServiceLoader
         // instantiates the SPI ones, TALFunctionRegistry.bind lists the methods of every bound object (getMethods on
         // the providers), and toJson() in a rule serializes whatever object it is given through Gson
-        Path talIoClasses = metaInf.resolve("tal-io-classes.txt");
-        if (Files.exists(talIoClasses)) {
-            for (String className : readClassNames(talIoClasses)) {
-                Map<String, Object> entry = fullAccessEntry(className);
-                entry.put("allPublicMethods", true);
-                entries.add(entry);
-            }
+        for (String className : readClassNames(metaInf.resolve("tal-io-classes.txt"))) {
+            Map<String, Object> entry = fullAccessEntry(className);
+            entry.put("allPublicMethods", true);
+            entries.add(entry);
         }
-        // TAL pairing halves cross OAP nodes as stream data; RemoteHandleWorker rebuilds them with newInstance()
-        // (not an @Stream class, so the StorageBuilders scan misses it). It is a rule's `pairing` root, and `meta`
-        // its SpanMetadata, both of which toJson() hands to Gson's reflective serializer.
+        // The TAL roots `pairing` and `meta` of every rule, which toJson() hands to Gson's reflective serializer
         entries.add(fullAccessEntry("org.apache.skywalking.oap.trace.analyzer.v2.provider.span.PairingFact"));
         entries.add(fullAccessEntry("org.apache.skywalking.oap.server.core.trace.SpanMetadata"));
         // A protobuf input (a rule's `span`, an event) handed to toJson() is walked by Gson field by field: the message
@@ -2178,9 +2239,9 @@ public class Precompiler {
         // Proto messages that go through protobuf's JsonFormat, whose accessor table finds the
         // generated getters and setters by reflection on the message, its Builder and every nested
         // message and enum type. Register the whole descriptor closure with full access. Roots: the
-        // LAL effective input types (the runtime DSL replacement resolves them by name to route
-        // mixed-type inputs; the LAL debug dump / EnvoyAccessLogBuilder print them), the OTLP/HTTP
-        // JSON receivers' export requests, and LogData parsed by ProtoBufJsonUtils.
+        // OTLP/HTTP JSON receivers' export requests, LogData parsed by ProtoBufJsonUtils, the TAL input
+        // types, and the messages among the LAL values (addLalEntries; the LAL debug dump and
+        // EnvoyAccessLogBuilder print the inputs).
         Set<String> protoJsonRoots = new TreeSet<>(List.of(
             "io.opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
             "io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
@@ -2189,22 +2250,23 @@ public class Precompiler {
             "io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse",
             "io.grafana.tempo.tempopb.TraceByIDResponse",
             "org.apache.skywalking.apm.network.logging.v3.LogData"));
-        // Plus the input types LAL and TAL rules were compiled against.
-        for (String rulesManifest : new String[] {"lal-v2-rules.txt", "tal-v2-rules.txt"}) {
-            Path rules = metaInf.resolve(rulesManifest);
-            if (!Files.exists(rules)) {
-                continue;
-            }
-            Properties props = new Properties();
-            try (Reader reader = Files.newBufferedReader(rules, StandardCharsets.UTF_8)) {
-                props.load(reader);
-            }
-            for (String key : props.stringPropertyNames()) {
-                if (key.matches("rule\\.\\d+\\.inputType") && !props.getProperty(key).isBlank()) {
-                    protoJsonRoots.add(props.getProperty(key).trim());
-                }
+        // The protobuf bodies of the HTTP routes, which Armeria converts through JsonFormat; the other bodies with full
+        // access
+        for (String className : readClassNames(annotationScanDir.resolve("HttpBodyTypes.txt"))) {
+            Class<?> message = generatedMessage(loadClass(className));
+            if (message != null) {
+                protoJsonRoots.add(message.getName());
+            } else {
+                entries.add(fullAccessEntry(className));
             }
         }
+        Properties talRules = loadProperties(metaInf.resolve("tal-v2-rules.txt"));
+        for (String key : talRules.stringPropertyNames()) {
+            if (key.matches("rule\\.\\d+\\.inputType") && !talRules.getProperty(key).isBlank()) {
+                protoJsonRoots.add(talRules.getProperty(key).trim());
+            }
+        }
+        addLalEntries(entries, metaInf, protoJsonRoots);
         addProtoMessageEntries(entries, protoJsonRoots);
 
         // Hierarchy v2 rule classes — one FQCN per line, constructor-only
@@ -2212,11 +2274,8 @@ public class Precompiler {
 
         // MAL and TAL meter classes — key=value format, constructor-only
         for (String meterManifest : new String[] {"mal-meter-classes.txt", "tal-meter-classes.txt"}) {
-            Path meterClasses = metaInf.resolve(meterManifest);
-            if (Files.exists(meterClasses)) {
-                for (String className : readValueFromKeyValue(meterClasses)) {
-                    entries.add(constructorOnlyEntry(className));
-                }
+            for (String className : readValueFromKeyValue(metaInf.resolve(meterManifest))) {
+                entries.add(constructorOnlyEntry(className));
             }
         }
 
@@ -2261,8 +2320,9 @@ public class Precompiler {
             } catch (ClassNotFoundException e) {
                 throw new IllegalStateException("Proto JSON root type is not on the precompiler classpath: " + rootType, e);
             }
-            if (Message.class.isAssignableFrom(root)) {
-                collectProtoClosure(root, closure);
+            Class<?> generated = generatedMessage(root);
+            if (generated != null) {
+                collectProtoClosure(generated, closure);
             } else {
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("name", rootType);
@@ -2272,7 +2332,247 @@ public class Precompiler {
         for (Class<?> clazz : closure) {
             entries.add(fullAccessEntry(clazz.getName()));
         }
-        log.info("Registered {} protobuf classes reachable from {} LAL input types", closure.size(), rootTypes.size());
+        log.info("Registered {} protobuf classes reachable from {} root types", closure.size(), rootTypes.size());
+    }
+
+    /**
+     * What the LAL runtime reflects on. The SPI implementations ServiceLoader instantiates; the output type upstream's
+     * boot resolves a rule's {@code outputType} to ({@code Class.forName} when the rule names a class); and the values
+     * {@code LalRuntimeHelper} reads a property of when the rule's compiler could not type it ({@code parsed.<key>} no
+     * parser set, read from the input, or {@code value.<name>}): it lists the value's public methods, checks the
+     * getter against {@link LALCallables} and calls it. Those values are walked from every type a rule reads values
+     * from ({@link #collectLalValues}); the generated messages among them join {@code protoRoots}.
+     */
+    private static void addLalEntries(List<Map<String, Object>> entries, Path metaInf, Set<String> protoRoots)
+        throws IOException {
+        for (String className : readClassNames(metaInf.resolve("lal-io-classes.txt"))) {
+            entries.add(fullAccessEntry(className));
+        }
+        Properties rules = loadProperties(metaInf.resolve("lal-v2-rules.txt"));
+        for (String key : rules.stringPropertyNames()) {
+            if (key.matches("rule\\.\\d+\\.requestedOutputType") && !rules.getProperty(key).isBlank()) {
+                entries.add(constructorOnlyEntry(rules.getProperty(key).trim()));
+            }
+        }
+        Set<Class<?>> values = new LinkedHashSet<>();
+        // The values every rule can read whatever its input: the log's own (log.*, a parser-less parsed.*) and the
+        // parsed map; a value read from them through a call the compiler cannot type (a map's getOrDefault falling
+        // back to log.traceContext) is reflected on at run time like an input's
+        for (Class<?> builtin : LAL_BUILTIN_VALUES) {
+            collectLalValues(builtin, protoRoots, values);
+        }
+        for (String className : readClassNames(metaInf.resolve("lal-input-types.txt"))) {
+            try {
+                collectLalValues(Class.forName(className), protoRoots, values);
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException("LAL input type is not on the precompiler classpath: " + className, e);
+            }
+        }
+        for (Class<?> type : values) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", type.getName());
+            entry.put("allPublicMethods", true);
+            entries.add(entry);
+        }
+        addLalCallablesEntries(entries);
+        log.info("Registered {} LAL value classes besides the protobuf ones", values.size());
+    }
+
+    /**
+     * The values LAL gives every rule, whatever its input: the log's metadata ({@code log.*}, and {@code parsed.*}
+     * without a parser), its {@code LogData}, and the parsed map's holder.
+     */
+    static final List<Class<?>> LAL_BUILTIN_VALUES =
+        List.of(LogMetadata.class, LogData.class, ExecutionContext.Parsed.class);
+
+    /**
+     * The types {@code LalRuntimeHelper} reflects on when a value is of {@code type}. A generated message joins
+     * {@code protoRoots}: its descriptor closure holds every message its getters return. Another type is registered
+     * with its public methods, and so is every public type of its hierarchy declaring a getter {@link LALCallables}
+     * lets a rule call (the runtime calls a getter of a non-public class through one); a getter's return type, or an
+     * element type of it, that is a protobuf message, a {@link ToJson}, or another type of this project whose getters
+     * {@link LALCallables} lets a rule call ({@code LogMetadata.TraceContext}) is walked in turn.
+     */
+    static void collectLalValues(Class<?> type, Set<String> protoRoots, Set<Class<?>> registered) {
+        Class<?> message = generatedMessage(type);
+        if (message != null) {
+            protoRoots.add(message.getName());
+            return;
+        }
+        if (!registered.add(type)) {
+            return;
+        }
+        DslCallables callables = LALCallables.get();
+        for (Method getter : type.getMethods()) {
+            if (getter.getParameterCount() != 0 || !isPropertyGetter(getter.getName())
+                || !callables.allows(type, getter)) {
+                continue;
+            }
+            registered.addAll(publicDeclarers(type, getter.getName()));
+            for (Class<?> value : valueTypes(getter.getGenericReturnType(), typeBindings(type))) {
+                if (MessageOrBuilder.class.isAssignableFrom(value) || ToJson.class.isAssignableFrom(value)
+                    || hasCallableGetter(value, callables)) {
+                    collectLalValues(value, protoRoots, registered);
+                }
+            }
+        }
+    }
+
+    /**
+     * @return whether the type is one of this project's whose getters a rule may call, read by reflection when a value
+     *     of it reaches a rule untyped
+     */
+    private static boolean hasCallableGetter(Class<?> type, DslCallables callables) {
+        return type.getName().startsWith("org.apache.skywalking.") && Arrays.stream(type.getMethods())
+            .anyMatch(m -> m.getParameterCount() == 0 && isPropertyGetter(m.getName()) && callables.allows(type, m));
+    }
+
+    /** {@code getX()} or {@code isX()}: what {@code LalRuntimeHelper} looks a property {@code x} up as. */
+    private static boolean isPropertyGetter(String name) {
+        return name.length() > 3 && name.startsWith("get") && Character.isUpperCase(name.charAt(3))
+            || name.length() > 2 && name.startsWith("is") && Character.isUpperCase(name.charAt(2));
+    }
+
+    private static Set<Class<?>> publicDeclarers(Class<?> type, String getter) {
+        Set<Class<?>> declarers = new LinkedHashSet<>();
+        Set<Class<?>> seen = new HashSet<>();
+        Deque<Class<?>> queue = new ArrayDeque<>(List.of(type));
+        while (!queue.isEmpty()) {
+            Class<?> c = queue.poll();
+            if (!seen.add(c)) {
+                continue;
+            }
+            if (Modifier.isPublic(c.getModifiers()) && Arrays.stream(c.getDeclaredMethods()).anyMatch(
+                m -> m.getName().equals(getter) && m.getParameterCount() == 0 && Modifier.isPublic(m.getModifiers())
+                    && !Modifier.isStatic(m.getModifiers()))) {
+                declarers.add(c);
+            }
+            if (c.getSuperclass() != null) {
+                queue.add(c.getSuperclass());
+            }
+            queue.addAll(Arrays.asList(c.getInterfaces()));
+        }
+        return declarers;
+    }
+
+    /**
+     * The classes a value of the type holds: a class, an array's element class, a parameterized type's raw class and
+     * those of its type arguments ({@code List<Foo>}'s {@code Foo}), a wildcard's upper bounds
+     * ({@code List<? extends Foo>}), a generic array's element type ({@code List<Foo>[]}), and a type variable's binding
+     * in {@code bindings}, or else its bounds ({@code T[]} with {@code T extends Foo}).
+     */
+    static List<Class<?>> valueTypes(Type type, Map<TypeVariable<?>, Type> bindings) {
+        return valueTypes(type, bindings, new HashSet<>());
+    }
+
+    private static List<Class<?>> valueTypes(Type type, Map<TypeVariable<?>, Type> bindings,
+                                             Set<TypeVariable<?>> resolving) {
+        List<Class<?>> types = new ArrayList<>();
+        if (type instanceof Class) {
+            Class<?> element = (Class<?>) type;
+            while (element.isArray()) {
+                element = element.getComponentType();
+            }
+            types.add(element);
+        } else if (type instanceof ParameterizedType) {
+            types.add((Class<?>) ((ParameterizedType) type).getRawType());
+            for (Type argument : ((ParameterizedType) type).getActualTypeArguments()) {
+                types.addAll(valueTypes(argument, bindings, resolving));
+            }
+        } else if (type instanceof WildcardType) {
+            for (Type bound : ((WildcardType) type).getUpperBounds()) {
+                types.addAll(valueTypes(bound, bindings, resolving));
+            }
+        } else if (type instanceof GenericArrayType) {
+            types.addAll(valueTypes(((GenericArrayType) type).getGenericComponentType(), bindings, resolving));
+        } else if (type instanceof TypeVariable && resolving.add((TypeVariable<?>) type)) {
+            // A variable bound to itself through its bounds (T extends Comparable<T>) is resolved once
+            TypeVariable<?> variable = (TypeVariable<?>) type;
+            Type binding = bindings.get(variable);
+            for (Type bound : binding != null ? new Type[] {binding} : variable.getBounds()) {
+                types.addAll(valueTypes(bound, bindings, resolving));
+            }
+            resolving.remove(variable);
+        }
+        return types;
+    }
+
+    /**
+     * @return the type each type variable of the class's superclasses and interfaces is given in its hierarchy
+     *     ({@code Box<T>}'s {@code T} in {@code FilledBox extends Box<Bound>}: {@code Bound})
+     */
+    static Map<TypeVariable<?>, Type> typeBindings(Class<?> type) {
+        Map<TypeVariable<?>, Type> bindings = new HashMap<>();
+        Deque<Class<?>> queue = new ArrayDeque<>(List.of(type));
+        Set<Class<?>> seen = new HashSet<>();
+        while (!queue.isEmpty()) {
+            Class<?> c = queue.poll();
+            if (!seen.add(c)) {
+                continue;
+            }
+            List<Type> supertypes = new ArrayList<>(Arrays.asList(c.getGenericInterfaces()));
+            if (c.getGenericSuperclass() != null) {
+                supertypes.add(c.getGenericSuperclass());
+            }
+            for (Type supertype : supertypes) {
+                Class<?> raw = supertype instanceof ParameterizedType
+                    ? (Class<?>) ((ParameterizedType) supertype).getRawType() : (Class<?>) supertype;
+                if (supertype instanceof ParameterizedType) {
+                    TypeVariable<?>[] parameters = raw.getTypeParameters();
+                    Type[] arguments = ((ParameterizedType) supertype).getActualTypeArguments();
+                    for (int i = 0; i < parameters.length; i++) {
+                        bindings.put(parameters[i], arguments[i]);
+                    }
+                }
+                queue.add(raw);
+            }
+        }
+        return bindings;
+    }
+
+    /**
+     * {@link LALCallables} is first built in the image, when a getter read at run time is checked: building it reads
+     * every listed class's public methods (and {@code Object}'s, for an interface) and static fields.
+     */
+    private static void addLalCallablesEntries(List<Map<String, Object>> entries) {
+        DslCallables callables = LALCallables.get();
+        Set<Class<?>> listed = new LinkedHashSet<>();
+        listed.add(Object.class);
+        listed.addAll(callables.declaredMethods().keySet());
+        listed.addAll(callables.declaredStatics().keySet());
+        for (Class<?> type : listed) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", type.getName());
+            entry.put("allPublicMethods", true);
+            entries.add(entry);
+        }
+        callables.declaredStaticFields().forEach((type, names) -> {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", type.getName());
+            entry.put("fields", names.stream().map(n -> Map.of("name", n)).collect(Collectors.toList()));
+            entries.add(entry);
+        });
+        log.info("Registered the public methods of {} classes LALCallables lists", listed.size());
+    }
+
+    /**
+     * @return a module manager that has exactly the modules the image ships ({@link AcceptedModules#shippedModuleNames})
+     */
+    static ModuleManager shippedModules() {
+        return modules(AcceptedModules.shippedModuleNames());
+    }
+
+    /**
+     * @return a module manager that has exactly these modules, asked as upstream's hash-map-backed one is: a null name
+     *     is no module it has
+     */
+    static ModuleManager modules(Set<String> names) {
+        return new ModuleManager("precompiler") {
+            @Override
+            public boolean has(String moduleName) {
+                return moduleName != null && names.contains(moduleName);
+            }
+        };
     }
 
     private static void collectProtoClosure(Class<?> messageClass, Set<Class<?>> closure) {
@@ -2351,7 +2651,6 @@ public class Precompiler {
         "com.google.protobuf.GeneratedMessageV3",
         "com.google.protobuf.ByteString",
         "com.google.protobuf.RopeByteString",
-        "com.google.protobuf.NioByteString",
         "com.google.protobuf.UnknownFieldSet",
         "com.google.protobuf.MapField",
         "com.google.protobuf.AbstractProtobufList",
@@ -2365,20 +2664,45 @@ public class Precompiler {
     };
 
     /**
-     * Field access for the class and every class nested in it, when it is on the classpath (the protobuf runtime's
-     * internals differ between versions).
+     * Field access for the class and every class nested in it. The protobuf runtime's internals differ between
+     * versions: a class the protobuf version on the class path no longer has fails the build, for the list to be
+     * reviewed.
      */
     private static void addFieldsWithNestedClasses(List<Map<String, Object>> entries, String className) {
-        Class<?> clazz;
-        try {
-            clazz = Class.forName(className, false, Precompiler.class.getClassLoader());
-        } catch (ClassNotFoundException e) {
-            return;
-        }
+        Class<?> clazz = loadClass(className);
         entries.add(fieldsOnlyEntry(clazz.getName()));
         for (Class<?> nested : clazz.getDeclaredClasses()) {
             entries.add(fieldsOnlyEntry(nested.getName()));
         }
+    }
+
+    /**
+     * The fields the generated config binder writes through {@code Field.set} as upstream does (no setter writes a
+     * final or a static field), as the config-generator lists them ({@code declaringClass#field}, then {@code static}
+     * and {@code final} where they apply): each declaring class with those fields, so the image finds them, and a final
+     * instance one writable; a static final one is only found, so {@code Field.set} refuses it as upstream's does.
+     */
+    static List<Map<String, Object>> configFieldSetEntries(List<String> setByField) {
+        Map<String, List<Map<String, Object>>> byClass = new TreeMap<>();
+        for (String line : setByField) {
+            String[] parts = line.split("\\s+");
+            int hash = parts[0].indexOf('#');
+            List<String> modifiers = Arrays.asList(parts).subList(1, parts.length);
+            Map<String, Object> field = new LinkedHashMap<>();
+            field.put("name", parts[0].substring(hash + 1));
+            if (modifiers.contains("final") && !modifiers.contains("static")) {
+                field.put("allowWrite", true);
+            }
+            byClass.computeIfAbsent(parts[0].substring(0, hash), k -> new ArrayList<>()).add(field);
+        }
+        List<Map<String, Object>> entries = new ArrayList<>();
+        byClass.forEach((className, fields) -> {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", className);
+            entry.put("fields", fields);
+            entries.add(entry);
+        });
+        return entries;
     }
 
     private static Map<String, Object> fieldsOnlyEntry(String className) {
@@ -2434,24 +2758,16 @@ public class Precompiler {
      */
     private static void addTalExpressionEntries(List<Map<String, Object>> entries, Path classes, Path rules)
         throws IOException {
-        if (!Files.exists(classes)) {
-            return;
-        }
         Map<String, List<Map<String, Object>>> fieldsByClass = new HashMap<>();
-        if (Files.exists(rules)) {
-            Properties props = new Properties();
-            try (java.io.Reader reader = Files.newBufferedReader(rules, StandardCharsets.UTF_8)) {
-                props.load(reader);
-            }
-            for (int i = 0; props.getProperty("rule." + i + ".class") != null; i++) {
-                List<Map<String, Object>> fields = fieldsByClass.computeIfAbsent(
-                    props.getProperty("rule." + i + ".class"), k -> new ArrayList<>());
-                for (int f = 0; props.getProperty("rule." + i + ".function." + f + ".field") != null; f++) {
-                    Map<String, Object> field = new LinkedHashMap<>();
-                    field.put("name", props.getProperty("rule." + i + ".function." + f + ".field"));
-                    field.put("allowWrite", true);
-                    fields.add(field);
-                }
+        Properties props = loadProperties(rules);
+        for (int i = 0; props.getProperty("rule." + i + ".class") != null; i++) {
+            List<Map<String, Object>> fields = fieldsByClass.computeIfAbsent(
+                props.getProperty("rule." + i + ".class"), k -> new ArrayList<>());
+            for (int f = 0; props.getProperty("rule." + i + ".function." + f + ".field") != null; f++) {
+                Map<String, Object> field = new LinkedHashMap<>();
+                field.put("name", props.getProperty("rule." + i + ".function." + f + ".field"));
+                field.put("allowWrite", true);
+                fields.add(field);
             }
         }
         for (String className : readClassNames(classes)) {
@@ -2468,16 +2784,16 @@ public class Precompiler {
      * Read class names from a one-per-line manifest and add constructor-only entries.
      */
     private static void addConstructorEntries(List<Map<String, Object>> entries, Path file) throws IOException {
-        if (Files.exists(file)) {
-            for (String className : readClassNames(file)) {
-                entries.add(constructorOnlyEntry(className));
-            }
+        for (String className : readClassNames(file)) {
+            entries.add(constructorOnlyEntry(className));
         }
     }
 
-    /**
-     * Resolve the runtime classpath for javac compilation.
-     * exec-maven-plugin creates a URLClassLoader with project dependencies;
-     * extract URLs from it. Falls back to java.class.path system property.
-     */
+    private static Properties loadProperties(Path file) throws IOException {
+        Properties props = new Properties();
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            props.load(reader);
+        }
+        return props;
+    }
 }

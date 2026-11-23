@@ -37,6 +37,8 @@ import static java.util.stream.Collectors.toMap;
  * <p>Takes the definition upstream reads from {@code hierarchy-definition.yml} from the generated
  * {@link CompiledRules} registry, with each matching rule's class the precompiler compiled (a
  * {@code BiFunction<Service, Service, Boolean>}), instead of parsing the YAML and compiling the rules at runtime.
+ * Upstream's {@code HierarchyRuleProvider} SPI and the constructor taking one are left out on purpose: the image
+ * compiles nothing at run time.
  */
 @Slf4j
 public class HierarchyDefinitionService implements org.apache.skywalking.oap.server.library.module.Service {
@@ -47,7 +49,7 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
     private Map<String, Integer> layerLevels;
     private Map<String, MatchingRule> matchingRules;
 
-    public HierarchyDefinitionService(CoreModuleConfig moduleConfig) {
+    public HierarchyDefinitionService(final CoreModuleConfig moduleConfig) {
         this.hierarchyDefinition = new HashMap<>();
         this.layerLevels = new HashMap<>();
         if (moduleConfig.isEnableHierarchy()) {
@@ -60,11 +62,18 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
         final HierarchyRules definition = CompiledRules.hierarchy();
         this.layerLevels = definition.getLayerLevels();
         this.matchingRules = definition.getAutoMatchingRules().entrySet().stream().map(entry -> {
-            MatchingRule matchingRule = new MatchingRule(entry.getKey(), entry.getValue());
+            final Supplier<BiFunction<Service, Service, Boolean>> matcher =
+                definition.getMatchers().get(entry.getKey());
+            if (matcher == null) {
+                throw new IllegalStateException(
+                    "Pre-compiled hierarchy matching rule not found: " + entry.getKey()
+                        + ". Available: " + definition.getMatchers().keySet());
+            }
+            final MatchingRule matchingRule = new MatchingRule(entry.getKey(), entry.getValue(), matcher.get());
             return Map.entry(entry.getKey(), matchingRule);
         }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
         definition.getHierarchy().forEach((layer, lowerLayers) -> {
-            Map<String, MatchingRule> rules = new HashMap<>();
+            final Map<String, MatchingRule> rules = new HashMap<>();
             lowerLayers.forEach((lowerLayer, ruleName) -> {
                 rules.put(lowerLayer, this.matchingRules.get(ruleName));
             });
@@ -80,14 +89,14 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
             }
         });
         this.hierarchyDefinition.forEach((layer, lowerLayers) -> {
-            Integer layerLevel = this.layerLevels.get(layer);
+            final Integer layerLevel = this.layerLevels.get(layer);
             if (this.layerLevels.get(layer) == null) {
                 throw new IllegalArgumentException(
                     "hierarchy-definition.yml  layer-levels: " + layer + " is not defined");
             }
 
-            for (String lowerLayer : lowerLayers.keySet()) {
-                Integer lowerLayerLevel = this.layerLevels.get(lowerLayer);
+            for (final String lowerLayer : lowerLayers.keySet()) {
+                final Integer lowerLayerLevel = this.layerLevels.get(lowerLayer);
                 if (lowerLayerLevel == null) {
                     throw new IllegalArgumentException(
                         "hierarchy-definition.yml  layer-levels: " + lowerLayer + " is not defined.");
@@ -106,17 +115,27 @@ public class HierarchyDefinitionService implements org.apache.skywalking.oap.ser
         private final String expression;
         private final BiFunction<Service, Service, Boolean> matcher;
 
-        public MatchingRule(final String name, final String expression) {
+        public MatchingRule(final String name, final String expression,
+                            final BiFunction<Service, Service, Boolean> matcher) {
             this.name = name;
             this.expression = expression;
-            final Supplier<BiFunction<Service, Service, Boolean>> compiled =
-                CompiledRules.hierarchy().getMatchers().get(name);
-            if (compiled == null) {
-                throw new IllegalArgumentException(
-                    "Pre-compiled hierarchy matching rule not found: " + name
-                        + ". Available: " + CompiledRules.hierarchy().getMatchers().keySet());
+            this.matcher = matcher;
+        }
+
+        /**
+         * Evaluates the compiled matching rule against two services.
+         * If the expression throws at runtime (e.g., NPE from null shortName),
+         * the exception propagates to the caller
+         * ({@link org.apache.skywalking.oap.server.core.hierarchy.HierarchyService}).
+         */
+        public boolean match(final Service upper, final Service lower) {
+            if (log.isDebugEnabled()) {
+                log.debug("[Hierarchy] rule={}, class={}, upper=[{}, {}], lower=[{}, {}]",
+                    name, matcher.getClass().getName(),
+                    upper.getName(), upper.getShortName(),
+                    lower.getName(), lower.getShortName());
             }
-            this.matcher = compiled.get();
+            return matcher.apply(upper, lower);
         }
     }
 }

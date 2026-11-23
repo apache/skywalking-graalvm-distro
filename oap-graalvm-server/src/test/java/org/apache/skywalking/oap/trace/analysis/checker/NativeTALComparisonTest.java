@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
 import org.apache.skywalking.oap.analyzer.genai.matcher.GenAIProviderPrefixMatcher;
 import org.apache.skywalking.oap.analyzer.genai.module.GenAIAnalyzerModule;
@@ -75,6 +76,7 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.AliasRegistrar;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.SpanPairing;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.listener.SpanFilterListener;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.SwNativeTALSourceTypeProvider;
+import org.apache.skywalking.oap.server.graalvm.CarriedRuleFiles;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -259,9 +261,14 @@ class NativeTALComparisonTest {
             // Every compiled native file is active, in its order: the image fills the setting from the registry.
             config.setNativeTalFiles(CompiledRules.activation().get("trace-analyzer.default.nativeTalFiles"));
             final SpanFilterListener.Factory factory = new SpanFilterListener.Factory(moduleManager, config);
-            final List<TalDSL> rules = factory.compileNativeRules();
-            assertEquals(config.nativeTalFiles().size(), TALConfigs.loadInOrder("tal", config.nativeTalFiles(),
-                moduleManager).size(), "every listed native file is loaded, its required modules being served");
+            final List<TalDSL> rules = factory.loadRules(true);
+            // A native file without rules (a bundled one overridden so) is read and yields nothing
+            final long withRules = CompiledRules.talFiles().stream()
+                .filter(file -> config.nativeTalFiles().contains(file.getFileName().substring(0,
+                    file.getFileName().lastIndexOf('.'))) && file.getConfigs().getRules() != null)
+                .count();
+            assertEquals(withRules, TALConfigs.loadInOrder("tal", config.nativeTalFiles(), moduleManager).size(),
+                "every listed native file with rules is loaded, its required modules being served");
             if (fresh) {
                 swapInFreshCompiles(rules, config, factory);
             }
@@ -300,18 +307,18 @@ class NativeTALComparisonTest {
                                          final SpanFilterListener.Factory factory) throws Exception {
             declareScopes();
             final Map<String, TALConfig> byName = new HashMap<>();
-            final Map<String, Map<String, Object>> rawByName = new HashMap<>();
+            final Map<String, TALConfig> entryByName = new HashMap<>();
             for (final TALConfigs file : TALConfigs.loadInOrder("tal", config.nativeTalFiles(), moduleManager)) {
                 for (final TALConfig rule : file.getRules()) {
                     byName.put(rule.getName(), rule);
-                    rawByName.put(rule.getName(), yamlRule(rule.getSourceName(), rule.getName()));
+                    entryByName.put(rule.getName(), fileRule(rule.getSourceName(), rule.getName()));
                 }
             }
             final Field expression = TalDSL.class.getDeclaredField("expression");
             expression.setAccessible(true);
             for (final TalDSL dsl : rules) {
                 final TALConfig rule = byName.get(dsl.getRuleName());
-                final String text = (String) rawByName.get(dsl.getRuleName()).get("dsl");
+                final String text = entryByName.get(dsl.getRuleName()).getDsl();
                 final TALClassGenerator generator = new TALClassGenerator();
                 generator.setInputType(dsl.getInputType());
                 generator.setInputAlias(new SwNativeTALSourceTypeProvider().alias());
@@ -325,14 +332,15 @@ class NativeTALComparisonTest {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> yamlRule(final String file, final String name) throws Exception {
-        try (InputStream in = Files.newInputStream(TAL_DIR.resolve(file))) {
-            final Map<String, Object> yaml = new Yaml().load(in);
-            for (final Object entry : (List<Object>) yaml.get("rules")) {
-                if (name.equals(((Map<String, Object>) entry).get("name"))) {
-                    return (Map<String, Object>) entry;
-                }
+    /**
+     * @return the entry of the staged file, bound as upstream's loader binds it; native rule names are unique, a rule
+     *     without one included
+     */
+    private static TALConfig fileRule(final String file, final String name) throws Exception {
+        final TALConfigs configs = CarriedRuleFiles.talConfigs(Files.readString(TAL_DIR.resolve(file)));
+        for (final TALConfig entry : configs.getRules()) {
+            if (Objects.equals(name, entry.getName())) {
+                return entry;
             }
         }
         throw new IllegalStateException("no rule " + name + " in " + file);

@@ -17,7 +17,8 @@
 
 package org.apache.skywalking.oap.server.graalvm;
 
-import lombok.extern.slf4j.Slf4j;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.apache.skywalking.oap.server.core.CoreModule;
 import org.apache.skywalking.oap.server.core.RunningMode;
 import org.apache.skywalking.oap.server.core.status.ServerStatusService;
@@ -25,7 +26,10 @@ import org.apache.skywalking.oap.server.core.version.Version;
 import org.apache.skywalking.oap.server.library.module.ApplicationConfiguration;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.TerminalFriendlyTable;
+import org.apache.skywalking.oap.server.library.util.ResourceUtils;
 import org.apache.skywalking.oap.server.starter.config.ApplicationConfigLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.apache.skywalking.oap.server.library.module.TerminalFriendlyTable.Row;
 
@@ -34,26 +38,25 @@ import static org.apache.skywalking.oap.server.library.module.TerminalFriendlyTa
  * names, with the providers their selectors pick, found through the module SPI (native image registers the providers
  * at build time). The distro adds the compiled-rule checks around loading the configuration.
  */
-@Slf4j
 public class GraalVMOAPServerStartUp {
 
+    /**
+     * Log4j2 reads its configuration when the first logger is created, so this class creates none before it points
+     * Log4j2 at the native image's {@code config/log4j2.xml}; the JVM finds it on the class path, as upstream.
+     */
     public static void main(String[] args) {
-        // Expose version as system property so log4j2 patterns can use ${sys:sw.version}
-        // instead of the custom %swversion converter that requires plugin discovery.
-        System.setProperty("sw.version", Version.CURRENT.toString());
-
-        // Ensure Log4j2 finds its config from the filesystem config/ directory.
-        // In JVM mode config/ is on the classpath; native images have no classpath.
-        if (System.getProperty("log4j2.configurationFile") == null) {
-            java.io.File log4jConfig = new java.io.File("config/log4j2.xml");
-            if (log4jConfig.isFile()) {
-                System.setProperty("log4j2.configurationFile", log4jConfig.toURI().toString());
+        final Path configDirectory = ResourceUtils.configDirectory();
+        if (configDirectory != null && System.getProperty("log4j2.configurationFile") == null) {
+            final Path log4jConfig = configDirectory.resolve("log4j2.xml");
+            if (Files.isRegularFile(log4jConfig)) {
+                System.setProperty("log4j2.configurationFile", log4jConfig.toUri().toString());
             }
         }
         start();
     }
 
     public static void start() {
+        final Logger log = LoggerFactory.getLogger(GraalVMOAPServerStartUp.class);
         ModuleManager manager = new ModuleManager("SkyWalking GraalVM OAP");
         final TerminalFriendlyTable bootingParameters = manager.getBootingParameters();
 
@@ -63,6 +66,7 @@ public class GraalVMOAPServerStartUp {
         ApplicationConfigLoader configLoader = new ApplicationConfigLoader(bootingParameters);
 
         bootingParameters.addRow(new Row("Running Mode", mode));
+        bootingParameters.addRow(new Row("Version", Version.CURRENT.toString()));
         bootingParameters.addRow(new Row("Distro", "GraalVM"));
 
         try {
