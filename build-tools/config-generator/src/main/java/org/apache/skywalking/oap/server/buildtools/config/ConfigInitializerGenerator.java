@@ -20,6 +20,7 @@ package org.apache.skywalking.oap.server.buildtools.config;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.TypeVariable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -225,12 +226,14 @@ public class ConfigInitializerGenerator {
     /**
      * @return whether the class has the setter the generated loader would call, {@code set<Name>(<field type>)}, on
      *     the field's own class or a subclass of it: a superclass's setter writes the superclass's field, not one a
-     *     subclass redeclares
+     *     subclass redeclares. Not a bridge javac generated (it may forward to another class's field), nor a setter
+     *     of a type variable (the generated call passes the erased type, which the subclass's setter does not take).
      */
     static boolean hasSetter(final Class<?> configClass, final Field field) {
         try {
             final Method setter = configClass.getMethod("set" + capitalize(field.getName()), field.getType());
-            return !Modifier.isStatic(setter.getModifiers())
+            return !Modifier.isStatic(setter.getModifiers()) && !setter.isBridge() && !setter.isSynthetic()
+                && !(setter.getGenericParameterTypes()[0] instanceof TypeVariable)
                 && field.getDeclaringClass().isAssignableFrom(setter.getDeclaringClass());
         } catch (NoSuchMethodException e) {
             return false;

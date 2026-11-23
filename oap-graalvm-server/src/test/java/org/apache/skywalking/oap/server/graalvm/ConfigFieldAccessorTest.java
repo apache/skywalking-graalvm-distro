@@ -25,6 +25,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.TypeVariable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,8 +46,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Verifies that every field of the config classes the generated YamlConfigLoaderUtils loads that no setter writes is
- * listed for {@code Field.set} and found (a final instance one writable) in the native image, and that every field has a
- * getter or another accessor.
+ * listed for {@code Field.set} and found (a final instance one writable) in the native image, and that every field has
+ * a getter or another accessor.
  */
 class ConfigFieldAccessorTest {
 
@@ -183,7 +184,8 @@ class ConfigFieldAccessorTest {
     private static boolean hasSetter(Class<?> configClass, Field field) {
         try {
             final Method setter = configClass.getMethod("set" + capitalize(field.getName()), field.getType());
-            return !Modifier.isStatic(setter.getModifiers())
+            return !Modifier.isStatic(setter.getModifiers()) && !setter.isBridge() && !setter.isSynthetic()
+                && !(setter.getGenericParameterTypes()[0] instanceof TypeVariable)
                 && field.getDeclaringClass().isAssignableFrom(setter.getDeclaringClass());
         } catch (NoSuchMethodException e) {
             return false;

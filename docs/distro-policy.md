@@ -167,7 +167,7 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 | Module | Replacement Classes | Purpose |
 |---|---|---|
 | `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `HierarchyDefinitionService`, `LayerExtensionLoader` | OAL / meter classes, hierarchy and layer extensions from the rule registry, annotation scans from manifests, instead of Javassist/ClassPath/YAML |
-| `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set config fields via their setters, and `Field.set` where no setter writes one, as upstream |
+| `oap-graalvm-server` (the original excluded from `library-util-for-graalvm`) | `YamlConfigLoaderUtils` | Set config fields via their setters, and `Field.set` where no setter writes one, as upstream |
 | `meter-analyzer-for-graalvm` | `DSL` (v2), `FilterExpression`, `Rules` | Pre-compiled v2 `MalExpression` / `MalFilter` classes and the rule files from the rule registry |
 | `log-analyzer-for-graalvm` | `DSL` (v2), `LALConfigs` | Pre-compiled v2 `LalExpression` classes and the rule files from the rule registry |
 | `trace-analyzer-for-graalvm` | `TalDSL`, `TALConfigs` | Pre-compiled v2 `TalExpression` classes, their metric declarations and the rule files from the rule registry |

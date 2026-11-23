@@ -58,6 +58,19 @@ class SetterRuleTest {
             .filter(f -> f.name().equals("shadowed")).findFirst().orElseThrow().isSetByField());
     }
 
+    @Test
+    void aBridgeJavacGeneratedIsNotTheFieldsSetter() throws Exception {
+        // A public class inheriting a public setter from a non-public one gets a bridge forwarding to the base's field
+        assertTrue(PublicChild.class.getMethod("setPort", int.class).isBridge());
+        assertFalse(ConfigInitializerGenerator.hasSetter(PublicChild.class, field(PublicChild.class, "port")));
+    }
+
+    @Test
+    void aSetterOfATypeVariableGoesThroughFieldSet() throws Exception {
+        // The generated call would pass the erased type, which StringConfig's setName(String) does not take
+        assertFalse(ConfigInitializerGenerator.hasSetter(StringConfig.class, field(GenericBase.class, "name")));
+    }
+
     private static Field field(final Class<?> type, final String name) throws NoSuchFieldException {
         return type.getDeclaredField(name);
     }
@@ -99,6 +112,32 @@ class SetterRuleTest {
         public void setShadowed(final int shadowed) {
             this.shadowed = shadowed;
         }
+    }
+
+    @SuppressWarnings("unused")
+    static class PackageBase extends ModuleConfig {
+        private int port;
+
+        public void setPort(final int port) {
+            this.port = port;
+        }
+    }
+
+    @SuppressWarnings("unused")
+    public static class PublicChild extends PackageBase {
+        private int port;
+    }
+
+    @SuppressWarnings("unused")
+    static class GenericBase<T> extends ModuleConfig {
+        private T name;
+
+        public void setName(final T name) {
+            this.name = name;
+        }
+    }
+
+    static class StringConfig extends GenericBase<String> {
     }
 
     @SuppressWarnings("unused")

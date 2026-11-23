@@ -66,8 +66,9 @@ stops the boot with `IllegalAccessException`, as upstream's does. The precompile
 writes through `Field.set` from the list the config-generator writes (`module-config-field-set.txt`), a final instance
 field with `allowWrite`.
 
-The generator decides each field from the upstream class: a public `set<Name>(<field type>)` means a setter call,
-anything else `Field.set`. No config class is copied to add setters, and there is no VarHandle.
+The generator decides each field from the upstream class: a public, non-static `set<Name>(<field type>)` declared on
+the field's class or a subclass of it, neither a bridge javac generated nor a setter of a type variable, means a setter
+call; anything else `Field.set`. No config class is copied to add setters, and there is no VarHandle.
 
 ### Generated Code Structure
 
