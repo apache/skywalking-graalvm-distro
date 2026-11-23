@@ -17,11 +17,13 @@
 
 package org.apache.skywalking.oap.server.buildtools.precompiler;
 
+import java.util.Map;
 import org.apache.skywalking.oap.server.core.analysis.LayerExtensionLoader;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,44 +40,67 @@ class HierarchyCheckTest {
 
     @Test
     void theStagedHierarchyPasses() {
-        assertDoesNotThrow(() -> Precompiler.checkHierarchy("hierarchy-definition.yml"));
+        assertDoesNotThrow(() -> HierarchyPass.checkHierarchy("hierarchy-definition.yml"));
+    }
+
+    @Test
+    void aHierarchySectionMustBeThereButMayBeEmpty() {
+        final Map<String, Object> definition = Map.of("hierarchy", Map.of(), "auto-matching-rules", Map.of());
+        assertEquals(Map.of(), HierarchyPass.section(definition, "hierarchy-definition.yml", "hierarchy"));
+        final Exception e = assertThrows(IllegalStateException.class,
+            () -> HierarchyPass.section(definition, "hierarchy-definition.yml", "layer-levels"));
+        assertEquals("hierarchy-definition.yml has no layer-levels section", e.getMessage());
+    }
+
+    @Test
+    void aDefinitionWithoutASectionFailsTheBuild() {
+        final Exception e = assertThrows(IllegalStateException.class,
+            () -> HierarchyPass.checkHierarchy("hierarchy-fixture-no-hierarchy.yml"));
+        assertEquals("hierarchy-fixture-no-hierarchy.yml has no hierarchy section", e.getMessage());
+    }
+
+    @Test
+    void aMissingDefinitionFailsTheBuild() {
+        final Exception e = assertThrows(IllegalStateException.class,
+            () -> HierarchyPass.checkHierarchy("no-such-hierarchy-definition.yml"));
+        assertEquals("no-such-hierarchy-definition.yml is not on the classpath", e.getMessage());
     }
 
     @Test
     void aLevelOfAnUnregisteredLayerFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.checkHierarchy("hierarchy-fixture-unknown-level.yml"));
+            () -> HierarchyPass.checkHierarchy("hierarchy-fixture-unknown-level.yml"));
         assertTrue(e.getMessage().contains("invalid-layer is not a registered layer"), e.getMessage());
     }
 
     @Test
     void aMalformedEntryFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.checkHierarchy("hierarchy-fixture-malformed.yml"));
+            () -> HierarchyPass.checkHierarchy("hierarchy-fixture-malformed.yml"));
         assertTrue(e.getMessage().contains("GENERAL is not an integer level"), e.getMessage());
     }
 
     @Test
     void aLevelNoHierarchyEntryReadsIsNotChecked() {
-        assertDoesNotThrow(() -> Precompiler.checkHierarchy("hierarchy-fixture-unused-level.yml"));
+        assertDoesNotThrow(() -> HierarchyPass.checkHierarchy("hierarchy-fixture-unused-level.yml"));
     }
 
     @Test
     void layersRelatedWithoutAMatchingRulePass() {
-        assertDoesNotThrow(() -> Precompiler.checkHierarchy("hierarchy-fixture-no-matcher.yml"));
+        assertDoesNotThrow(() -> HierarchyPass.checkHierarchy("hierarchy-fixture-no-matcher.yml"));
     }
 
     @Test
     void aLowerLayerNotNamingAMatchingRuleFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.checkHierarchy("hierarchy-fixture-matcher-number.yml"));
+            () -> HierarchyPass.checkHierarchy("hierarchy-fixture-matcher-number.yml"));
         assertTrue(e.getMessage().contains("GENERAL.K8S_SERVICE does not name a matching rule"), e.getMessage());
     }
 
     @Test
     void anUpperLayerNotAboveItsLowerLayerFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.checkHierarchy("hierarchy-fixture-level-order.yml"));
+            () -> HierarchyPass.checkHierarchy("hierarchy-fixture-level-order.yml"));
         assertTrue(e.getMessage().contains("GENERAL layer-level should be greater than K8S_SERVICE"), e.getMessage());
     }
 }

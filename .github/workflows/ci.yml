@@ -204,6 +204,16 @@ jobs:
           test "$(ls $r/lal | tr '\n' ' ')" = "default.yaml overlay.yaml "
           test "$(ls $r/tal | grep -v '^native-' | tr '\n' ' ')" = "otlp-general.yaml overlay.yaml "
 
+      # The e2e tools are built from source in every job (the e2e binary in the infra-e2e action, swctl and yq in the
+      # cases' setup); their Go modules come from this cache, not proxy.golang.org, where a download error failed jobs.
+      # The infra-e2e action caches nothing: its setup-go points at a go.sum outside the workspace.
+      - name: Cache the Go modules of the e2e tools
+        uses: actions/cache@v6
+        with:
+          path: ~/go/pkg/mod
+          key: e2e-go-mod-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'test/e2e/script/env', 'skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install-*.sh') }}
+          restore-keys: e2e-go-mod-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Run the rules overlay E2E test
         uses: apache/skywalking-infra-e2e@56ac8befeb5f910f2dc9339e65d07cd18953f90e
         with:
@@ -541,6 +551,16 @@ jobs:
             -f test/e2e-v2/java-test-service/pom.xml \
             -pl e2e-mock-baseline-server -am \
             package -DskipTests -Dmaven.javadoc.skip
+
+      # The e2e tools are built from source in every job (the e2e binary in the infra-e2e action, swctl and yq in the
+      # cases' setup); their Go modules come from this cache, not proxy.golang.org, where a download error failed jobs.
+      # The infra-e2e action caches nothing: its setup-go points at a go.sum outside the workspace.
+      - name: Cache the Go modules of the e2e tools
+        uses: actions/cache@v6
+        with:
+          path: ~/go/pkg/mod
+          key: e2e-go-mod-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'test/e2e/script/env', 'skywalking/test/e2e-v2/script/prepare/setup-e2e-shell/install-*.sh') }}
+          restore-keys: e2e-go-mod-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Run E2E test
         uses: apache/skywalking-infra-e2e@56ac8befeb5f910f2dc9339e65d07cd18953f90e

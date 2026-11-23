@@ -67,6 +67,8 @@
 
 - Build the native image with GraalVM 25.5 (`25.5.5.0.3`, on JDK `25.0.5.0.3`), up from 25.0.4: CI pins `version: '25.5'` on `setup-graalvm` (Oracle GraalVM), `make native-image-macos` runs `native-image-community:25i5`, and the Makefile picks the newest sdkman GraalVM 25.5 (`GRAALVM_VERSION`, `GRAAL_HOME` override) instead of the first GraalVM 25 it finds, warning when it falls back to another release.
 - The `*-for-graalvm` libs compile against the precompiler's generated jar (the rule registry), so `make build-distro` installs the precompiler before them.
+- Split the precompiler into one class per pass (`OalPass`, `MalPass`, `LalPass`, `TalPass`, `HierarchyPass`, plus `ClasspathScans`, `RuleSourceExport` and `NativeImageMetadata`); `Precompiler` only orders them. The generated jar is unchanged.
+- CI caches the Go modules of the e2e tools (the infra-e2e binary, `swctl` and `yq`, built from source in every e2e job), keyed on their pins, instead of downloading them from `proxy.golang.org` in each job, where a download error had failed a job.
 
 ### Documentation
 

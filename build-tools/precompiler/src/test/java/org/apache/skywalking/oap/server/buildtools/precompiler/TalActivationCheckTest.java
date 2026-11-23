@@ -50,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * part in neither.
  */
 class TalActivationCheckTest {
-    private static final ModuleManager SHIPPED = Precompiler.shippedModules();
+    private static final ModuleManager SHIPPED = TalPass.shippedModules();
 
     @TempDir
     Path out;
@@ -60,7 +60,7 @@ class TalActivationCheckTest {
     @BeforeEach
     void setUp() throws Exception {
         Precompiler.declareScopes();
-        MeterSystem.setFunctionRegister(Precompiler.meterFunctionRegister(
+        MeterSystem.setFunctionRegister(ClasspathScans.meterFunctionRegister(
             ClassPath.from(getClass().getClassLoader())
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
         MeterSystem.setOutputDirectory(out.toString());
@@ -79,7 +79,7 @@ class TalActivationCheckTest {
     }
 
     private Properties compile(final String talPath) throws Exception {
-        Precompiler.compileTAL(out.toString(), meterSystem, talPath, SHIPPED);
+        TalPass.compileTAL(out.toString(), meterSystem, talPath, SHIPPED);
         final Properties rules = new Properties();
         try (Reader reader = Files.newBufferedReader(out.resolve("META-INF/tal-v2-rules.txt"), StandardCharsets.UTF_8)) {
             rules.load(reader);
@@ -104,7 +104,7 @@ class TalActivationCheckTest {
 
     @Test
     void talFilesAreInTheOrderUpstreamsLoaderReturnsThem() throws Exception {
-        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-order", SHIPPED);
+        TalPass.compileTAL(out.toString(), meterSystem, "tal-fixture-order", SHIPPED);
         final Map<String, TALConfigs> files = configData();
 
         final List<String> upstream = new ArrayList<>();
@@ -119,7 +119,7 @@ class TalActivationCheckTest {
 
     @Test
     void twoOtlpRulesOfOneNameInOneLayerFailTheBuild() throws Exception {
-        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-otlp-dup", SHIPPED);
+        TalPass.compileTAL(out.toString(), meterSystem, "tal-fixture-otlp-dup", SHIPPED);
         final Map<String, TALConfigs> files = configData();
 
         final Exception e = assertThrows(IllegalStateException.class,
@@ -130,7 +130,7 @@ class TalActivationCheckTest {
 
     @Test
     void anOtlpFileTheBootSkipsTakesPartInNoDuplicateCheck() throws Exception {
-        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-otlp-dup-unshipped", SHIPPED);
+        TalPass.compileTAL(out.toString(), meterSystem, "tal-fixture-otlp-dup-unshipped", SHIPPED);
         assertEquals(List.of("a.yaml"), RegistryGenerator.talFilesInLoadOrder(
             "tal-fixture-otlp-dup-unshipped", configData(), SHIPPED));
     }
@@ -140,8 +140,8 @@ class TalActivationCheckTest {
         compile("tal-fixture-native-dup-unshipped");
 
         // Where the image ships the module, both files are active and their rules collide.
-        assertThrows(IllegalStateException.class, () -> Precompiler.compileTAL(out.toString(), meterSystem,
-            "tal-fixture-native-dup-unshipped", Precompiler.modules(Set.of("fixture-module"))), "both files active");
+        assertThrows(IllegalStateException.class, () -> TalPass.compileTAL(out.toString(), meterSystem,
+            "tal-fixture-native-dup-unshipped", TalPass.modules(Set.of("fixture-module"))), "both files active");
     }
 
     /**

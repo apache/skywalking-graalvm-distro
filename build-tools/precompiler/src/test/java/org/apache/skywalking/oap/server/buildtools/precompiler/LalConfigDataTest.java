@@ -39,7 +39,7 @@ class LalConfigDataTest {
     @Test
     void aFileOfLayersAndNoRuleIsKeptByItsName() throws Exception {
         Files.createDirectories(out.resolve("META-INF"));
-        Precompiler.compileLAL(out.toString(), "lal-fixture-layers");
+        LalPass.compileLAL(out.toString(), "lal-fixture-layers");
 
         final JsonNode data = new ObjectMapper().readTree(out.resolve("META-INF/config-data/lal.json").toFile());
         final List<String> files = new ArrayList<>();

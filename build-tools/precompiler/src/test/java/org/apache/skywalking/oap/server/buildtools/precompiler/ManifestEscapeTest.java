@@ -42,7 +42,7 @@ class ManifestEscapeTest {
             written.setProperty("filter." + i + ".text", values[i]);
         }
         final Path file = dir.resolve("rules.txt");
-        Precompiler.writeEscapedProperties(file, written);
+        BuildIntermediates.writeEscapedProperties(file, written);
         final Properties read = new Properties();
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             read.load(reader);

@@ -123,14 +123,14 @@ final class RegistryGenerator {
     private final StagedRuleNames stagedRuleNames;
 
     /**
-     * The staged rule files of a catalog, by name ({@link Precompiler#ruleNames}).
+     * The staged rule files of a catalog, by name ({@link RuleTree#ruleNames}).
      */
     interface StagedRuleNames {
         List<String> of(String catalog) throws IOException;
     }
 
     RegistryGenerator(final Path outputDir, final Path sourceDir) {
-        this(outputDir, sourceDir, Precompiler::ruleNames);
+        this(outputDir, sourceDir, RuleTree::ruleNames);
     }
 
     /**
@@ -331,7 +331,7 @@ final class RegistryGenerator {
     }
 
     /**
-     * @return the rule's name, null for a rule without one ({@code Precompiler#setRuleName})
+     * @return the rule's name, null for a rule without one ({@code BuildIntermediates#setRuleName})
      */
     private static String ruleName(final Properties props, final String prefix) {
         return Boolean.parseBoolean(props.getProperty(prefix + "unnamed")) ? null : required(props, prefix + "name");
@@ -381,7 +381,7 @@ final class RegistryGenerator {
             }
         }
         final List<String> otlp =
-            talFilesInLoadOrder(RuleCatalog.TAL.getDirectory(), otlpFiles, Precompiler.shippedModules());
+            talFilesInLoadOrder(RuleCatalog.TAL.getDirectory(), otlpFiles, TalPass.shippedModules());
         nativeTal.sort(Comparator.comparingInt((String f) -> upstreamOrder.contains(stem(f))
             ? upstreamOrder.indexOf(stem(f)) : Integer.MAX_VALUE).thenComparing(f -> f));
         // The registry lists the files in this order, which the runtime TALConfigs returns them in.
@@ -561,7 +561,7 @@ final class RegistryGenerator {
         final String directory = RuleCatalog.ZABBIX_RULES.getDirectory();
         // Every staged file is active, a file yielding no config too, which upstream's loader returns nothing for
         activation.get(RuleCatalog.ZABBIX_RULES.setting().key()).addAll(stagedRuleNames.of(directory));
-        for (final ZabbixConfig config : ZabbixConfigs.loadConfigs(directory, Precompiler.ruleNames(directory))) {
+        for (final ZabbixConfig config : ZabbixConfigs.loadConfigs(directory, RuleTree.ruleNames(directory))) {
             final JavaClass c = new JavaClass(className("Zabbix", config.getSourceName()));
             c.imports(ZabbixConfig.class.getName());
             c.method("public static ZabbixConfig config()", List.of("return " + c.bean(config) + ";"));
@@ -587,8 +587,9 @@ final class RegistryGenerator {
         final JavaClass c = new JavaClass("HierarchyRegistry");
         c.imports("java.util.Map", "java.util.LinkedHashMap", "java.util.function.BiFunction",
             "java.util.function.Supplier", "org.apache.skywalking.oap.server.core.query.type.Service");
+        final String file = RuleCatalog.HIERARCHY_DEFINITION;
         final List<String> matchers = new ArrayList<>();
-        for (final String rule : section(definition, "auto-matching-rules").keySet()) {
+        for (final String rule : HierarchyPass.section(definition, file, "auto-matching-rules").keySet()) {
             final String className = classesByRule.getProperty(rule);
             if (className == null) {
                 throw new IllegalStateException("hierarchy-definition.yml auto-matching-rules: " + rule
@@ -601,8 +602,9 @@ final class RegistryGenerator {
         final List<String> body = new ArrayList<>();
         body.add("final Map<String, Supplier<BiFunction<Service, Service, Boolean>>> m = new LinkedHashMap<>();");
         body.add("matchers(m);");
-        body.add("return new HierarchyRules(" + c.expr(section(definition, "hierarchy")) + ", "
-            + c.expr(section(definition, "auto-matching-rules")) + ", " + c.expr(section(definition, "layer-levels"))
+        body.add("return new HierarchyRules(" + c.expr(HierarchyPass.section(definition, file, "hierarchy")) + ", "
+            + c.expr(HierarchyPass.section(definition, file, "auto-matching-rules")) + ", "
+            + c.expr(HierarchyPass.section(definition, file, "layer-levels"))
             + ", m);");
         c.method("public static HierarchyRules rules()", body);
         c.write();
@@ -925,18 +927,6 @@ final class RegistryGenerator {
             props.load(reader);
         }
         return props;
-    }
-
-    /**
-     * A section upstream's HierarchyDefinitionService reads without a null check: a missing one would fail its boot.
-     * An explicitly empty one is valid.
-     */
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> section(final Map<String, Object> definition, final String key) {
-        if (definition == null || !(definition.get(key) instanceof Map)) {
-            throw new IllegalStateException("hierarchy-definition.yml has no " + key + " section");
-        }
-        return (Map<String, Object>) definition.get(key);
     }
 
     private static String stem(final String path) {

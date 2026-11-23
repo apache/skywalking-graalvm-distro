@@ -187,12 +187,12 @@ class TALDocScriptsTest {
 
         OUT = Files.createTempDirectory("tal-docs-out");
         Files.createDirectories(OUT.resolve("META-INF"));
-        MeterSystem.setFunctionRegister(Precompiler.meterFunctionRegister(
+        MeterSystem.setFunctionRegister(ClasspathScans.meterFunctionRegister(
             ClassPath.from(TALDocScriptsTest.class.getClassLoader())
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
         MeterSystem.setOutputDirectory(OUT.toString());
         Precompiler.declareScopes();
-        Precompiler.compileTAL(OUT.toString(), new MeterSystem(null), DOCS, Precompiler.shippedModules());
+        TalPass.compileTAL(OUT.toString(), new MeterSystem(null), DOCS, TalPass.shippedModules());
 
         MANIFEST = new Properties();
         try (Reader reader = Files.newBufferedReader(OUT.resolve("META-INF/tal-v2-rules.txt"), StandardCharsets.UTF_8)) {

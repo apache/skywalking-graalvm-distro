@@ -35,13 +35,13 @@ class LalRegistrationCheckTest {
     @Test
     void aRuleUpstreamWouldSkipOrRefuseFailsTheBuild() {
         final Set<List<String>> registered = new HashSet<>();
-        assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("a", "GENERAL", false), registered));
-        assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("a", "MESH", false), registered));
-        assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("a", "auto", true), registered));
+        assertDoesNotThrow(() -> LalPass.checkRegistration(rule("a", "GENERAL", false), registered));
+        assertDoesNotThrow(() -> LalPass.checkRegistration(rule("a", "MESH", false), registered));
+        assertDoesNotThrow(() -> LalPass.checkRegistration(rule("a", "auto", true), registered));
 
         // Not compiled, as upstream skips such a rule at boot with a warning, before it checks names or fallback.
-        assertFalse(Precompiler.checkRegistration(rule("b", "NO_SUCH_LAYER", true), registered));
-        assertFalse(Precompiler.checkRegistration(rule("b", "NO_SUCH_LAYER", false), registered));
+        assertFalse(LalPass.checkRegistration(rule("b", "NO_SUCH_LAYER", true), registered));
+        assertFalse(LalPass.checkRegistration(rule("b", "NO_SUCH_LAYER", false), registered));
         assertFails(rule("b", "GENERAL", true), registered, "only a layer: auto rule may");
         assertFails(rule("a", "GENERAL", false), registered, "two rules of layer GENERAL are named a");
         assertFails(rule("a", "auto", false), registered, "two auto-layer rules are named a");
@@ -53,11 +53,11 @@ class LalRegistrationCheckTest {
         // A sink without a layer statement: upstream skips it at boot with a warning, before it registers names.
         final LALConfig skipped = rule("r", "auto", false);
         skipped.setDsl("filter { sink { } }");
-        assertFalse(Precompiler.checkRegistration(skipped, registered), "not compiled, as upstream never compiles it");
+        assertFalse(LalPass.checkRegistration(skipped, registered), "not compiled, as upstream never compiles it");
 
         final LALConfig claiming = rule("r", "auto", false);
         claiming.setDsl("filter { extractor { layer \"GENERAL\" } sink { } }");
-        assertTrue(Precompiler.checkRegistration(claiming, registered));
+        assertTrue(LalPass.checkRegistration(claiming, registered));
         assertFails(rule("r", "auto", false), registered, "two auto-layer rules are named r");
     }
 
@@ -68,8 +68,8 @@ class LalRegistrationCheckTest {
         first.setLineNo(3);
         final LALConfig second = rule("b", "GENERAL", false);
         second.setLineNo(3);
-        assertTrue(Precompiler.checkRegistration(first, registered));
-        assertTrue(Precompiler.checkRegistration(second, registered));
+        assertTrue(LalPass.checkRegistration(first, registered));
+        assertTrue(LalPass.checkRegistration(second, registered));
     }
 
     /**
@@ -79,14 +79,14 @@ class LalRegistrationCheckTest {
     @Test
     void aRuleWithoutANameIsApartFromOneNamedNull() {
         final Set<List<String>> registered = new HashSet<>();
-        assertTrue(Precompiler.checkRegistration(rule(null, "GENERAL", false), registered));
-        assertTrue(Precompiler.checkRegistration(rule("null", "GENERAL", false), registered));
+        assertTrue(LalPass.checkRegistration(rule(null, "GENERAL", false), registered));
+        assertTrue(LalPass.checkRegistration(rule("null", "GENERAL", false), registered));
         assertFails(rule(null, "GENERAL", false), registered, "two rules of layer GENERAL are named null");
     }
 
     private static void assertFails(final LALConfig rule, final Set<List<String>> registered, final String message) {
         final IllegalStateException e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.checkRegistration(rule, registered));
+            () -> LalPass.checkRegistration(rule, registered));
         assertTrue(e.getMessage().contains(message), e.getMessage());
     }
 

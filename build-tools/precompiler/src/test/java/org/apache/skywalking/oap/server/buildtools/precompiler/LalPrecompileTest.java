@@ -55,7 +55,7 @@ class LalPrecompileTest {
 
     @Test
     void twoRulesOnOneLineCompileAsUpstreamCompilesThem() throws Exception {
-        Precompiler.compileLAL(out.toString(), "lal-fixture-one-line");
+        LalPass.compileLAL(out.toString(), "lal-fixture-one-line");
 
         final Properties rules = rules();
         final String first = prefixOf(rules, "first");
@@ -71,7 +71,7 @@ class LalPrecompileTest {
     @Test
     void twoRulesAlikeOnOneLineInOneLayerFailTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.compileLAL(out.toString(), "lal-fixture-one-line-twins-one-layer"));
+            () -> LalPass.compileLAL(out.toString(), "lal-fixture-one-line-twins-one-layer"));
         assertTrue(e.getMessage().contains("two rules of layer GENERAL are named twin"), e.getMessage());
     }
 
@@ -81,7 +81,7 @@ class LalPrecompileTest {
      */
     @Test
     void aRuleWithoutANameIsCompiledAndRecordedAsUnnamed() throws Exception {
-        Precompiler.compileLAL(out.toString(), "lal-fixture-unnamed");
+        LalPass.compileLAL(out.toString(), "lal-fixture-unnamed");
 
         final Properties rules = rules();
         assertEquals("true", rules.getProperty("rule.0.unnamed"));
@@ -93,7 +93,7 @@ class LalPrecompileTest {
 
     @Test
     void twoRulesOnOneLineAlikeInEverythingTheClassIsCompiledFromShareOneClass() throws Exception {
-        Precompiler.compileLAL(out.toString(), "lal-fixture-one-line-twins");
+        LalPass.compileLAL(out.toString(), "lal-fixture-one-line-twins");
 
         final Properties rules = rules();
         assertEquals("twin", rules.getProperty("rule.0.name"));
@@ -103,7 +103,7 @@ class LalPrecompileTest {
 
     @Test
     void aRuleIsKeyedByTheSourceRefTheBootLooksItUpBy() throws Exception {
-        Precompiler.compileLAL(out.toString(), "lal-fixture-unresolved-line");
+        LalPass.compileLAL(out.toString(), "lal-fixture-unresolved-line");
 
         // Upstream's loader stamps no line on a rule a merge key brings in; the boot's DslSourceRef marks it unresolved.
         final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/lal.json").toFile());
@@ -117,7 +117,7 @@ class LalPrecompileTest {
 
     @Test
     void theSpiImplementationsAndTheTypesRulesReadValuesFromAreRecordedForReflection() throws Exception {
-        Precompiler.compileLAL(out.toString(), "lal-fixture-layers");
+        LalPass.compileLAL(out.toString(), "lal-fixture-layers");
 
         final List<String> io = Files.readAllLines(out.resolve("META-INF/lal-io-classes.txt"));
         final List<String> inputTypes = Files.readAllLines(out.resolve("META-INF/lal-input-types.txt"));
@@ -135,7 +135,7 @@ class LalPrecompileTest {
     void theMessageAndToJsonValuesOfAnInputsGettersAreWalked() {
         final Set<String> protoRoots = new TreeSet<>();
         final Set<Class<?>> registered = new LinkedHashSet<>();
-        Precompiler.collectLalValues(Event.class, protoRoots, registered);
+        NativeImageMetadata.collectLalValues(Event.class, protoRoots, registered);
 
         assertEquals(Set.of(Event.class, Named.class, Step.class), registered);
         assertEquals(Set.of(LogData.class.getName()), protoRoots);
@@ -144,7 +144,7 @@ class LalPrecompileTest {
     @Test
     void thePublicTypeANonPublicInputsGetterIsCalledThroughIsRegistered() {
         final Set<Class<?>> registered = new LinkedHashSet<>();
-        Precompiler.collectLalValues(Owner.class, new TreeSet<>(), registered);
+        NativeImageMetadata.collectLalValues(Owner.class, new TreeSet<>(), registered);
 
         assertEquals(Set.of(Owner.class, Named.class), registered);
     }
@@ -152,7 +152,7 @@ class LalPrecompileTest {
     @Test
     void aGetterLalCallablesRefusesIsNotFollowed() {
         final Set<Class<?>> registered = new LinkedHashSet<>();
-        Precompiler.collectLalValues(Plain.class, new TreeSet<>(), registered);
+        NativeImageMetadata.collectLalValues(Plain.class, new TreeSet<>(), registered);
 
         assertEquals(Set.of(Plain.class), registered);
     }
@@ -160,7 +160,7 @@ class LalPrecompileTest {
     @Test
     void theValuesInAGettersArraysWildcardsAndGenericArraysAreWalked() {
         final Set<Class<?>> registered = new LinkedHashSet<>();
-        Precompiler.collectLalValues(Holder.class, new TreeSet<>(), registered);
+        NativeImageMetadata.collectLalValues(Holder.class, new TreeSet<>(), registered);
 
         assertEquals(Set.of(Holder.class, InArray.class, Bounded.class, InGenericArray.class, Step.class), registered);
     }
@@ -168,11 +168,11 @@ class LalPrecompileTest {
     @Test
     void aTypeVariableIsWalkedByItsBindingInTheHierarchyOrElseItsBounds() {
         final Set<Class<?>> bound = new LinkedHashSet<>();
-        Precompiler.collectLalValues(Bound.class, new TreeSet<>(), bound);
+        NativeImageMetadata.collectLalValues(Bound.class, new TreeSet<>(), bound);
         assertEquals(Set.of(Bound.class, Generic.class, BoundStep.class, Step.class), bound);
 
         final Set<Class<?>> unbound = new LinkedHashSet<>();
-        Precompiler.collectLalValues(Generic.class, new TreeSet<>(), unbound);
+        NativeImageMetadata.collectLalValues(Generic.class, new TreeSet<>(), unbound);
         assertEquals(Set.of(Generic.class, Step.class), unbound);
     }
 
