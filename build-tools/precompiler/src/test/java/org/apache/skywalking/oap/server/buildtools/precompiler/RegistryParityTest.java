@@ -125,7 +125,7 @@ class RegistryParityTest {
         final List<MalFile> files = registry("malFiles");
         for (final RuleCatalog malCatalog : RuleCatalog.malRules()) {
             final String catalog = malCatalog.getDirectory();
-            final List<String> names = Precompiler.ruleNames(catalog);
+            final List<String> names = RuleTree.ruleNames(catalog);
             final Map<String, JsonNode> upstream = new TreeMap<>();
             if (!names.isEmpty()) {
                 for (final Rule rule : Rules.loadRules(catalog, names)) {
@@ -177,13 +177,13 @@ class RegistryParityTest {
         final List<MetricRuleConfig> configs = new ArrayList<>();
         for (final RuleCatalog malCatalog : RuleCatalog.malRules()) {
             final String catalog = malCatalog.getDirectory();
-            final List<String> names = Precompiler.ruleNames(catalog);
+            final List<String> names = RuleTree.ruleNames(catalog);
             if (!names.isEmpty()) {
                 configs.addAll(Rules.loadRules(catalog, names));
             }
         }
         // The Zabbix receiver compiles a file's expressions for its host patterns: a file without one compiles none
-        ZabbixConfigs.loadConfigs("zabbix-rules", Precompiler.ruleNames("zabbix-rules")).stream()
+        ZabbixConfigs.loadConfigs("zabbix-rules", RuleTree.ruleNames("zabbix-rules")).stream()
                      .filter(ZabbixHostPatterns::compiledAtBoot).forEach(configs::add);
         // One expression for each distinct coordinate, metric name and text: two alike at one line run one class
         final Set<String> expectedExpressions = new HashSet<>();
@@ -225,7 +225,7 @@ class RegistryParityTest {
 
     @Test
     void everyZabbixConfigIsWhatUpstreamsLoaderReads() throws Exception {
-        final List<String> stems = Precompiler.ruleNames("zabbix-rules");
+        final List<String> stems = RuleTree.ruleNames("zabbix-rules");
         final List<Object> compiled = registry("zabbixConfigs");
         assertEquals(MAPPER.valueToTree(ZabbixConfigs.loadConfigs("zabbix-rules", stems)), MAPPER.valueToTree(compiled));
     }
@@ -236,7 +236,7 @@ class RegistryParityTest {
         for (final LalFile file : RegistryParityTest.<List<LalFile>>registry("lalFiles")) {
             assertNull(compiled.put(stemOf(file.getName()), file), "two LAL files named " + stemOf(file.getName()));
         }
-        for (final String stem : Precompiler.ruleNames("lal")) {
+        for (final String stem : RuleTree.ruleNames("lal")) {
             final List<LALConfigs> upstream = LALConfigs.load("lal", List.of(stem));
             final LalFile file = compiled.remove(stem);
             if (upstream.isEmpty()) {
@@ -254,7 +254,7 @@ class RegistryParityTest {
     @Test
     void theLalFilesAreInTheOrderOneUpstreamLoadOfThemAllReturns() throws Exception {
         // The log analyzer loads every lalFiles entry in one call; its rules run on a log in the order it returns
-        final List<LALConfigs> upstream = LALConfigs.load("lal", Precompiler.ruleNames("lal"));
+        final List<LALConfigs> upstream = LALConfigs.load("lal", RuleTree.ruleNames("lal"));
         final List<LalFile> compiled = registry("lalFiles");
         assertEquals(upstream.size(), compiled.size(), "LAL files in the registry");
         for (int i = 0; i < upstream.size(); i++) {
@@ -268,7 +268,7 @@ class RegistryParityTest {
         // Upstream's loader's rules at the DslSourceRef the boot builds from the stamped coordinates, by name: rules on
         // one line may share a name, in other layers.
         final Map<List<String>, List<LALConfig>> configs = new LinkedHashMap<>();
-        for (final String stem : Precompiler.ruleNames("lal")) {
+        for (final String stem : RuleTree.ruleNames("lal")) {
             for (final LALConfigs file : LALConfigs.load("lal", List.of(stem))) {
                 for (final LALConfig config : file.getRules()) {
                     configs.computeIfAbsent(Arrays.asList(DslSourceRef.ofRule(config.getSourcePath(),
@@ -323,11 +323,11 @@ class RegistryParityTest {
         final List<String> talFiles = csv(activation.get(RuleCatalog.talFiles().key()));
         final List<String> nativeTalFiles = csv(activation.get(RuleCatalog.nativeTalFiles().key()));
         // The modules the image ships: upstream's boot skips a file requiring another.
-        final ModuleManager image = Precompiler.shippedModules();
+        final ModuleManager image = TalPass.shippedModules();
         // Active, in one list or the other: every staged file upstream's loader returns with those modules, and every
         // file of layerDefinitions alone it registers.
         final Set<String> loaded = new TreeSet<>();
-        for (final String stem : Precompiler.talStems("tal")) {
+        for (final String stem : TalPass.talStems("tal")) {
             if (!TALConfigs.load("tal", List.of(stem), image).isEmpty()) {
                 loaded.add(stem);
             }
@@ -580,7 +580,7 @@ class RegistryParityTest {
                                                                .distinct().sorted().collect(Collectors.toList()));
         final OverlayInventory overlay = OverlayInventory.read(System.getProperty(OverlayInventory.PROPERTY));
         final List<OALDefine> defines = scripts.stream().map(OalScript::getDefine).collect(Collectors.toList());
-        assertEquals(Arrays.stream(Precompiler.effectiveOALDefines(Precompiler.discoverOALDefines(), overlay))
+        assertEquals(Arrays.stream(OalPass.effectiveOALDefines(OalPass.discoverOALDefines(), overlay))
                            .map(OALDefine::getConfigFile).sorted()
                            .collect(Collectors.toList()),
             defines.stream().map(OALDefine::getConfigFile).sorted().collect(Collectors.toList()));
@@ -605,14 +605,14 @@ class RegistryParityTest {
     void everyOalScriptIsFoundByTheDefineItsProviderLoads() throws Exception {
         final OverlayInventory overlay = OverlayInventory.read(System.getProperty(OverlayInventory.PROPERTY));
         final Map<String, OALDefine> built = new TreeMap<>();
-        for (final OALDefine define : Precompiler.effectiveOALDefines(Precompiler.discoverOALDefines(), overlay)) {
+        for (final OALDefine define : OalPass.effectiveOALDefines(OalPass.discoverOALDefines(), overlay)) {
             built.put(define.getConfigFile(), define);
         }
         final List<OalScript> scripts = registry("oalScripts");
         assertEquals(built.size(), scripts.size());
         for (final OalScript script : scripts) {
             final OALDefine define = built.get(script.getDefine().getConfigFile());
-            final boolean overlayAdded = define instanceof Precompiler.OverlayOALDefine;
+            final boolean overlayAdded = define instanceof OalPass.OverlayOALDefine;
             assertEquals(overlayAdded, script.isOverlayAdded(), define.getConfigFile());
             if (overlayAdded) {
                 assertEquals(define, script.getDefine());

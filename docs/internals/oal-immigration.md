@@ -15,7 +15,7 @@ build-time manifests instead of generating code or scanning.
 
 ## Build Time: the precompiler's OAL pass
 
-**Module**: `build-tools/precompiler` (`Precompiler`)
+**Module**: `build-tools/precompiler` (`OalPass`; step 2 is `Precompiler.declareScopes`, step 5 `ClasspathScans`)
 
 1. Discovers every `OALDefine` subclass on the precompiler's class path and takes its `public static INSTANCE`, the
    object providers load; a define without one fails the build. The rules overlay's excluded scripts are left out, and
@@ -98,8 +98,10 @@ whose registration steps the replacement replays.
 
 ## Tests
 
-- `PrecompilerTest`: discovery covers every staged script, a define without its `INSTANCE` and a script without a
-  define fail the build, the manifests list every generated class.
+- `OalPassTest`: discovery covers every staged script, a define without its `INSTANCE` and a script without a define
+  fail the build. `PrecompilerTest`: the manifests list every generated class, and the annotation-scan manifests are
+  written. `ClasspathScansTest`: the annotations the scan writes a manifest for are the ones upstream's
+  `AnnotationListener`s listen for.
 - `RegistryParityTest`: the registry's scripts hold the build's defines (the very objects providers load), classes
   and disables, and the overlay's excluded scripts.
 - `OALEngineLoaderServiceTest`: per-define registration (disables first), a define no provider loads has no effect, the

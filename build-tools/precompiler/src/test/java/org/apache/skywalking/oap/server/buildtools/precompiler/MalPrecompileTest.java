@@ -50,7 +50,7 @@ class MalPrecompileTest {
     @BeforeEach
     void setUp() throws Exception {
         Precompiler.declareScopes();
-        MeterSystem.setFunctionRegister(Precompiler.meterFunctionRegister(
+        MeterSystem.setFunctionRegister(ClasspathScans.meterFunctionRegister(
             ClassPath.from(getClass().getClassLoader())
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
         MeterSystem.setOutputDirectory(out.toString());
@@ -70,7 +70,7 @@ class MalPrecompileTest {
 
     @Test
     void twoMalRulesAlikeOnceThePrefixIsInjectedAreOneExpression() {
-        final List<Rule> rules = Precompiler.loadAndCompileRules(
+        final List<Rule> rules = MalPass.loadAndCompileRules(
             "mal-fixture-prefix-twins", List.of("*"), meterSystem);
         assertEquals(1, rules.size());
         assertEquals(2, rules.get(0).getMetricsRules().size());
@@ -80,7 +80,7 @@ class MalPrecompileTest {
 
     @Test
     void twoZabbixMetricsAlikeOnceThePrefixIsInjectedAreOneExpression() throws Exception {
-        assertEquals(1, Precompiler.compileZabbixRules("zabbix-fixture-prefix-twins", List.of("agent"), meterSystem));
+        assertEquals(1, MalPass.compileZabbixRules("zabbix-fixture-prefix-twins", List.of("agent"), meterSystem));
         final List<ZabbixConfig> configs = ZabbixConfigs.loadConfigs("zabbix-fixture-prefix-twins", List.of("agent"));
         assertEquals(2, configs.get(0).getMetrics().size());
         assertEquals(1, compiled().size(), compiled().toString());
@@ -93,7 +93,7 @@ class MalPrecompileTest {
      */
     @Test
     void malRulesAMergeKeyBringsInAreExpectedAtTheUnresolvedLine() {
-        final List<Rule> rules = Precompiler.loadAndCompileRules("mal-fixture-merged", List.of("*"), meterSystem);
+        final List<Rule> rules = MalPass.loadAndCompileRules("mal-fixture-merged", List.of("*"), meterSystem);
         assertEquals(0, rules.get(0).getMetricsRules().get(0).getLineNo());
         assertEquals("-1", compiled().iterator().next().get(0));
         assertEquals(compiled(), RegistryGenerator.effectiveKeys(rules.get(0)));
@@ -101,7 +101,7 @@ class MalPrecompileTest {
 
     @Test
     void zabbixMetricsAMergeKeyBringsInAreExpectedAtTheUnresolvedLine() throws Exception {
-        assertEquals(1, Precompiler.compileZabbixRules("zabbix-fixture-merged", List.of("agent"), meterSystem));
+        assertEquals(1, MalPass.compileZabbixRules("zabbix-fixture-merged", List.of("agent"), meterSystem));
         final List<ZabbixConfig> configs = ZabbixConfigs.loadConfigs("zabbix-fixture-merged", List.of("agent"));
         assertEquals("-1", compiled().iterator().next().get(0));
         assertEquals(compiled(), RegistryGenerator.effectiveKeys(configs.get(0)));
@@ -113,7 +113,7 @@ class MalPrecompileTest {
      */
     @Test
     void aGeneratedTopLevelClassWithADollarInItsNameIsReferenced() throws Exception {
-        Precompiler.loadAndCompileRules("mal-fixture-dollar", List.of("*"), meterSystem);
+        MalPass.loadAndCompileRules("mal-fixture-dollar", List.of("*"), meterSystem);
         final String meterClass = meterSystem.getExportedClasses().stream()
             .filter(line -> line.startsWith("review_cost$bytes="))
             .map(line -> line.substring(line.indexOf('=') + 1)).findFirst().orElseThrow();

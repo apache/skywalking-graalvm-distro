@@ -9,7 +9,7 @@ Antigravity) read skills from, so a new skill needs no link of its own. Edit ski
 
 ## Project Structure
 - `skywalking/` — Git submodule of `apache/skywalking.git`. **Do not modify directly.** All SkyWalking source changes go through upstream PRs.
-- `build-tools/precompiler/` — Build-time precompiler: runs OAL + MAL + LAL + TAL + Hierarchy v2 engines at Maven compile time, exports `.class` files, manifests, and auto-generated `reflect-config.json` into `precompiler-*-generated.jar`.
+- `build-tools/precompiler/` — Build-time precompiler: runs OAL + MAL + LAL + TAL + Hierarchy v2 engines at Maven compile time, exports `.class` files, manifests, and auto-generated `reflect-config.json` into `precompiler-*-generated.jar`. `Precompiler` only orders the passes: one class per engine (`OalPass`, `MalPass`, `LalPass`, `TalPass`, `HierarchyPass`), plus `ClasspathScans`, `RuleSourceExport`, `RegistryGenerator` and `NativeImageMetadata`.
 - `build-tools/config-generator/` — Build-time config code generator: scans `ModuleConfig` subclasses and generates `YamlConfigLoaderUtils` replacement.
 - `oap-libs-for-graalvm/` — Per-JAR repackaged modules using `maven-shade-plugin` for same-FQCN class replacements.
 - `oap-graalvm-server/` — GraalVM-ready OAP server module (JVM distro) with same-FQCN replacement classes and comprehensive test suites.

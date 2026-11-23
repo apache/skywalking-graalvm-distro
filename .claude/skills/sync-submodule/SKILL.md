@@ -219,7 +219,7 @@ the boot when upstream changes something the re-implementation does not handle, 
 | `GeneratedInstanceCheck` (precompiler, every MAL / LAL / TAL / Hierarchy compile) | A generator sets state on the instance it returns after constructing it (deep, by `StateComparison`), outside TAL's recorded function fields; the runtime builds classes by their no-arg constructor |
 | `DSL.of` (LAL) and `TalDSL.of` | No pre-compiled class matches the rule's coordinates, name, DSL text and input/output types upstream passes at boot |
 | `LalRuntimeTypeParityTest` | Upstream's type resolution, on the server classpath, gives a compiled LAL rule other input/output types than the precompiler did (an SPI only one side ships), or a rule is compiled though upstream's boot skips it, or skipped though the boot runs it (a layer only one side registers; `UpstreamLalBoot` holds upstream's predicates) |
-| `writeConfigData` + `RegistryGenerator.requireCarried` | Rule data (`Rule`, `LALConfig`, `TALConfig`, ...) loses state on its way to the registry: through the JSON intermediate, or because no emitted getter/setter pair carries it |
+| `BuildIntermediates.writeConfigData` + `RegistryGenerator.requireCarried` | Rule data (`Rule`, `LALConfig`, `TALConfig`, ...) loses state on its way to the registry: through the JSON intermediate, or because no emitted getter/setter pair carries it |
 | `TalMetrics` comparison (precompiler) | Upstream `createMetrics` makes other `MeterSystem` calls than the boot replays from the recorded declarations |
 | `replacement-source-sha256.properties` | A replaced class changed, or `OALEngineV2` / `OALClassGeneratorV2`, whose registration steps (metrics then dispatchers; the disables' `isStreamRunning` guard) the OAL loader replacement replays |
 | `GeneratedConfigLoaderIsCurrentTest` (config-generator) | The committed `YamlConfigLoaderUtils` is not what the generator writes for the current config classes |
@@ -304,8 +304,8 @@ syncs: keep the path and the "Common Pitfalls" heading.
 - **Protobuf `JsonFormat` needs reflection metadata**: it prints/parses generated messages through
   the accessor table, which looks getters up with `Class.getMethod`. The precompiler registers the
   descriptor closure of every LAL input type plus the OTLP/HTTP JSON receivers' `Export*ServiceRequest`
-  and `LogData` (`protoJsonRoots` → `addProtoMessageEntries`); when upstream starts JSON-parsing or
-  printing another generated type (`git grep "JsonFormat\.(parser|printer)"`), extend the root set or
+  and `LogData` (`NativeImageMetadata`: `protoJsonRoots` → `addProtoMessageEntries`); when upstream starts
+  JSON-parsing or printing another generated type (`git grep "JsonFormat\.(parser|printer)"`), extend the root set or
   the native image answers `Generated message class ... missing method ...` (11.1: the ai-agent
   case's OTLP/JSON log posts exposed the missing OTLP roots).
 - **A new `LALOutputBuilder` or `LALSourceTypeProvider` module must be a precompiler dependency**:
@@ -323,19 +323,20 @@ syncs: keep the path and the "Common Pitfalls" heading.
   classpath resource (not a `config/` file), add a glob there and boot the native image.
 - **Armeria instantiates handler-referenced classes reflectively**: `@ExceptionHandler`,
   `@RequestConverter`, `@ResponseConverter` and `@Decorator` targets need constructor metadata. The precompiler's
-  `scanArmeriaHandlers` collects the classes those annotations name and every `ExceptionHandlerFunction`
+  `ClasspathScans.scanArmeriaHandlers` collects the classes those annotations name and every `ExceptionHandlerFunction`
   implementation (11.1 added `@Decorator` for the AI agent conversation view's `CompressResponse`; without it the
   native OAP dies at boot with "cannot inject the dependency for ..."). A new Armeria annotation that names a class
   needs the same treatment.
 - **Jackson response POJOs need reflection metadata**: Armeria `HttpResponse.ofJson(pojo)` /
   `@ProducesJson` serialize through Jackson, which finds no properties in the native image without
   metadata and answers HTTP 400 ("No serializer found for class ..."). The precompiler's
-  `scanQueryEntityClasses` covers `org.apache.skywalking.oap.query.*.entity.*` and
-  `org.apache.skywalking.oap.server.admin.*.response.*` (the latter added in 11.1 after the storage
-  suite's `admin inspect` cases exposed it), and `scanHttpBodyTypes` the bodies a route's signature names (its
-  parameters and return type, and the classes their fields hold; a protobuf message gets its descriptor closure); a
-  POJO outside those packages that a route builds itself (`HttpResponse.of(...)` of an object) must be registered by
-  hand, on the `configPojos` list.
+  `ClasspathScans.scanQueryEntityClasses` covers `org.apache.skywalking.oap.query.*.entity.*`,
+  `org.apache.skywalking.oap.server.admin.*.response.*` (added in 11.1 after the storage suite's `admin inspect` cases
+  exposed it), the status module's `Debugging*Rsp` and
+  `org.apache.skywalking.oap.server.core.alarm.provider.status.*`, and `scanHttpBodyTypes` the bodies a route's
+  signature names (its parameters and return type, and the classes their fields hold; a protobuf message gets its
+  descriptor closure); a POJO outside those packages that a route builds itself (`HttpResponse.of(...)` of an object)
+  must be registered by hand, on `NativeImageMetadata`'s `configPojos` list.
   The same holds for request bodies (`@ConsumesJson`) and for Gson-printed answers, which silently come out as
   `{}` instead of failing. 11.1 found three that no e2e case reached: `/status/cluster/nodes` (core `Address`,
   HTTP 500), `/status/alarm/*` (`core.alarm.provider.status`, `{}`) and the AWS Firehose receiver (`FirehoseReq`,

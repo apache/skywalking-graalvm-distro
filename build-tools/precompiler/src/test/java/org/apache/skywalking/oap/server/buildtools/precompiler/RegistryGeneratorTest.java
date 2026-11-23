@@ -47,24 +47,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A string the registry generator writes as a Java literal compiles back to the same string, whatever an operator
- * named a rule or wrote in it: escapes, non-ASCII text, and values past the class-file limit of a string constant. A
- * hierarchy definition missing a section fails the build, as upstream fails the boot on it. The native TAL files run in
- * the order upstream's {@code application.yml} lists by default, and the build fails when it cannot read that order.
+ * named a rule or wrote in it: escapes, non-ASCII text, and values past the class-file limit of a string constant. The
+ * native TAL files run in the order upstream's {@code application.yml} lists by default, and the build fails when it
+ * cannot read that order.
  * Methods split into helpers stay apart in one generated class. A catalog the rules overlay left no file activates an
  * empty list, as upstream accepts one.
  */
 class RegistryGeneratorTest {
     @TempDir
     Path dir;
-
-    @Test
-    void aHierarchySectionMustBeThereButMayBeEmpty() {
-        final Map<String, Object> definition = Map.of("hierarchy", Map.of(), "auto-matching-rules", Map.of());
-        assertEquals(Map.of(), RegistryGenerator.section(definition, "hierarchy"));
-        final Exception e = assertThrows(IllegalStateException.class,
-            () -> RegistryGenerator.section(definition, "layer-levels"));
-        assertEquals("hierarchy-definition.yml has no layer-levels section", e.getMessage());
-    }
 
     @Test
     void theNativeTalOrderIsTheDefaultOfTheSettingSplitAsTheTraceAnalyzerSplitsIt() {

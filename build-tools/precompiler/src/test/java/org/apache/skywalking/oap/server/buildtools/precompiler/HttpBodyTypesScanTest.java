@@ -118,7 +118,7 @@ class HttpBodyTypesScanTest {
             Base.class.getName(), Bounded.class.getName(), Box.class.getName(), Boxed.class.getName(),
             FilledBox.class.getName(), InArray.class.getName(), Item.class.getName(), Kind.class.getName(),
             Request.class.getName(), Shelf.class.getName(), Shelved.class.getName()),
-            Precompiler.scanHttpBodyTypes(List.of(Handler.class.getName())));
+            ClasspathScans.scanHttpBodyTypes(List.of(Handler.class.getName())));
     }
 
     public static class GenericHandler<T> {
@@ -141,6 +141,6 @@ class HttpBodyTypesScanTest {
     @Test
     void anInheritedGenericRouteBindsTheHandlersTypeArguments() {
         assertEquals(List.of(Item.class.getName(), Payload.class.getName()),
-            Precompiler.scanHttpBodyTypes(List.of(Endpoint.class.getName())));
+            ClasspathScans.scanHttpBodyTypes(List.of(Endpoint.class.getName())));
     }
 }

@@ -305,9 +305,9 @@ class RulesStagerTest {
     @Test
     void anOalNameKeepsEachDispatcherItsSource() {
         // The rule browser cuts a dispatcher's simple name at its first "Dispatcher".
-        final String prefix = Precompiler.OverlayOALDefine.catalog("oal/PaymentDispatcher.oal");
+        final String prefix = OalPass.OverlayOALDefine.catalog("oal/PaymentDispatcher.oal");
         assertEquals("OverlayPayment_dispatcher_", prefix);
-        assertEquals("OverlayFleet_u_m_pDisp_", Precompiler.OverlayOALDefine.catalog("oal/Fleet_-.Disp.oal"));
+        assertEquals("OverlayFleet_u_m_pDisp_", OalPass.OverlayOALDefine.catalog("oal/Fleet_-.Disp.oal"));
     }
 
     @Test

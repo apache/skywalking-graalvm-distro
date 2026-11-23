@@ -39,7 +39,7 @@ class HierarchyPrecompileTest {
     @Test
     void aRuleNameNeedingEscapesCompilesAndReadsBackAsWritten() throws Exception {
         Files.createDirectories(out.resolve("META-INF"));
-        Precompiler.compileHierarchy(out.toString(), "hierarchy-fixture-rule-names.yml");
+        HierarchyPass.compileHierarchy(out.toString(), "hierarchy-fixture-rule-names.yml");
         final Properties rules = new Properties();
         try (Reader reader = Files.newBufferedReader(
             out.resolve("META-INF/hierarchy-v2-rules.txt"), StandardCharsets.UTF_8)) {

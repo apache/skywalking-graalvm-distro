@@ -75,7 +75,7 @@ endif
 
 # The tests verify-rules runs: the precompiler's and the ones that read the compiled rules, not the ones pinned to
 # the bundled rule set.
-VERIFY_RULES_PRECOMPILER_TESTS := PrecompilerTest,PrecompileFailureTest,TALPrecompileTest,RegistryParityTest,RegistryGeneratorTest,RulesStagerTest,LalRegistrationCheckTest,LalConfigDataTest,LalPrecompileTest,TalActivationCheckTest,HierarchyCheckTest,HierarchyPrecompileTest,ManifestEscapeTest
+VERIFY_RULES_PRECOMPILER_TESTS := PrecompilerTest,OalPassTest,ClasspathScansTest,PrecompileFailureTest,TALPrecompileTest,RegistryParityTest,RegistryGeneratorTest,RulesStagerTest,LalRegistrationCheckTest,LalConfigDataTest,LalPrecompileTest,TalActivationCheckTest,HierarchyCheckTest,HierarchyPrecompileTest,ManifestEscapeTest
 VERIFY_RULES_SERVER_TESTS := TALPrecompiledRuleTest,TalDSLManifestTest,OverlayRuleTest,MalCoordinatesLookupTest,OverlayLalRuleTest,LalRuntimeTypeParityTest,CompiledRuleActivationTest,BundledRuleCatalogParityTest
 
 .PHONY: all clean build init-submodules init-skywalking build-distro compile test javadoc dist info docker-up docker-down boot shutdown native-image native-image-macos native-dist trace-agent docker-native verify-rules

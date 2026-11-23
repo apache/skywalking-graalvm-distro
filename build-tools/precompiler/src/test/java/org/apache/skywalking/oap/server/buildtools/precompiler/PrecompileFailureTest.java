@@ -42,40 +42,40 @@ class PrecompileFailureTest {
 
     @Test
     void aMalRuleThatDoesNotCompileFailsTheBuild() throws Exception {
-        MeterSystem.setFunctionRegister(Precompiler.meterFunctionRegister(
+        MeterSystem.setFunctionRegister(ClasspathScans.meterFunctionRegister(
             ClassPath.from(getClass().getClassLoader())
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
         MeterSystem.setOutputDirectory(out.toString());
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.loadAndCompileRules("mal-fixture-broken", List.of("*"), new MeterSystem(null)));
+            () -> MalPass.loadAndCompileRules("mal-fixture-broken", List.of("*"), new MeterSystem(null)));
         assertTrue(messages(e).contains("broken"), messages(e));
     }
 
     @Test
     void aLalRuleNamingAnUnknownInputTypeFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.compileLAL(out.toString(), "lal-fixture-bad-input"));
+            () -> LalPass.compileLAL(out.toString(), "lal-fixture-bad-input"));
         assertTrue(messages(e).contains("no.such.InputType"), messages(e));
     }
 
     @Test
     void aLalRuleNamingAnUnknownOutputTypeFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.compileLAL(out.toString(), "lal-fixture-bad-output"));
+            () -> LalPass.compileLAL(out.toString(), "lal-fixture-bad-output"));
         assertTrue(messages(e).contains("no.such.OutputBuilder"), messages(e));
     }
 
     @Test
     void aMissingHierarchyDefinitionFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.compileHierarchy(out.toString(), "no-such-hierarchy-definition.yml"));
+            () -> HierarchyPass.compileHierarchy(out.toString(), "no-such-hierarchy-definition.yml"));
         assertTrue(messages(e).contains("no-such-hierarchy-definition.yml"), messages(e));
     }
 
     @Test
     void aHierarchyDefinitionWithoutMatchingRulesFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.compileHierarchy(out.toString(), "hierarchy-fixture-no-rules.yml"));
+            () -> HierarchyPass.compileHierarchy(out.toString(), "hierarchy-fixture-no-rules.yml"));
         assertTrue(messages(e).contains("auto-matching-rules"), messages(e));
     }
 

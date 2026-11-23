@@ -46,7 +46,7 @@ class ZabbixPrecompileTest {
     @BeforeEach
     void setUp() throws Exception {
         Precompiler.declareScopes();
-        MeterSystem.setFunctionRegister(Precompiler.meterFunctionRegister(
+        MeterSystem.setFunctionRegister(ClasspathScans.meterFunctionRegister(
             ClassPath.from(getClass().getClassLoader())
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
         MeterSystem.setOutputDirectory(out.toString());
@@ -67,13 +67,13 @@ class ZabbixPrecompileTest {
     @Test
     void aHostPatternThatIsNoRegularExpressionFailsTheBuild() {
         final Exception e = assertThrows(IllegalStateException.class,
-            () -> Precompiler.compileZabbixRules("zabbix-fixture-bad-pattern", List.of("agent"), meterSystem));
+            () -> MalPass.compileZabbixRules("zabbix-fixture-bad-pattern", List.of("agent"), meterSystem));
         assertTrue(e.getMessage().contains("as the Zabbix receiver does"), e.getMessage());
     }
 
     @Test
     void aFileWithoutHostPatternsCompilesNothingAndPasses() {
-        assertEquals(1, Precompiler.compileZabbixRules("zabbix-fixture-no-hosts", List.of("agent"), meterSystem));
+        assertEquals(1, MalPass.compileZabbixRules("zabbix-fixture-no-hosts", List.of("agent"), meterSystem));
         assertEquals(List.of(), DSL.COMPILED);
     }
 }
