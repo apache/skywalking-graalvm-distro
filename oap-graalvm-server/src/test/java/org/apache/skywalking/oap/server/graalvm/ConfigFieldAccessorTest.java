@@ -25,6 +25,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.TypeVariable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,9 +45,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Verifies that every non-final field of the config classes the generated YamlConfigLoaderUtils loads has a setter, so
- * it sets them without reflection, every final or static one is found (a final instance one writable) in the native
- * image, and every field has a getter or another accessor.
+ * Verifies that every field of the config classes the generated YamlConfigLoaderUtils loads that no setter writes is
+ * listed for {@code Field.set} and found (a final instance one writable) in the native image, and that every field has
+ * a getter or another accessor.
  */
 class ConfigFieldAccessorTest {
 
@@ -75,40 +76,11 @@ class ConfigFieldAccessorTest {
         "EnvoyMetricReceiverConfig.serviceMetaInfoFactory"
     );
 
-    @Test
-    void allNonFinalFieldsHaveSetter() throws Exception {
-        Map<String, Class<?>> configClasses = discoverConfigClasses();
-        assertTrue(configClasses.size() > 30,
-            "Expected at least 30 config classes, found " + configClasses.size());
-
-        List<String> errors = new ArrayList<>();
-
-        for (var entry : configClasses.entrySet()) {
-            Class<?> configClass = entry.getValue();
-            Class<?> clazz = configClass;
-            while (clazz != null && clazz != ModuleConfig.class && clazz != Object.class) {
-                for (Field field : clazz.getDeclaredFields()) {
-                    if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
-                        continue;
-                    }
-                    if (!hasSetter(configClass, field)) {
-                        errors.add(configClass.getName() + "." + field.getName() + " — missing setter");
-                    }
-                }
-                clazz = clazz.getSuperclass();
-            }
-        }
-
-        if (!errors.isEmpty()) {
-            fail("Non-final config fields missing setter (required for YamlConfigLoaderUtils):\n  "
-                + String.join("\n  ", errors));
-        }
-    }
-
     /**
-     * The binder writes a final or static field through {@code Field.set}, as upstream: the config-generator lists every
-     * such field (on a config class or a superclass up to {@code ModuleConfig}), and the native image finds each one
-     * listed, a final instance field writable, as {@code reflect-config.json} registers it from that list.
+     * The binder writes a field no setter writes (none declared, or a final or static field) through {@code Field.set},
+     * as upstream: the config-generator lists every such field (on a config class or a superclass up to
+     * {@code ModuleConfig}), and the native image finds each one listed, a final instance field writable, as
+     * {@code reflect-config.json} registers it from that list.
      */
     @Test
     void everyFieldSetThroughFieldSetIsInTheNativeImage() throws Exception {
@@ -138,7 +110,8 @@ class ConfigFieldAccessorTest {
                 for (Field field : c.getDeclaredFields()) {
                     final boolean isStatic = Modifier.isStatic(field.getModifiers());
                     final boolean isFinal = Modifier.isFinal(field.getModifiers());
-                    if (!field.isSynthetic() && names.add(field.getName()) && (isFinal || isStatic)) {
+                    if (!field.isSynthetic() && names.add(field.getName())
+                        && (isFinal || isStatic || !hasSetter(configClass, field))) {
                         final String key = c.getName() + "#" + field.getName();
                         expected.put(key, key + (isStatic ? " static" : "") + (isFinal ? " final" : ""));
                         writable.put(key, isFinal && !isStatic);
@@ -207,20 +180,14 @@ class ConfigFieldAccessorTest {
         return configClasses;
     }
 
+    /** The setter the generated loader calls, {@code set<Name>(<field type>)}, as the config-generator decides it. */
     private static boolean hasSetter(Class<?> configClass, Field field) {
-        String setterName = "set" + capitalize(field.getName());
         try {
-            configClass.getMethod(setterName, field.getType());
-            return true;
+            final Method setter = configClass.getMethod("set" + capitalize(field.getName()), field.getType());
+            return !Modifier.isStatic(setter.getModifiers()) && !setter.isBridge() && !setter.isSynthetic()
+                && !(setter.getGenericParameterTypes()[0] instanceof TypeVariable)
+                && field.getDeclaringClass().isAssignableFrom(setter.getDeclaringClass());
         } catch (NoSuchMethodException e) {
-            if (field.getType().isPrimitive()) {
-                try {
-                    configClass.getMethod(setterName, box(field.getType()));
-                    return true;
-                } catch (NoSuchMethodException e2) {
-                    return false;
-                }
-            }
             return false;
         }
     }
@@ -247,17 +214,5 @@ class ConfigFieldAccessorTest {
     private static String capitalize(String name) {
         if (name.isEmpty()) return name;
         return Character.toUpperCase(name.charAt(0)) + name.substring(1);
-    }
-
-    private static Class<?> box(Class<?> primitive) {
-        if (primitive == int.class) return Integer.class;
-        if (primitive == long.class) return Long.class;
-        if (primitive == boolean.class) return Boolean.class;
-        if (primitive == double.class) return Double.class;
-        if (primitive == float.class) return Float.class;
-        if (primitive == short.class) return Short.class;
-        if (primitive == byte.class) return Byte.class;
-        if (primitive == char.class) return Character.class;
-        return primitive;
     }
 }

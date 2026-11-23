@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
+import org.apache.skywalking.oap.query.server.QueryServerConfig;
 import org.apache.skywalking.oap.server.core.CoreModuleConfig;
 import org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleConfig;
 import org.apache.skywalking.oap.server.library.util.YamlConfigLoaderUtils;
@@ -33,10 +34,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * The generated config binder converts a value as upstream's {@code Field.set} does: a primitive field takes a value
- * widening to it and refuses a narrowing one with {@code Field.set}'s exception, a reference field an instance of its
- * type or null, and a final field is written through {@code Field.set} itself. Pinned against upstream's own
- * {@code YamlConfigLoaderUtils} with the same inputs.
+ * The generated config binder converts a value as upstream's {@code Field.set} does, through a setter or
+ * {@code Field.set} itself: a primitive field takes a value widening to it and refuses a narrowing one with
+ * {@code Field.set}'s exception, a reference field an instance of its type or null. Pinned against upstream's own
+ * {@code YamlConfigLoaderUtils} with the same inputs: {@code CoreModuleConfig}'s fields, which upstream gives no
+ * setter, go through {@code Field.set}; {@code QueryServerConfig}'s, which have upstream's own setters, through them.
  */
 class GeneratedConfigLoaderConversionTest {
     @Test
@@ -55,6 +57,36 @@ class GeneratedConfigLoaderConversionTest {
                 properties.put(given[0], given[1]);
                 return properties;
             }, Arrays.toString(given) + " of " + given[1].getClass().getName());
+        }
+    }
+
+    /**
+     * The same conversions through the setters upstream's {@code QueryServerConfig} has, each value converted before
+     * the call as {@code Field.set} would convert it.
+     */
+    @Test
+    void eachValueConvertsThroughASetterAsUpstreamsFieldSetConvertsIt() throws Exception {
+        final List<Object[]> cases = List.of(
+            new Object[] {"restPort", 1}, new Object[] {"restPort", (short) 2}, new Object[] {"restPort", (byte) 3},
+            new Object[] {"restPort", 'a'}, new Object[] {"restPort", 4L}, new Object[] {"restPort", 1.5},
+            new Object[] {"restPort", "5"}, new Object[] {"restIdleTimeOut", 6}, new Object[] {"restIdleTimeOut", 7L},
+            new Object[] {"restIdleTimeOut", 1.5}, new Object[] {"restIdleTimeOut", 1.5f},
+            new Object[] {"restSSLEnabled", true}, new Object[] {"restSSLEnabled", "true"},
+            new Object[] {"restHost", "query"}, new Object[] {"restHost", 8});
+        for (final Object[] given : cases) {
+            final Properties properties = new Properties();
+            properties.put(given[0], given[1]);
+            try (UpstreamClasses upstream = new UpstreamClasses(YamlConfigLoaderUtils.class)) {
+                final QueryServerConfig upstreamConfig = new QueryServerConfig();
+                final QueryServerConfig distroConfig = new QueryServerConfig();
+                final String expected = outcome(() -> UpstreamClasses.invoke(copy(upstream), upstreamConfig, properties,
+                    "query-server", "default"), upstreamConfig);
+                final String actual = outcome(() -> {
+                    YamlConfigLoaderUtils.copyProperties(distroConfig, properties, "query-server", "default");
+                    return null;
+                }, distroConfig);
+                assertEquals(expected, actual, Arrays.toString(given) + " of " + given[1].getClass().getName());
+            }
         }
     }
 
@@ -162,6 +194,19 @@ class GeneratedConfigLoaderConversionTest {
         } catch (final Exception e) {
             // A refused value leaves a final list as it was, as Field.set does
             return e.getClass().getName() + ": " + e.getMessage() + " " + config.getDownsampling();
+        }
+    }
+
+    /**
+     * @return the exception the call threw, or the fields it set
+     */
+    private static String outcome(final UpstreamCall call, final QueryServerConfig config) {
+        try {
+            call.run();
+            return config.getRestPort() + " " + config.getRestIdleTimeOut() + " " + config.isRestSSLEnabled() + " "
+                + config.getRestHost();
+        } catch (final Exception e) {
+            return e.getClass().getName() + ": " + e.getMessage();
         }
     }
 

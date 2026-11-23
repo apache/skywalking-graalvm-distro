@@ -29,7 +29,7 @@
 
     <artifactId>config-generator</artifactId>
     <name>Config Generator</name>
-    <description>Scans ModuleConfig classes and generates reflection-free YamlConfigLoaderUtils replacement</description>
+    <description>Scans ModuleConfig classes and generates the YamlConfigLoaderUtils replacement</description>
 
     <dependencies>
         <!-- Shared accepted module/provider list and SPI discovery -->
@@ -41,9 +41,9 @@
 
         <!--
             Upstream server-starter: transitively pulls in ALL provider modules.
-            Build tools run against the raw upstream classpath — no for-graalvm
-            overrides. The for-graalvm modules add @Setter etc. later; if a
-            setter is missing, javac in oap-graalvm-server will catch it.
+            Build tools run against the raw upstream classpath, so the generator
+            calls only the setters upstream's config classes have; any other
+            field goes through Field.set.
         -->
         <dependency>
             <groupId>org.apache.skywalking</groupId>

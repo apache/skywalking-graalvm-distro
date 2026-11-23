@@ -114,12 +114,14 @@ javadoc:
 # Phase 1: install the precompiler, whose generated jar (the compiled rule registry) the *-for-graalvm libs
 #           compile against, and the repackaged *-for-graalvm libs, so dependency-reduced POMs
 #           are available in the local Maven repo for downstream resolution.
-# Phase 2: package oap-graalvm-server and oap-graalvm-native with assembly.
+# Phase 2: package oap-graalvm-server and oap-graalvm-native with assembly, cleaned first: the assembly directory
+#           would keep the jar of a module the build no longer has, which the launcher still loads.
 #           -am (also-make) automatically builds build-common, precompiler,
 #           and other dependencies in the reactor.
 build-distro:
 	$(MVN) clean install -pl build-tools/precompiler,oap-libs-for-graalvm -am -DskipTests $(HOST_MVN_ARGS)
 	$(MVN) install -f oap-libs-for-graalvm -DskipTests $(HOST_MVN_ARGS)
+	$(MVN) clean -pl oap-graalvm-server,oap-graalvm-native $(HOST_MVN_ARGS)
 	$(MVN) package -pl oap-graalvm-server,oap-graalvm-native -am -DskipTests $(HOST_MVN_ARGS)
 
 # Show the distribution directory

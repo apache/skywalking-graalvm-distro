@@ -132,7 +132,7 @@ Run all five v2 compilers at build time via their native exposed APIs (`setClass
 ### Approach (this repo)
 1. **Module loading as upstream**: `GraalVMOAPServerStartUp` boots through upstream's `ModuleManager`, which loads the modules `application.yml` names via `ServiceLoader`; a module whose selector is `-` is not loaded. Native image registers every provider listed in `META-INF/services` on the build classpath, so the classpath carries only the shipped modules: `server-starter-for-graalvm` excludes all of `server-starter`'s dependencies (every upstream plugin), and `oap-graalvm-server` declares the modules the distro ships. The distro's own `graalvm-unsupported-admin` module registers through the same SPI.
 2. **Simplified config file**: Only knobs for the shipped providers
-3. **Config loading**: Build-time tool scans all `ModuleConfig` subclass fields → generates same-FQCN replacement of `YamlConfigLoaderUtils` that sets each non-final field through its Lombok setter, the value checked and converted as upstream's `Field.set` does (`ConfigFieldValues`), and writes each final or static field, which no setter writes, through `Field.set` itself as upstream does (`ConfigFieldValues.setByField`; a constant is refused with `IllegalAccessException`, as upstream). The precompiler generates the config classes' reflection metadata from `module-config-classes.txt` (upstream's `ModuleDefine.prepare` calls their no-arg constructors) and registers the fields set through `Field.set` (a final instance one writable, `allowWrite`) from `module-config-field-set.txt`, both written by the config-generator.
+3. **Config loading**: Build-time tool scans all `ModuleConfig` subclass fields → generates same-FQCN replacement of `YamlConfigLoaderUtils` that sets each field through its class's setter where it has one, the value checked and converted as upstream's `Field.set` does (`ConfigFieldValues`), and writes each field no setter writes (none declared, or a final or static field) through `Field.set` itself as upstream does (`ConfigFieldValues.setByField`; a constant is refused with `IllegalAccessException`, as upstream). The precompiler generates the config classes' reflection metadata from `module-config-classes.txt` (upstream's `ModuleDefine.prepare` calls their no-arg constructors) and registers the fields set through `Field.set` (a final instance one writable, `allowWrite`) from `module-config-field-set.txt`, both written by the config-generator.
 
 **Details**: [config-init-immigration.md](internals/config-init-immigration.md)
 
@@ -141,7 +141,7 @@ Run all five v2 compilers at build time via their native exposed APIs (`setClass
 - `ApplicationYmlModulesTest` — the classpath carries exactly the accepted providers, and every provider option of the shipped `application.yml` resolves to one of them
 - `application.yml` — simplified config for selected providers
 - `ConfigInitializerGenerator` — build-time tool that scans config classes and generates `YamlConfigLoaderUtils` replacement
-- `YamlConfigLoaderUtils` — same-FQCN replacement using type-dispatch + setters for non-final fields, and `Field.set` for final ones, as upstream
+- `YamlConfigLoaderUtils` — same-FQCN replacement using type-dispatch + setters, and `Field.set` for a field no setter writes, as upstream
 
 ---
 
@@ -166,24 +166,12 @@ Each upstream JAR that has replacement classes gets a corresponding `*-for-graal
 
 | Module | Replacement Classes | Purpose |
 |---|---|---|
-| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `CoreModuleConfig`, `HierarchyDefinitionService`, `LayerExtensionLoader` | OAL / meter classes, hierarchy and layer extensions from the rule registry, annotation scans from manifests, instead of Javassist/ClassPath/YAML; config with @Setter |
-| `library-util-for-graalvm` | `YamlConfigLoaderUtils` | Set non-final config fields via setter instead of reflection; final ones through `Field.set`, as upstream |
+| `server-core-for-graalvm` | `OALEngineLoaderService`, `AnnotationScan`, `SourceReceiverImpl`, `MeterSystem`, `HierarchyDefinitionService`, `LayerExtensionLoader` | OAL / meter classes, hierarchy and layer extensions from the rule registry, annotation scans from manifests, instead of Javassist/ClassPath/YAML |
+| `oap-graalvm-server` (the original excluded from `library-util-for-graalvm`) | `YamlConfigLoaderUtils` | Set config fields via their setters, and `Field.set` where no setter writes one, as upstream |
 | `meter-analyzer-for-graalvm` | `DSL` (v2), `FilterExpression`, `Rules` | Pre-compiled v2 `MalExpression` / `MalFilter` classes and the rule files from the rule registry |
-| `log-analyzer-for-graalvm` | `DSL` (v2), `LogAnalyzerModuleConfig`, `LALConfigs` | Pre-compiled v2 `LalExpression` classes and the rule files from the rule registry; config with @Setter |
+| `log-analyzer-for-graalvm` | `DSL` (v2), `LALConfigs` | Pre-compiled v2 `LalExpression` classes and the rule files from the rule registry |
 | `trace-analyzer-for-graalvm` | `TalDSL`, `TALConfigs` | Pre-compiled v2 `TalExpression` classes, their metric declarations and the rule files from the rule registry |
 | `zabbix-receiver-for-graalvm` | `ZabbixConfigs` | The Zabbix configs from the rule registry instead of `zabbix-rules/*.yaml` |
-| `agent-analyzer-for-graalvm` | `AnalyzerModuleConfig` | Config with @Setter (meter-analyzer-config rules load through the shared `Rules` replacement since 11.0.0) |
-
-**Config-only replacements (add `@Setter`, so the config loader sets their non-final fields without reflection):**
-
-| Module | Replacement Class |
-|---|---|
-| `envoy-metrics-receiver-for-graalvm` | `EnvoyMetricReceiverConfig` |
-| `otel-receiver-for-graalvm` | `OtelMetricReceiverConfig` |
-| `ebpf-receiver-for-graalvm` | `EBPFReceiverModuleConfig` |
-| `aws-firehose-receiver-for-graalvm` | `AWSFirehoseReceiverModuleConfig` |
-| `cilium-fetcher-for-graalvm` | `CiliumFetcherConfig` |
-| `health-checker-for-graalvm` | `HealthCheckerConfig` |
 
 ### No Classpath Ordering Required
 
@@ -311,7 +299,7 @@ All five DSL compilers (OAL/MAL/LAL/TAL/Hierarchy) use ANTLR4 + Javassist v2 eng
 
 **Hierarchy**: Hierarchy v2 compiler processes 4 rules → 4 `BiFunction` classes. Same-FQCN `HierarchyDefinitionService` takes the definition and the pre-compiled rules from the rule registry.
 
-**Config initialization**: `ConfigInitializerGenerator` generates same-FQCN `YamlConfigLoaderUtils` using Lombok setters for the other fields; the final and static ones (`module-config-field-set.txt`) go through `Field.set`, as upstream, registered for the native image (a final instance one writable).
+**Config initialization**: `ConfigInitializerGenerator` generates same-FQCN `YamlConfigLoaderUtils` calling a field's setter where its class has one; the fields no setter writes (`module-config-field-set.txt`) go through `Field.set`, as upstream, registered for the native image (a final instance one writable).
 
 **Static rule registry**: the precompiler generates a Java class per rule file (what upstream's loader read from it, as code) plus the `CompiledRules` index and compiles them into the generated jar; the replacement loaders (`Rules`, `LALConfigs`, `TALConfigs`, `ZabbixConfigs`, `HierarchyDefinitionService`, `LayerExtensionLoader`) read it instead of filesystem YAML. The `config-data/*.json` and rule manifests the engine passes write are build intermediates, left out of the jar.
 

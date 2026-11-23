@@ -569,10 +569,11 @@ final class NativeImageMetadata {
     }
 
     /**
-     * The fields the generated config binder writes through {@code Field.set} as upstream does (no setter writes a
-     * final or a static field), as the config-generator lists them ({@code declaringClass#field}, then {@code static}
-     * and {@code final} where they apply): each declaring class with those fields, so the image finds them, and a final
-     * instance one writable; a static final one is only found, so {@code Field.set} refuses it as upstream's does.
+     * The fields the generated config binder writes through {@code Field.set} as upstream does (no setter writes them:
+     * none declared, or a final or a static field), as the config-generator lists them ({@code declaringClass#field},
+     * then {@code static} and {@code final} where they apply): each declaring class with those fields, so the image
+     * finds them, and a final instance one writable; a static final one is only found, so {@code Field.set} refuses it
+     * as upstream's does.
      */
     static List<Map<String, Object>> configFieldSetEntries(List<String> setByField) {
         Map<String, List<Map<String, Object>>> byClass = new TreeMap<>();

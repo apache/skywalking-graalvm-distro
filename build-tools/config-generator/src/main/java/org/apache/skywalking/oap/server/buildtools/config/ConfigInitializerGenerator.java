@@ -18,7 +18,9 @@
 package org.apache.skywalking.oap.server.buildtools.config;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.TypeVariable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,10 +43,9 @@ import org.apache.skywalking.oap.server.library.module.ModuleProvider;
  * providers (via SPI + AcceptedModules filter) and generates a same-FQCN
  * replacement for YamlConfigLoaderUtils.
  *
- * <p>The generated class dispatches copyProperties() by config type. A non-final field is set through its
- * Lombok-generated setter, the value checked and converted as upstream's Field.set does (ConfigFieldValues); all
- * config classes must have @Setter (class-level or per-field) via the *-for-graalvm repackaged modules. A final field,
- * or a static one, which no setter writes, is written through Field.set itself, as upstream writes it
+ * <p>The generated class dispatches copyProperties() by config type. A field its class has a setter for is set through
+ * it, the value checked and converted as upstream's Field.set does (ConfigFieldValues). A field without one, a final
+ * or a static field among them, is written through Field.set itself, as upstream writes every field
  * (ConfigFieldValues.setByField).
  *
  * <p>Usage: {@code mvn -pl build-tools/config-generator exec:java
@@ -59,12 +60,12 @@ public class ConfigInitializerGenerator {
     /**
      * @param owner the declaring class's name, as {@code Field.set} names a field it refuses a value for
      */
-    record FieldInfo(String name, Class<?> type, boolean isFinal, boolean isStatic, String owner) {
+    record FieldInfo(String name, Class<?> type, boolean isFinal, boolean isStatic, String owner, boolean hasSetter) {
         /**
          * @return whether no setter writes the field, so the loader goes through Field.set, as upstream
          */
         boolean isSetByField() {
-            return isFinal || isStatic;
+            return isFinal || isStatic || !hasSetter;
         }
 
     }
@@ -73,9 +74,9 @@ public class ConfigInitializerGenerator {
     }
 
     /**
-     * Written next to the config class manifest: every field the loader writes through Field.set (final or static, on a
-     * config class or a superclass up to ModuleConfig), as {@code declaringClass#field}, then {@code static} and
-     * {@code final} where they apply.
+     * Written next to the config class manifest: every field the loader writes through Field.set (no setter writes it:
+     * none declared, final or static; on a config class or a superclass up to ModuleConfig), as
+     * {@code declaringClass#field}, then {@code static} and {@code final} where they apply.
      */
     static final String SET_BY_FIELD_MANIFEST = "module-config-field-set.txt";
 
@@ -215,11 +216,28 @@ public class ConfigInitializerGenerator {
                     continue;
                 }
                 fields.add(new FieldInfo(field.getName(), field.getType(), Modifier.isFinal(field.getModifiers()),
-                    Modifier.isStatic(field.getModifiers()), clazz.getName()));
+                    Modifier.isStatic(field.getModifiers()), clazz.getName(), hasSetter(configClass, field)));
             }
             clazz = clazz.getSuperclass();
         }
         return new ConfigClassInfo(configClass, configClass.getSimpleName(), fields);
+    }
+
+    /**
+     * @return whether the class has the setter the generated loader would call, {@code set<Name>(<field type>)}, on
+     *     the field's own class or a subclass of it: a superclass's setter writes the superclass's field, not one a
+     *     subclass redeclares. Not a bridge javac generated (it may forward to another class's field), nor a setter
+     *     of a type variable (the generated call passes the erased type, which the subclass's setter does not take).
+     */
+    static boolean hasSetter(final Class<?> configClass, final Field field) {
+        try {
+            final Method setter = configClass.getMethod("set" + capitalize(field.getName()), field.getType());
+            return !Modifier.isStatic(setter.getModifiers()) && !setter.isBridge() && !setter.isSynthetic()
+                && !(setter.getGenericParameterTypes()[0] instanceof TypeVariable)
+                && field.getDeclaringClass().isAssignableFrom(setter.getDeclaringClass());
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
     }
 
     static String capitalize(String name) {
@@ -291,11 +309,12 @@ public class ConfigInitializerGenerator {
              * Lives in oap-graalvm-server (not in library-util-for-graalvm) because it imports config types from
              * 30+ upstream modules. The original .class is excluded from library-util-for-graalvm via shade filter.
              *
-             * <p>Change: Complete rewrite. Uses type-dispatch with Lombok @Setter methods to set ModuleConfig fields,
+             * <p>Change: Complete rewrite. Dispatches by config type and sets a field through its class's setter,
              * converting each value as Field.set does (a primitive widening to the field's type, nothing narrowing).
-             * A final or static field, which no setter writes, is written through Field.set as upstream (a final
-             * instance field registered for writing in reflect-config.json). Reports error for unknown config types.
-             * <p>Why: Field.setAccessible is incompatible with GraalVM native image without reflect-config.json for every field.
+             * A field no setter writes (a final or static one among them) is written through Field.set as upstream,
+             * registered in reflect-config.json (a final instance field writable). Reports error for unknown config
+             * types.
+             * <p>Why: a setter call needs no reflection at run time and is checked when the image compiles.
              *
              * <p>Generated by: build-tools/config-generator
              */
@@ -419,14 +438,13 @@ public class ConfigInitializerGenerator {
         for (FieldInfo field : info.fields) {
             sb.append("                case \"").append(field.name).append("\":\n");
             if (field.isSetByField()) {
-                // No setter writes a final or static field: Field.set does, as upstream, which takes a final field's
-                // own list back unchanged, a null too, refuses a value of another type with its own exception, and a
-                // static final field with IllegalAccessException
+                // No setter writes the field (none declared, or a final or static field): Field.set does, as upstream,
+                // which takes a final field's own list back unchanged, a null too, refuses a value of another type with
+                // its own exception, and a static final field with IllegalAccessException
                 sb.append("                    ConfigFieldValues.setByField(cfg, \"").append(field.name)
                     .append("\", value);\n");
             } else {
-                // Non-final field — use setter. The for-graalvm modules add @Setter;
-                // javac in oap-graalvm-server catches missing setters at compile time.
+                // The class's own setter, set<Name>(<field type>)
                 String setter = "set" + capitalize(field.name);
                 sb.append("                    cfg.").append(setter).append("(")
                     .append(castExpression(field, "value")).append(");\n");
