@@ -32,9 +32,10 @@ Each metric expression is run through two independent paths:
 **Path A (Fresh)**: Compiles the expression at test time via `MALClassGenerator`
 (ANTLR4 + Javassist) — same engine used at build time.
 
-**Path B (Pre-compiled)**: Takes the class the precompiler compiled from the
-generated rule registry (`CompiledRules.malExpressions()`), using expression
-text as lookup key. Closure fields
+**Path B (Pre-compiled)**: Takes the class the precompiler compiled for the rule
+through the runtime `DSL.parse`, by the coordinates `MetricConvert` passes (the
+rule file's path and the metric rule's line, stamped as upstream's loader does).
+Closure fields
 (TagFunction, ForEachFunction, PropertiesExtractor, DecorateFunction) are
 self-wired via companion classes in the `static {}` initializer — no external
 `LambdaMetafactory` wiring needed.
@@ -138,5 +139,5 @@ class NewFileTest extends MALScriptComparisonBase {
 - `precompiled-yaml-sha256.properties` — recorded SHA-256 hashes of tracked YAML files
 - `SpringMicrometerTest.java` — example of auto-discovery mode
 - `MysqlInstanceTest.java` — example of explicit input mode (tagEqual, tagMatch, multi-sample)
-- `ZabbixAgentTest.java` — example of custom YAML loading (zabbix `metrics:` format)
+- `ZabbixAgentTest.java` — example of a Zabbix rule file (`metrics:` format), loaded through `ZabbixConfigs`
 - MAL YAML files: `skywalking/oap-server/server-starter/src/main/resources/`

@@ -74,6 +74,12 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>dsl-debugging</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -17,6 +17,7 @@
 
 package org.apache.skywalking.oap.server.graalvm.rules;
 
+import java.util.List;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs;
@@ -29,4 +30,9 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs;
 public final class TalFile {
     private final String fileName;
     private final TALConfigs configs;
+    /**
+     * The modules upstream's {@code TALConfigs.requiredModulesOf} reads from the file alone: its own read of the
+     * {@code requiredModules} key, which need not be what the loader binds into {@link #configs}.
+     */
+    private final List<String> requiredModulesOf;
 }

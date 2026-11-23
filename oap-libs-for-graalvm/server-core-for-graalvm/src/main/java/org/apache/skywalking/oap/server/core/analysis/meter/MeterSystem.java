@@ -17,13 +17,8 @@
 
 package org.apache.skywalking.oap.server.core.analysis.meter;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -38,6 +33,7 @@ import org.apache.skywalking.oap.server.core.analysis.meter.function.LabeledValu
 import org.apache.skywalking.oap.server.core.analysis.metrics.Metrics;
 import org.apache.skywalking.oap.server.core.analysis.worker.MetricsStreamProcessor;
 import org.apache.skywalking.oap.server.core.storage.StorageException;
+import org.apache.skywalking.oap.server.core.storage.model.StorageManipulationOpt;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.Service;
@@ -47,63 +43,32 @@ import org.apache.skywalking.oap.server.library.module.Service;
  * Original: skywalking/oap-server/server-core/src/main/java/.../analysis/meter/MeterSystem.java
  * Repackaged into server-core-for-graalvm via maven-shade-plugin (replaces original .class in shaded JAR).
  *
- * Change: Complete rewrite. Loads @MeterFunction classes from META-INF/annotation-scan/MeterFunction.txt manifest
- * instead of Guava ClassPath.from(). Takes the meter classes the precompiler generated from the generated
- * CompiledRules registry instead of generating them with Javassist.
+ * Change: takes the @MeterFunction classes and the meter classes the precompiler generated from the generated
+ * CompiledRules registry, instead of scanning the class path with Guava ClassPath and generating the meter classes
+ * with Javassist. create is upstream's boot path (createInternal) with the class generation replaced by the registry
+ * lookup.
  * Why: Guava ClassPath scanning and Javassist runtime code generation are incompatible with GraalVM native image.
+ *
+ * Left out on purpose, as only runtime-rule (not shipped) calls them: create(String, String, ScopeType, ClassPool,
+ * ClassLoader, StorageManipulationOpt), create(String, String, ScopeType, Class, ClassPool, Class),
+ * removeMetric(String), removeMetric(String, StorageManipulationOpt), suspendDispatch(Set) and resumeDispatch(Set).
  */
 @Slf4j
 public class MeterSystem implements Service {
     private static final String METER_CLASS_PACKAGE = "org.apache.skywalking.oap.server.core.analysis.meter.dynamic.";
-    private static final String METER_FUNCTION_MANIFEST = "META-INF/annotation-scan/MeterFunction.txt";
 
     private ModuleManager manager;
     private Map<String, Class<? extends AcceptableValue>> functionRegister = new HashMap<>();
     private Map<String, MeterDefinition> meterPrototypes = new HashMap<>();
+    /**
+     * What upstream's class pool holds: the class of every metric whose creation got as far as making it, by class
+     * name, kept when the registration then fails (a failed registration only drops the prototype).
+     */
+    private Map<String, Class<?>> definedClasses = new HashMap<>();
 
-    @SuppressWarnings("unchecked")
     public MeterSystem(final ModuleManager manager) {
         this.manager = manager;
-
-        // Read from build-time manifest instead of ClassPath.from()
-        try (InputStream is = MeterSystem.class.getClassLoader().getResourceAsStream(METER_FUNCTION_MANIFEST)) {
-            if (is == null) {
-                throw new UnexpectedException(
-                    "MeterFunction manifest not found: " + METER_FUNCTION_MANIFEST);
-            }
-            try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty()) {
-                        continue;
-                    }
-                    String[] parts = line.split("=", 2);
-                    if (parts.length != 2) {
-                        log.warn("Invalid MeterFunction manifest line: {}", line);
-                        continue;
-                    }
-                    String functionName = parts[0];
-                    String className = parts[1];
-
-                    Class<?> functionClass = Class.forName(className);
-                    if (!AcceptableValue.class.isAssignableFrom(functionClass)) {
-                        throw new IllegalArgumentException(
-                            "Function " + functionClass.getCanonicalName()
-                                + " doesn't implement AcceptableValue.");
-                    }
-                    functionRegister.put(
-                        functionName,
-                        (Class<? extends AcceptableValue>) functionClass
-                    );
-                }
-            }
-        } catch (IOException | ClassNotFoundException e) {
-            throw new UnexpectedException("Failed to load MeterFunction manifest", e);
-        }
-
-        log.info("MeterSystem: loaded {} meter functions from manifest", functionRegister.size());
+        functionRegister.putAll(CompiledRules.meterFunctions());
     }
 
     public synchronized <T> void create(String metricsName,
@@ -137,23 +102,13 @@ public class MeterSystem implements Service {
                                         String functionName,
                                         ScopeType type,
                                         Class<T> dataType) throws IllegalArgumentException {
-        // Skip if already registered
-        if (meterPrototypes.containsKey(metricsName)) {
-            MeterDefinition existing = meterPrototypes.get(metricsName);
-            if (existing.getScopeType() != type) {
-                throw new IllegalArgumentException(
-                    metricsName + " has been defined, but scope type is different.");
-            }
-            log.info("Metric {} is already defined, so skip the metric creation.", metricsName);
-            return;
-        }
-
+        final StorageManipulationOpt opt = StorageManipulationOpt.schemaCreateIfAbsent();
         final Class<? extends AcceptableValue> meterFunction = functionRegister.get(functionName);
+
         if (meterFunction == null) {
             throw new IllegalArgumentException("Function " + functionName + " can't be found.");
         }
 
-        // Validate data type
         boolean foundDataType = false;
         String acceptance = null;
         for (final Type genericInterface : meterFunction.getGenericInterfaces()) {
@@ -182,31 +137,63 @@ public class MeterSystem implements Service {
             throw new IllegalArgumentException(
                 "Function " + functionName + " doesn't inherit from Metrics.");
         }
+        final String className = formatName(metricsName);
 
-        // The meter class the precompiler generated, from the generated rule registry
-        final String className = METER_CLASS_PACKAGE + formatName(metricsName);
-        final Class<?> generated = CompiledRules.meterClasses().get(className);
-        if (generated == null) {
-            throw new UnexpectedException(
-                "Pre-generated meter class not found: " + className
-                    + ". Ensure the precompiler generated this class at build time.");
+        final MeterDefinition existingDefinition = meterPrototypes.get(metricsName);
+        if (existingDefinition != null
+            && existingDefinition.getScopeType() == type
+            && existingDefinition.getDataType().equals(dataType)
+            && existingDefinition.getMeterPrototype().getClass().getSuperclass() == meterFunction) {
+            log.debug("Metric {} already registered with matching shape; reusing existing "
+                + "Metrics class + workers (FILTER_ONLY re-apply path).", metricsName);
+            return;
         }
+
+        // Upstream's check of its class pool, as written: after a failed registration it reads the dropped prototype
+        // and throws, so a second declaration of the metric never reaches the storage again
+        final Class<?> existingMetric = definedClasses.get(className);
+        if (existingMetric != null) {
+            if (existingMetric.getSuperclass() != meterFunction
+                || type != meterPrototypes.get(metricsName).getScopeType()) {
+                throw new IllegalArgumentException(
+                    metricsName + " has been defined, but calculate function or/are scope type is/are different.");
+            }
+            log.info("Metric {} is already defined, so skip the metric creation.", metricsName);
+            return;
+        }
+
+        // By the metric's own name: the class name lowercases it in the build's locale, which the boot's may not share
+        final Class<?> targetClass = CompiledRules.meterClasses().get(metricsName);
+        if (targetClass == null) {
+            throw new UnexpectedException("Pre-generated meter class not found for metric " + metricsName + " ("
+                + METER_CLASS_PACKAGE + className + "). Ensure the precompiler generated this class at build time.");
+        }
+        if (targetClass.getSuperclass() != meterFunction) {
+            throw new UnexpectedException("Pre-generated meter class " + targetClass.getName() + " extends "
+                + targetClass.getSuperclass().getName() + ", not the function " + functionName + " ("
+                + meterFunction.getName() + ") this creation asks for.");
+        }
+        // Where upstream makes the class in its pool
+        definedClasses.put(className, targetClass);
         try {
-            @SuppressWarnings("unchecked")
-            Class<? extends Metrics> targetClass = (Class<? extends Metrics>) generated;
             AcceptableValue prototype = (AcceptableValue) targetClass.getDeclaredConstructor().newInstance();
             meterPrototypes.put(metricsName, new MeterDefinition(type, prototype, dataType));
 
-            log.debug("Loaded pre-generated meter class: {}", className);
+            log.debug("Generate metrics class, " + targetClass.getName());
 
             MetricsStreamProcessor.getInstance().create(
                 manager,
                 new StreamDefinition(
                     metricsName, type.getScopeId(), prototype.builder(), MetricsStreamProcessor.class),
-                targetClass
+                (Class<? extends Metrics>) targetClass,
+                opt
             );
-        } catch (StorageException | ReflectiveOperationException e) {
-            log.error("Can't load/init pre-generated meter class: {}", className, e);
+            if (opt.hasShapeMismatch()) {
+                meterPrototypes.remove(metricsName);
+            }
+        } catch (ReflectiveOperationException | StorageException e) {
+            log.error("Can't compile/load/init " + className + ".", e);
+            meterPrototypes.remove(metricsName);
             throw new UnexpectedException(e.getMessage(), e);
         }
     }
@@ -218,7 +205,10 @@ public class MeterSystem implements Service {
      * @param maxLabels   the most label sets one row holds; 0 or less for no limit
      */
     public void limitLabels(final String metricsName, final int maxLabels) {
-        LabeledValueLimits.register(METER_CLASS_PACKAGE + formatName(metricsName), maxLabels);
+        // The class the metric was created with, named as the build named it
+        final Class<?> recorded = CompiledRules.meterClasses().get(metricsName);
+        LabeledValueLimits.register(
+            recorded != null ? recorded.getName() : METER_CLASS_PACKAGE + formatName(metricsName), maxLabels);
     }
 
     public <T> AcceptableValue<T> buildMetrics(String metricsName,

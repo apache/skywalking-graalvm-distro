@@ -52,6 +52,7 @@ import org.apache.skywalking.oap.server.core.source.ISource;
 import org.apache.skywalking.oap.server.core.source.NetworkAddressAliasSetup;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
 import org.apache.skywalking.oap.server.core.trace.SpanMetadata;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.apache.skywalking.oap.server.receiver.otel.otlp.OTLPValues;
@@ -203,9 +204,16 @@ class TALRecordedTraceComparisonTest {
     private List<String> run(final Loader loader) throws Exception {
         traffic.clear();
         final Run path = new Run();
-        // By layer, in file order, as SpanFilterListener.Factory keys them.
+        // By layer, in file order, as SpanFilterListener.Factory keys the talFiles rules; nativeTalFiles run apart
+        // (NativeTALComparisonTest).
+        final TraceAnalyzerModuleConfig activeFiles = new TraceAnalyzerModuleConfig();
+        activeFiles.setTalFiles(CompiledRules.activation().get("trace-analyzer.default.talFiles"));
+        final List<String> talFiles = activeFiles.talFiles();
         final Map<String, Map<String, Bound>> byLayer = new LinkedHashMap<>();
         for (final TALConfig rule : TALTestSupport.precompiledRules()) {
+            if (!talFiles.contains(TALTestSupport.stemOf(TALTestSupport.fileOf(rule)))) {
+                continue;
+            }
             byLayer.computeIfAbsent(rule.getLayer(), layer -> new LinkedHashMap<>())
                    .put(rule.getName(), new Bound(rule.getName(), loader.load(path, rule),
                        TALTestSupport.inputProvider(TALTestSupport.inputTypeOf(rule.getInputType()))));

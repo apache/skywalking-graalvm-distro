@@ -33,6 +33,7 @@ header:
   paths-ignore:
     - 'skywalking/**'
     - '.mvn/**'
+    - '.agents/**'
     - '**/target/**'
     - '**/*.md'
     - '**/*.json'

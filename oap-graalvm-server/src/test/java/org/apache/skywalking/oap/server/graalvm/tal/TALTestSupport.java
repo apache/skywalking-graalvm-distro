@@ -19,17 +19,18 @@ package org.apache.skywalking.oap.server.graalvm.tal;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationModule;
@@ -46,6 +47,7 @@ import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
 import org.apache.skywalking.oap.server.core.dsl.DslYamlLineIndex;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.SourceReceiver;
+import org.apache.skywalking.oap.server.graalvm.CarriedRuleFiles;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleProviderHolder;
@@ -64,13 +66,7 @@ import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.AliasRegistrar;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.span.SpanPairing;
 import org.apache.skywalking.oap.trace.analyzer.v2.spi.TALSourceTypeProvider;
 import org.mockito.Mockito;
-import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.Constructor;
-import org.yaml.snakeyaml.nodes.Tag;
-import org.yaml.snakeyaml.representer.Representer;
-import org.yaml.snakeyaml.resolver.Resolver;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -86,43 +82,34 @@ final class TALTestSupport {
         Path.of(System.getProperty("user.dir")).getParent()
             .resolve("build-tools/precompiler/target/rule-resources").toString())).resolve("tal");
 
-    /**
-     * Reads every plain scalar as a string, as TAL's typed loader reads the rule fields: an unquoted ON is the layer
-     * ON, not a boolean. Null stays null, and a {@code <<} key still merges.
-     */
-    private static final Yaml STRINGS = new Yaml(
-        new Constructor(new LoaderOptions()), new Representer(new DumperOptions()), new DumperOptions(),
-        new LoaderOptions(), new Resolver() {
-            @Override
-            protected void addImplicitResolvers() {
-                addImplicitResolver(Tag.NULL, NULL, "~nN\0");
-                addImplicitResolver(Tag.NULL, EMPTY, null);
-                addImplicitResolver(Tag.MERGE, MERGE, "<");
-            }
-        });
-
     private static boolean LAYERS_REGISTERED;
 
     private TALTestSupport() {
     }
 
     /**
-     * @return the rule files under {@code tal/}, every non-hidden file as the precompiler takes them
+     * @return the rule files under {@code tal/}: every non-hidden YAML file, as the rules stager stages them
      */
     static List<String> ruleFiles() throws Exception {
         try (Stream<Path> files = Files.list(TAL_DIR)) {
             return files.filter(Files::isRegularFile)
                         .map(f -> f.getFileName().toString())
-                        .filter(name -> !name.startsWith("."))
+                        .filter(name -> !name.startsWith(".") && CarriedRuleFiles.isRuleFileName(name))
                         .sorted()
                         .collect(Collectors.toList());
         }
     }
 
     /**
-     * The file each rule {@link #precompiledRules} returned was loaded from. The stamped source name cannot be
-     * reversed: upstream appends {@code .yaml} to a name ending in neither {@code .yaml} nor {@code .yml}, so
-     * {@code custom.rules} and {@code custom.rules.yaml}, which talFiles selects apart, stamp alike.
+     * @return whether the image carries the staged file ({@link CarriedRuleFiles#isCarriedTalFile})
+     */
+    static boolean carried(final String fileName) throws Exception {
+        return CarriedRuleFiles.isCarriedTalFile(
+            CarriedRuleFiles.talConfigs(Files.readString(TAL_DIR.resolve(fileName), StandardCharsets.UTF_8)));
+    }
+
+    /**
+     * The file each rule {@link #precompiledRules} returned was loaded from, recorded as each file is loaded.
      */
     private static final Map<TALConfig, String> FILE_OF = new IdentityHashMap<>();
 
@@ -141,13 +128,13 @@ final class TALTestSupport {
     }
 
     /**
-     * @return every rule of every file, through the replacement {@code TALConfigs} (the precompiler's config-data
-     * JSON), stamped as the runtime stamps them
+     * @return every rule of every file, through the replacement {@code TALConfigs} (the rule registry), stamped as
+     * upstream's loader stamped them at build time
      */
     static List<TALConfig> precompiledRules() throws Exception {
-        // One bulk load, as SpanFilterListener.Factory loads them: the order decides which of two rules sharing a
-        // layer and a name is installed. The file each loaded set came from is found by loading the files one at a
-        // time; two files whose loaded content matches in every field are interchangeable here.
+        // One bulk load, as SpanFilterListener.Factory loads them: the order decides which rule of a layer runs first
+        // on a span. The file each loaded set came from is found by loading the files one at a time; two files whose
+        // loaded content matches in every field are interchangeable here.
         final Map<JsonNode, String> fileBySignature = new HashMap<>();
         final List<String> stems = new ArrayList<>();
         for (final String file : ruleFiles()) {
@@ -180,14 +167,28 @@ final class TALTestSupport {
     }
 
     /**
-     * @return a rule file read straight from the submodule, so the fresh path does not trust the precompiler's JSON
+     * @return the modules the staged file's {@code requiredModules} key reads as when read as upstream's
+     *     {@code TALConfigs.requiredModulesOf} reads it: untyped, each entry as {@code String.valueOf} gives it
      */
-    static Map<String, Object> fileYaml(final String fileName) throws Exception {
-        try (InputStream in = Files.newInputStream(TAL_DIR.resolve(fileName))) {
-            // A document of comments only is no mapping.
-            final Map<String, Object> yaml = STRINGS.load(in);
-            return yaml == null ? Map.of() : yaml;
+    static Set<String> requiredModulesAsRead(final String fileName) throws Exception {
+        final Set<String> modules = new LinkedHashSet<>();
+        final Object loaded = new Yaml().load(Files.readString(TAL_DIR.resolve(fileName), StandardCharsets.UTF_8));
+        if (loaded instanceof Map && ((Map<?, ?>) loaded).get("requiredModules") instanceof List) {
+            for (final Object module : (List<?>) ((Map<?, ?>) loaded).get("requiredModules")) {
+                modules.add(String.valueOf(module));
+            }
         }
+        return modules;
+    }
+
+    /**
+     * @return a staged rule file read straight from disk, so the fresh path does not trust the precompiler's JSON, bound
+     *     as upstream's loader binds it (empty for a document of comments only)
+     */
+    static TALConfigs fileConfigs(final String fileName) throws Exception {
+        final TALConfigs configs =
+            CarriedRuleFiles.talConfigs(Files.readString(TAL_DIR.resolve(fileName), StandardCharsets.UTF_8));
+        return configs == null ? new TALConfigs() : configs;
     }
 
     /**
@@ -195,28 +196,27 @@ final class TALTestSupport {
      */
     static List<Integer> entryLines(final String fileName) throws Exception {
         final String text = Files.readString(TAL_DIR.resolve(fileName), StandardCharsets.UTF_8);
-        final Object rules = fileYaml(fileName).get("rules");
+        final List<TALConfig> rules = fileConfigs(fileName).getRules();
         final DslYamlLineIndex index = DslYamlLineIndex.index(text, "rules");
         final List<Integer> lines = new ArrayList<>();
-        for (int i = 0; rules instanceof List && i < ((List<?>) rules).size(); i++) {
+        for (int i = 0; rules != null && i < rules.size(); i++) {
             lines.add(index.rule(i).getEntryLine());
         }
         return lines;
     }
 
     /**
-     * @return the raw YAML entry the rule was loaded from: same file, entry line, name and layer, so rules sharing a
-     * name across layers, or a line in flow-style YAML, are told apart
+     * @return the entry of the staged file the rule was loaded from, bound as upstream's loader binds it: same file,
+     * entry line, name and layer, so rules sharing a name across layers, or a line in flow-style YAML, are told apart
      */
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> yamlRule(final TALConfig rule) throws Exception {
+    static TALConfig fileRule(final TALConfig rule) throws Exception {
         final String file = fileOf(rule);
-        final List<Object> raw = (List<Object>) fileYaml(file).get("rules");
+        final List<TALConfig> entries = fileConfigs(file).getRules();
         final List<Integer> lines = entryLines(file);
-        for (int i = 0; i < raw.size(); i++) {
-            final Map<String, Object> entry = (Map<String, Object>) raw.get(i);
-            if (lines.get(i) == rule.getLineNo() && rule.getName().equals(entry.get("name"))
-                && Objects.equals(rule.getLayer(), entry.get("layer"))) {
+        for (int i = 0; entries != null && i < entries.size(); i++) {
+            final TALConfig entry = entries.get(i);
+            if (lines.get(i) == rule.getLineNo() && Objects.equals(rule.getName(), entry.getName())
+                && Objects.equals(rule.getLayer(), entry.getLayer())) {
                 return entry;
             }
         }
@@ -245,16 +245,16 @@ final class TALTestSupport {
         throws Exception {
         declareScopes();
         registerCompiledLayers();
-        final Map<String, Object> raw = yamlRule(rule);
-        final TALSourceTypeProvider input = inputProvider(inputTypeOf((String) raw.get("inputType")));
+        final TALConfig entry = fileRule(rule);
+        final TALSourceTypeProvider input = inputProvider(inputTypeOf(entry.getInputType()));
         final TALClassGenerator generator = new TALClassGenerator();
         generator.setInputType(input.inputType());
         generator.setInputAlias(input.alias());
         generator.setFunctionRegistry(functions);
         generator.setClassNameHint("fresh_" + rule.getName());
         generator.setSourceRef(DslSourceRef.ofRule(rule.getSourcePath(), rule.getLineNo()));
-        generator.setMetricPrefix((String) fileYaml(fileOf(rule)).get("metricPrefix"));
-        generator.setContent((String) raw.get("dsl"));
+        generator.setMetricPrefix(fileConfigs(fileOf(rule)).getMetricPrefix());
+        generator.setContent(entry.getDsl());
         return generator;
     }
 
@@ -282,7 +282,7 @@ final class TALTestSupport {
     static TalExpression freshCompile(final TALConfig rule, final MeterSystem meterSystem,
                                       final TALFunctionRegistry functions) throws Exception {
         final TALClassGenerator generator = freshGenerator(rule, functions);
-        final TalExpression expression = generator.compile((String) yamlRule(rule).get("dsl"));
+        final TalExpression expression = generator.compile(fileRule(rule).getDsl());
         generator.createMetrics(meterSystem);
         return expression;
     }

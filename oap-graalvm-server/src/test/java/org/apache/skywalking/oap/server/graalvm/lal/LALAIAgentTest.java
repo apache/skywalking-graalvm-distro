@@ -39,7 +39,7 @@ class LALAIAgentTest extends LALScriptComparisonBase {
     }
 
     @Test
-    void allAIAgentRulesPrecompiled() {
+    void allAIAgentRulesPrecompiled() throws Exception {
         assertEquals(1, RULES.size(), "ai-agent.yaml should have 1 rule");
         for (final LALConfig rule : RULES) {
             final LalExpression expr = loadPrecompiled(rule);

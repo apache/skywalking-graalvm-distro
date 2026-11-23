@@ -29,14 +29,21 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
+import org.apache.skywalking.oap.server.core.analysis.Layer;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
+import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
+import org.apache.skywalking.oap.server.library.module.ModuleManager;
+import org.apache.skywalking.oap.trace.analyzer.v2.provider.TALConfigs;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -46,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TALPrecompileTest {
     private static final String RT = "org.apache.skywalking.oap.trace.analyzer.v2.compiler.rt.";
+    private static final ModuleManager SHIPPED = Precompiler.shippedModules();
 
     @TempDir
     Path out;
@@ -71,7 +79,7 @@ class TALPrecompileTest {
 
     @Test
     void everyRuleFileIsCompiledWithItsOwnShapes() throws Exception {
-        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture");
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture", SHIPPED);
 
         Properties rules = load("tal-v2-rules.txt");
         assertRule(rules, "edge.yml", "edge-calls", RT + "edge_L" + line("edge.yml", "edge-calls") + "_edge_calls");
@@ -132,7 +140,7 @@ class TALPrecompileTest {
 
     @Test
     void everyRuleKeepsItsIdentity() throws Exception {
-        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-identity");
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-identity", SHIPPED);
 
         // Read back the way the runtime TalDSL reads it.
         final Properties rules = new Properties();
@@ -147,8 +155,9 @@ class TALPrecompileTest {
         compiled.sort(null);
         final int inlineLine = line("tal-fixture-identity", "inline.yaml", "rules: [");
         assertEquals(List.of(
-            // Upstream's stampSource names a file without a YAML extension <file>.yaml, at build time and at runtime.
-            "tal/custom.rules.yaml:" + line("tal-fixture-identity", "custom.rules", "- name: from-custom")
+            // Upstream names a rule file read from disk as it is, without a YAML extension too, at build time and at
+            // runtime.
+            "tal/custom.rules:" + line("tal-fixture-identity", "custom.rules", "- name: from-custom")
                 + "#from-custom",
             "tal/inline.yaml:" + inlineLine + "#a",
             "tal/inline.yaml:" + inlineLine + "#b",
@@ -175,15 +184,80 @@ class TALPrecompileTest {
     }
 
     @Test
+    void ofFilesSharingAStemTheOneYamlFileIsReadAsUpstreamReadsIt() throws Exception {
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-pick", SHIPPED);
+
+        final Properties rules = load("tal-v2-rules.txt");
+        assertEquals("team.yaml", rules.getProperty(prefixOf(rules, "from-team.yaml") + "file"));
+        assertThrows(AssertionError.class, () -> prefixOf(rules, "from-team.conf"), "team.conf is left");
+        // A file of layerDefinitions alone (no rules key), which upstream's loader returns nothing for, is carried:
+        // the runtime registers its layers.
+        final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
+        final List<String> files = new ArrayList<>();
+        configData.fieldNames().forEachRemaining(files::add);
+        files.sort(null);
+        assertEquals(List.of("layers.yaml", "team.yaml"), files);
+        assertEquals("FIXTURE_PICKED_LAYER", configData.at("/layers.yaml/layerDefinitions/0/name").asText());
+    }
+
+    @Test
+    void aFileWithoutRulesSharingItsNameFailsTheBuild() {
+        final Exception e = assertThrows(Exception.class,
+            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-layers-pick", SHIPPED));
+        assertTrue(e.getMessage().contains("[zone.conf, zone.yaml]") && e.getMessage().contains("holds no rule"),
+            e.getMessage());
+    }
+
+    /**
+     * A file yielding no rule is carried, as upstream's loader reads it (recording it for the rule catalog) and returns
+     * nothing for it: the boot does the same.
+     */
+    @Test
+    void aFileWithoutRulesIsCarried() throws Exception {
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-without-rules", SHIPPED);
+
+        assertEquals(new Properties(), load("tal-v2-rules.txt"));
+        final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
+        final List<String> files = new ArrayList<>();
+        configData.fieldNames().forEachRemaining(files::add);
+        files.sort(null);
+        assertEquals(List.of("comments.yaml", "prefix-only.yaml"), files);
+        assertTrue(configData.at("/comments.yaml/rules").isNull() || configData.at("/comments.yaml/rules").isMissingNode());
+        assertEquals("unused", configData.at("/prefix-only.yaml/metricPrefix").asText());
+    }
+
+    /**
+     * Whether a file without rules is carried is decided on the modules upstream's loader binds: {@code [[core]]} binds
+     * the module {@code core}, which the image ships, though requiredModulesOf's own read of the key gives {@code [core]};
+     * {@code [null]} names no module the image has.
+     */
+    @Test
+    void aFileIsCarriedOnTheModulesUpstreamsLoaderBinds() throws Exception {
+        assertEquals(Set.of("[core]"),
+            TALConfigs.requiredModulesOf("tal-fixture-nested-modules", List.of("layers")));
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-nested-modules", SHIPPED);
+
+        final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
+        assertEquals("core", configData.at("/layers.yaml/requiredModules/0").asText(), configData.toString());
+        assertEquals("FIXTURE_NESTED_MODULES_LAYER", Layer.valueOf(5106).name());
+        // A null module name is no module the image has, as upstream's module manager answers: skipped, no layer
+        assertEquals(Set.of("null"), TALConfigs.requiredModulesOf("tal-fixture-nested-modules", List.of("null-module")));
+        assertFalse(configData.has("null-module.yaml"), configData.toString());
+        assertThrows(IllegalArgumentException.class, () -> Layer.valueOf("FIXTURE_NULL_MODULE_LAYER"));
+        assertFalse(SHIPPED.has(null));
+    }
+
+    @Test
     void filesSharingAStemFailTheBuild() {
         final Exception e = assertThrows(Exception.class,
-            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-dup-stem"));
+            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-dup-stem", SHIPPED));
         assertTrue(e.getMessage().contains("team.yaml") && e.getMessage().contains("team.yml"), e.getMessage());
     }
 
     @Test
     void aNativeRuleIsCompiledAgainstTheNativeInputsFunctions() throws Exception {
-        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-native");
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-native",
+            Precompiler.modules(Set.of("fixture-module")));
 
         final Properties rules = load("tal-v2-rules.txt");
         final String rule = prefixOf(rules, "native-alias");
@@ -195,23 +269,65 @@ class TALPrecompileTest {
             "a helper class the otlp input binds first is keyed by the class and the alias: " + keys);
         assertTrue(Files.readAllLines(out.resolve("META-INF/tal-io-classes.txt"))
                         .contains("org.apache.skywalking.apm.network.language.agent.v3.SpanObject"));
-        // Every file compiles at build time; the runtime TALConfigs skips it while a listed module is not loaded.
         final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
         assertEquals("fixture-module", configData.at("/native.yaml/requiredModules/0").asText());
     }
 
     @Test
+    void aFileRequiringAModuleTheImageDoesNotShipIsNotCompiled() throws Exception {
+        // Upstream's boot never loads it: no layer registers, no rule compiles, no metric is created.
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-native", SHIPPED);
+
+        assertEquals(new Properties(), load("tal-v2-rules.txt"));
+        assertEquals(List.of(), Files.readAllLines(out.resolve("META-INF/tal-meter-classes.txt")));
+        final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
+        assertEquals(0, configData.size());
+    }
+
+    @Test
+    void aLayerOnlyAFileOfAModuleNotShippedDeclaresFailsTheBuild() {
+        final Exception e = assertThrows(Exception.class,
+            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-unshipped-layer", SHIPPED));
+        assertTrue(e.getMessage().contains("FIXTURE_UNSHIPPED_LAYER") && e.getMessage().contains("not registered"),
+            e.getMessage());
+    }
+
+    @Test
+    void twoRulesOnOneLineAlikeInEverythingTheClassIsCompiledFromRunOneClass() throws Exception {
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-twins", SHIPPED);
+
+        final Properties rules = load("tal-v2-rules.txt");
+        assertEquals("twin", rules.getProperty("rule.0.name"));
+        assertNull(rules.getProperty("rule.1.name"), "the second rule runs the class of the first");
+        assertEquals(1, Files.readAllLines(out.resolve("META-INF/tal-v2-classes.txt")).size());
+    }
+
+    @Test
     void aFunctionOfAnotherInputFailsTheBuild() {
         final Exception e = assertThrows(Exception.class,
-            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-wrong-input"));
+            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-wrong-input", SHIPPED));
         assertTrue(rootMessage(e).contains("segmentLatency"), rootMessage(e));
     }
 
     @Test
     void aRuleWithoutLayerFailsTheBuild() {
         final Exception e = assertThrows(Exception.class,
-            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-no-layer"));
+            () -> Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-no-layer", SHIPPED));
         assertTrue(e.getMessage().contains("declares no layer"), e.getMessage());
+    }
+
+    @Test
+    void aRuleIsKeyedByTheSourceRefTheBootLooksItUpBy() throws Exception {
+        Precompiler.compileTAL(out.toString(), meterSystem, "tal-fixture-unresolved-line", SHIPPED);
+
+        // Upstream's loader stamps no line on a rule a merge key brings in; the boot's DslSourceRef marks it unresolved.
+        final JsonNode configData = new ObjectMapper().readTree(out.resolve("META-INF/config-data/tal.json").toFile());
+        assertEquals(0, configData.at("/merged.yaml/rules/0/lineNo").asInt());
+        final Properties rules = load("tal-v2-rules.txt");
+        final String merged = prefixOf(rules, "merged");
+        final DslSourceRef bootRef = DslSourceRef.ofRule("tal/merged.yaml", 0);
+        assertEquals(bootRef.getYamlFile(), rules.getProperty(merged + "source"));
+        assertEquals(String.valueOf(bootRef.getYamlLine()), rules.getProperty(merged + "line"));
     }
 
     private Properties load(final String manifest) throws Exception {

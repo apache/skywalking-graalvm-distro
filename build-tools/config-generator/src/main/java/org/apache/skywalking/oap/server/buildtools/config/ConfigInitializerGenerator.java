@@ -23,10 +23,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
 import org.apache.skywalking.oap.server.buildtools.common.ProviderDiscovery;
 import org.apache.skywalking.oap.server.library.module.ModuleConfig;
@@ -37,30 +41,43 @@ import org.apache.skywalking.oap.server.library.module.ModuleProvider;
  * providers (via SPI + AcceptedModules filter) and generates a same-FQCN
  * replacement for YamlConfigLoaderUtils.
  *
- * <p>The generated class dispatches copyProperties() by config type, using
- * Lombok-generated setters for all fields. No VarHandle, no reflection fallback.
- * All config classes must have @Setter (class-level or per-field) via the
- * *-for-graalvm repackaged modules.
+ * <p>The generated class dispatches copyProperties() by config type. A non-final field is set through its
+ * Lombok-generated setter, the value checked and converted as upstream's Field.set does (ConfigFieldValues); all
+ * config classes must have @Setter (class-level or per-field) via the *-for-graalvm repackaged modules. A final field,
+ * or a static one, which no setter writes, is written through Field.set itself, as upstream writes it
+ * (ConfigFieldValues.setByField).
  *
  * <p>Usage: {@code mvn -pl build-tools/config-generator exec:java
  *   -Dexec.args="<output-path> [manifest-path]"}
  *
- * <p>When manifest-path is provided, writes a module-config-classes.txt file
- * listing all discovered config class FQCNs (one per line) for the precompiler's
- * reflect-config.json generation.
+ * <p>When manifest-path is provided, writes a module-config-classes.txt file listing all discovered config class
+ * FQCNs (one per line), and module-config-field-set.txt next to it listing every field the loader writes through
+ * Field.set, for the precompiler's reflect-config.json generation (a final instance field writable).
  */
 public class ConfigInitializerGenerator {
 
-    // Provider discovery is now done via ServiceLoader + AcceptedModules filter.
-    // See build-tools/build-common for the accepted module+provider name list.
-    // Nested config classes (e.g., BanyanDB inner classes) are discovered
-    // automatically by scanning declared inner classes of ModuleConfig types.
+    /**
+     * @param owner the declaring class's name, as {@code Field.set} names a field it refuses a value for
+     */
+    record FieldInfo(String name, Class<?> type, boolean isFinal, boolean isStatic, String owner) {
+        /**
+         * @return whether no setter writes the field, so the loader goes through Field.set, as upstream
+         */
+        boolean isSetByField() {
+            return isFinal || isStatic;
+        }
 
-    record FieldInfo(String name, Class<?> type, boolean isFinal) {
     }
 
     record ConfigClassInfo(Class<?> configClass, String simpleName, List<FieldInfo> fields) {
     }
+
+    /**
+     * Written next to the config class manifest: every field the loader writes through Field.set (final or static, on a
+     * config class or a superclass up to ModuleConfig), as {@code declaringClass#field}, then {@code static} and
+     * {@code final} where they apply.
+     */
+    static final String SET_BY_FIELD_MANIFEST = "module-config-field-set.txt";
 
     public static void main(String[] args) throws Exception {
         String outputPath = args.length > 0 ? args[0] : null;
@@ -69,6 +86,7 @@ public class ConfigInitializerGenerator {
         Map<String, ConfigClassInfo> configClasses = new LinkedHashMap<>();
         discoverProviderConfigs(configClasses);
         discoverNestedConfigs(configClasses);
+        configClasses = ordered(configClasses);
 
         System.out.println("=== Config Classes Found ===");
         for (var entry : configClasses.entrySet()) {
@@ -77,9 +95,6 @@ public class ConfigInitializerGenerator {
             for (FieldInfo f : info.fields) {
                 System.out.printf("    %-40s %-20s final=%s%n",
                     f.name, f.type.getSimpleName(), f.isFinal);
-                if (f.isFinal && !List.class.isAssignableFrom(f.type) && !Map.class.isAssignableFrom(f.type)) {
-                    System.out.printf("      WARN: final non-collection field '%s' — will be skipped%n", f.name);
-                }
             }
         }
 
@@ -101,11 +116,44 @@ public class ConfigInitializerGenerator {
                 Files.write(manifest, configClassNames, StandardCharsets.UTF_8);
                 System.out.println("Generated manifest: " + manifest.toAbsolutePath()
                     + " (" + configClassNames.size() + " config classes)");
+                // Every field the loader reaches through Field.set, which the native image finds only when registered,
+                // and writes, when final, only when registered as writable; the precompiler, whose class path lacks
+                // some config classes, registers them from this list
+                List<String> setByField = configClasses.values().stream()
+                    .flatMap(info -> info.fields.stream())
+                    .filter(FieldInfo::isSetByField)
+                    .map(f -> f.owner() + "#" + f.name() + (f.isStatic() ? " static" : "") + (f.isFinal() ? " final" : ""))
+                    .distinct().sorted().toList();
+                Path setByFieldManifest = manifest.resolveSibling(SET_BY_FIELD_MANIFEST);
+                Files.write(setByFieldManifest, setByField, StandardCharsets.UTF_8);
+                System.out.println("Generated manifest: " + setByFieldManifest.toAbsolutePath()
+                    + " (" + setByField.size() + " fields set through Field.set)");
             }
         } else {
             System.out.println("\n=== Generated YamlConfigLoaderUtils.java ===");
             System.out.println(generated);
         }
+    }
+
+    /**
+     * Classpath order would otherwise decide the output. A subclass goes before its superclass, so the instanceof
+     * dispatch reaches the most specific branch; then by name.
+     */
+    private static Map<String, ConfigClassInfo> ordered(Map<String, ConfigClassInfo> discovered) {
+        Map<String, ConfigClassInfo> ordered = new LinkedHashMap<>();
+        discovered.values().stream()
+                  .sorted(Comparator.comparingInt((ConfigClassInfo info) -> -inheritanceDepth(info.configClass()))
+                                    .thenComparing(info -> info.configClass().getName()))
+                  .forEach(info -> ordered.put(info.configClass().getName(), info));
+        return ordered;
+    }
+
+    private static int inheritanceDepth(Class<?> type) {
+        int depth = 0;
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            depth++;
+        }
+        return depth;
     }
 
     private static void discoverProviderConfigs(Map<String, ConfigClassInfo> configClasses) {
@@ -125,7 +173,7 @@ public class ConfigInitializerGenerator {
                     configClasses.put(configType.getName(), analyzeConfigClass(configType));
                 }
             } catch (Exception e) {
-                System.err.println("  ERROR scanning " + provider.getClass().getName() + ": " + e.getMessage());
+                throw new IllegalStateException("Cannot read the config type of " + provider.getClass().getName(), e);
             }
         }
     }
@@ -154,15 +202,20 @@ public class ConfigInitializerGenerator {
 
     static ConfigClassInfo analyzeConfigClass(Class<?> configClass) {
         List<FieldInfo> fields = new ArrayList<>();
+        Set<String> names = new HashSet<>();
         Class<?> clazz = configClass;
-        // Walk up to ModuleConfig (exclusive) or Object
+        // Walk up to ModuleConfig (exclusive, it declares none) or Object, as upstream's getDeclaredField looks a key
+        // up: every field, a static one too, the subclass's first.
         while (clazz != null && clazz != ModuleConfig.class && clazz != Object.class) {
-            for (Field field : clazz.getDeclaredFields()) {
-                if (Modifier.isStatic(field.getModifiers())) {
+            // By name: getDeclaredFields() has no specified order, and the output must not vary.
+            Field[] declared = clazz.getDeclaredFields();
+            Arrays.sort(declared, Comparator.comparing(Field::getName));
+            for (Field field : declared) {
+                if (field.isSynthetic() || !names.add(field.getName())) {
                     continue;
                 }
-                boolean isFinal = Modifier.isFinal(field.getModifiers());
-                fields.add(new FieldInfo(field.getName(), field.getType(), isFinal));
+                fields.add(new FieldInfo(field.getName(), field.getType(), Modifier.isFinal(field.getModifiers()),
+                    Modifier.isStatic(field.getModifiers()), clazz.getName()));
             }
             clazz = clazz.getSuperclass();
         }
@@ -189,6 +242,7 @@ public class ConfigInitializerGenerator {
             import java.util.Map;
             import java.util.Properties;
             import lombok.extern.slf4j.Slf4j;
+            import org.apache.skywalking.oap.server.graalvm.ConfigFieldValues;
             import org.yaml.snakeyaml.Yaml;
 
             """);
@@ -205,8 +259,8 @@ public class ConfigInitializerGenerator {
                 imports.put(fqcn, fqcn);
             }
             for (FieldInfo field : entry.getValue().fields) {
-                // Only import types used in cast expressions (non-final fields or final collections)
-                if (field.isFinal && !List.class.isAssignableFrom(field.type)) {
+                // Only import types used in cast expressions (fields set through their setters)
+                if (field.isSetByField()) {
                     continue;
                 }
                 Class<?> fieldType = field.type;
@@ -237,8 +291,10 @@ public class ConfigInitializerGenerator {
              * Lives in oap-graalvm-server (not in library-util-for-graalvm) because it imports config types from
              * 30+ upstream modules. The original .class is excluded from library-util-for-graalvm via shade filter.
              *
-             * <p>Change: Complete rewrite. Uses type-dispatch with Lombok @Setter methods to set ModuleConfig fields.
-             * No reflection (Field.setAccessible + field.set), no VarHandle. Reports error for unknown config types.
+             * <p>Change: Complete rewrite. Uses type-dispatch with Lombok @Setter methods to set ModuleConfig fields,
+             * converting each value as Field.set does (a primitive widening to the field's type, nothing narrowing).
+             * A final or static field, which no setter writes, is written through Field.set as upstream (a final
+             * instance field registered for writing in reflect-config.json). Reports error for unknown config types.
              * <p>Why: Field.setAccessible is incompatible with GraalVM native image without reflect-config.json for every field.
              *
              * <p>Generated by: build-tools/config-generator
@@ -319,9 +375,14 @@ public class ConfigInitializerGenerator {
             }
             if (info.fields.isEmpty()) {
                 // Empty config still reaches copyProperties() (its provider returns a non-null
-                // ConfigCreator), so it needs a branch or it hits the "unknown type" throw.
-                sb.append("            // ").append(info.simpleName)
-                    .append(" has no configurable fields; nothing to copy.\n");
+                // ConfigCreator), so it needs a branch or it hits the "unknown type" throw. Every key
+                // given is one it does not have: upstream warns about each.
+                sb.append("            // ").append(info.simpleName).append(" has no configurable fields.\n");
+                sb.append("            final Enumeration<?> propertyNames = src.propertyNames();\n");
+                sb.append("            while (propertyNames.hasMoreElements()) {\n");
+                sb.append("                log.warn(\"{} setting is not supported in {} provider of {} module\",\n");
+                sb.append("                    propertyNames.nextElement(), providerName, moduleName);\n");
+                sb.append("            }\n");
             } else {
                 sb.append("            copyTo").append(methodSuffix(info))
                     .append("((").append(typeRef).append(") dest, src, moduleName, providerName);\n");
@@ -335,7 +396,7 @@ public class ConfigInitializerGenerator {
         sb.append("            throw new IllegalArgumentException(\"Unknown config type: \"\n");
         sb.append("                + dest.getClass().getName()\n");
         sb.append("                + \" in \" + providerName + \" provider of \" + moduleName + \" module.\"\n");
-        sb.append("                + \" Add it to ConfigInitializerGenerator and regenerate.\");\n");
+        sb.append("                + \" Add its provider to AcceptedModules and regenerate this class.\");\n");
         sb.append("        }\n");
         sb.append("    }\n\n");
     }
@@ -348,31 +409,27 @@ public class ConfigInitializerGenerator {
         sb.append("    @SuppressWarnings(\"unchecked\")\n");
         sb.append("    private static void copyTo").append(methodSuffix(info)).append("(\n");
         sb.append("            final ").append(typeRef).append(" cfg, final Properties src,\n");
-        sb.append("            final String moduleName, final String providerName) {\n");
+        sb.append("            final String moduleName, final String providerName) throws IllegalAccessException {\n");
         sb.append("        final Enumeration<?> propertyNames = src.propertyNames();\n");
         sb.append("        while (propertyNames.hasMoreElements()) {\n");
         sb.append("            final String key = (String) propertyNames.nextElement();\n");
         sb.append("            final Object value = src.get(key);\n");
-        sb.append("            log.debug(\"{}.{} config: {} = {}\", moduleName, providerName, key, value);\n");
         sb.append("            switch (key) {\n");
 
         for (FieldInfo field : info.fields) {
             sb.append("                case \"").append(field.name).append("\":\n");
-            if (field.isFinal && List.class.isAssignableFrom(field.type)) {
-                // Final list — mutate in place via getter
-                String getter = "get" + capitalize(field.name);
-                sb.append("                    cfg.").append(getter).append("().clear();\n");
-                sb.append("                    cfg.").append(getter).append("().addAll((List) value);\n");
-            } else if (field.isFinal) {
-                // Final non-collection — cannot be set, log warning
-                sb.append("                    log.warn(\"Cannot set final field '").append(field.name)
-                    .append("' in {} provider of {} module\", providerName, moduleName);\n");
+            if (field.isSetByField()) {
+                // No setter writes a final or static field: Field.set does, as upstream, which takes a final field's
+                // own list back unchanged, a null too, refuses a value of another type with its own exception, and a
+                // static final field with IllegalAccessException
+                sb.append("                    ConfigFieldValues.setByField(cfg, \"").append(field.name)
+                    .append("\", value);\n");
             } else {
                 // Non-final field — use setter. The for-graalvm modules add @Setter;
                 // javac in oap-graalvm-server catches missing setters at compile time.
                 String setter = "set" + capitalize(field.name);
                 sb.append("                    cfg.").append(setter).append("(")
-                    .append(castExpression(field.type, "value")).append(");\n");
+                    .append(castExpression(field, "value")).append(");\n");
             }
             sb.append("                    break;\n");
         }
@@ -399,15 +456,20 @@ public class ConfigInitializerGenerator {
         return clazz.getSimpleName();
     }
 
-    private static String castExpression(Class<?> type, String varName) {
-        if (type == int.class) return "((Number) " + varName + ").intValue()";
-        if (type == long.class) return "((Number) " + varName + ").longValue()";
-        if (type == boolean.class) return "(boolean) " + varName;
-        if (type == double.class) return "((Number) " + varName + ").doubleValue()";
-        if (type == float.class) return "((Number) " + varName + ").floatValue()";
-        if (type == String.class) return "(String) " + varName;
-        return "(" + javaClassRef(type) + ") " + varName;
+    /**
+     * The value converted as upstream's {@code Field.set} converts it: a primitive field takes its wrapper or a value of
+     * a primitive type that widens to it, a reference field an instance of its type or null; anything else is refused
+     * with {@code Field.set}'s {@code IllegalArgumentException}.
+     */
+    private static String castExpression(FieldInfo field, String varName) {
+        final Class<?> type = field.type();
+        final String name = "\"" + field.owner() + "." + field.name() + "\"";
+        if (type.isPrimitive()) {
+            return "ConfigFieldValues." + type.getName() + "Value(" + varName + ", " + name + ")";
+        }
+        return "ConfigFieldValues.referenceValue(" + varName + ", " + javaClassRef(type) + ".class, " + name + ")";
     }
+
 
     private static final String LICENSE_HEADER = """
         /*

@@ -17,11 +17,13 @@
 
 package org.apache.skywalking.oap.server.buildtools.common;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Single source of truth for accepted module + provider pairs in this distro: the upstream providers it ships, which
@@ -112,6 +114,23 @@ public final class AcceptedModules {
         // module only flips gates at runtime. runtime-rule stays out (needs runtime codegen).
         new ModuleProviderPair("dsl-debugging", "default")
     );
+
+    /**
+     * The distro's own modules, which the image ships besides the accepted upstream ones: the stand-in for upstream's
+     * runtime-rule, under a name of its own.
+     */
+    public static final List<String> DISTRO_MODULES = List.of("graalvm-unsupported-admin");
+
+    /**
+     * @return the name of every module the image carries a provider of: what upstream's boot can load, and so what a
+     *     rule file's {@code requiredModules} can find; by name, and asked for any name as upstream's hash-map-backed
+     *     {@code ModuleManager.has} is (a null one is not shipped)
+     */
+    public static Set<String> shippedModuleNames() {
+        final Set<String> names = new TreeSet<>(DISTRO_MODULES);
+        ACCEPTED.forEach(pair -> names.add(pair.moduleName()));
+        return Collections.unmodifiableSet(new LinkedHashSet<>(names));
+    }
 
     /**
      * Returns accepted provider names grouped by module name.

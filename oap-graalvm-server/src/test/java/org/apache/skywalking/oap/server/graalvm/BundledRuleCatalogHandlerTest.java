@@ -22,9 +22,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import org.apache.skywalking.oap.server.graalvm.admin.BootRuleLoads;
 import org.apache.skywalking.oap.server.graalvm.admin.BundledRuleCatalogHandler;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleCatalog;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,22 +38,52 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The read-only rule catalog must expose every bundled rule the precompiler compiled, in the
- * payload shapes upstream's runtime-rule read routes use (Horizon and swctl parse them).
+ * The read-only rule catalog must expose every bundled rule a boot that loads every module loaded, in the payload
+ * shapes upstream's runtime-rule read routes use (Horizon and swctl parse them).
  */
 class BundledRuleCatalogHandlerTest {
     private final BundledRuleCatalogHandler handler = new BundledRuleCatalogHandler();
 
+    @BeforeAll
+    static void bootWithEveryModule() throws Exception {
+        BootRuleLoads.bootWith(Set.of(RuleCatalog.values()));
+    }
+
     @Test
-    void listIsAnEmptyEnvelope() {
+    void listHoldsEveryBundledRuleAsBundled() {
         AggregatedHttpResponse res = handler.list("").aggregate().join();
         assertEquals(200, res.status().code());
         JsonObject env = JsonParser.parseString(res.contentUtf8()).getAsJsonObject();
         assertTrue(env.get("generatedAt").getAsLong() > 0);
         assertEquals(0, env.getAsJsonObject("loaderStats").get("active").getAsInt());
-        assertEquals(0, env.getAsJsonArray("rules").size());
+        List<String> listed = new ArrayList<>();
+        for (JsonElement e : env.getAsJsonArray("rules")) {
+            JsonObject row = e.getAsJsonObject();
+            assertEquals("BUNDLED", row.get("status").getAsString());
+            assertEquals("RUNNING", row.get("localState").getAsString());
+            assertEquals(row.get("contentHash").getAsString(), row.get("bundledContentHash").getAsString());
+            listed.add(row.get("catalog").getAsString() + ":" + row.get("name").getAsString());
+        }
+        assertTrue(listed.contains("otel-rules:vm") && listed.contains("lal:default"), listed.toString());
+        // Bundled, as its loader reads and records it, but upstream's runtime-rule module claims no file without a
+        // named metric rule
+        assertTrue(names("log-mal-rules").contains("placeholder"));
+        assertFalse(listed.contains("log-mal-rules:placeholder"));
+        JsonObject lal = JsonParser.parseString(handler.list("lal").aggregate().join().contentUtf8())
+                                   .getAsJsonObject();
+        assertEquals(listed.stream().filter(rule -> rule.startsWith("lal:")).count(),
+            lal.getAsJsonArray("rules").size());
 
         assertEquals(400, handler.list("no-such-catalog").aggregate().join().status().code());
+    }
+
+    @Test
+    void statusFindsNoApply() {
+        AggregatedHttpResponse res = handler.applyStatus().aggregate().join();
+        assertEquals(200, res.status().code());
+        JsonObject status = JsonParser.parseString(res.contentUtf8()).getAsJsonObject();
+        assertFalse(status.get("found").getAsBoolean());
+        assertEquals("UNKNOWN", status.get("phase").getAsString());
     }
 
     @Test
@@ -76,7 +111,10 @@ class BundledRuleCatalogHandlerTest {
             handler.listBundled("lal", "false").aggregate().join().contentUtf8()).getAsJsonArray();
         assertFalse(bare.get(0).getAsJsonObject().has("content"));
 
-        assertEquals(400, handler.listBundled("oal", "true").aggregate().join().status().code());
+        AggregatedHttpResponse oal = handler.listBundled("oal", "true").aggregate().join();
+        assertEquals(200, oal.status().code(), "oal is one of upstream's catalogs, with no bundled rule here");
+        assertEquals(0, JsonParser.parseString(oal.contentUtf8()).getAsJsonArray().size());
+        assertEquals(400, handler.listBundled("tal", "true").aggregate().join().status().code());
     }
 
     @Test
@@ -105,6 +143,15 @@ class BundledRuleCatalogHandlerTest {
         assertEquals("not_found",
             JsonParser.parseString(missing.contentUtf8()).getAsJsonObject().get("applyStatus").getAsString());
         assertEquals(400, handler.get("lal", "default", "weird", "", "").aggregate().join().status().code());
+        assertEquals("missing_name", applyStatus(handler.get("lal", "", "", "", "")));
+        assertEquals("invalid_name", applyStatus(handler.get("lal", "../default", "", "", "")));
+        assertEquals("invalid_catalog", applyStatus(handler.get("oal", "core", "", "", "")));
+    }
+
+    private static String applyStatus(final HttpResponse response) {
+        AggregatedHttpResponse res = response.aggregate().join();
+        assertEquals(400, res.status().code());
+        return JsonParser.parseString(res.contentUtf8()).getAsJsonObject().get("applyStatus").getAsString();
     }
 
     private List<String> names(final String catalog) {

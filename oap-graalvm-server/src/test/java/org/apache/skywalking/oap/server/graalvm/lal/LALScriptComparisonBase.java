@@ -18,27 +18,22 @@
 package org.apache.skywalking.oap.server.graalvm.lal;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfigs;
-import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.apache.skywalking.oap.server.graalvm.rules.LalRule;
 
 import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Base class for LAL v2 pre-compilation tests.
- *
- * <p>Verifies that pre-compiled LAL classes from the build-time manifest
- * can be loaded and instantiated. With v2, both fresh compilation and
- * pre-compilation use the same ANTLR4+Javassist engine, so the main
- * verification is that the precompiler correctly captured all classes.
+ * Base class for the LAL pre-compilation tests: every rule of a bundled file has its class in the rule registry,
+ * where the runtime DSL looks it up, and it instantiates.
  */
 abstract class LALScriptComparisonBase {
+    private static boolean LAYERS_REGISTERED;
+
     /**
      * Load LAL rules from a YAML file under the lal/ resource directory.
      */
@@ -55,34 +50,25 @@ abstract class LALScriptComparisonBase {
     }
 
     /**
-     * Load the pre-compiled LalExpression for a rule by the same source coordinates the runtime
-     * DSL replacement uses ({@code sourcePath:lineNo} in the generated rule registry), falling back to
-     * the rule name. Rule names repeat across files (network-profiling-slow-trace), so the
-     * coordinates are what disambiguate.
+     * The pre-compiled LalExpression of a rule, found as the runtime DSL finds it: among the classes compiled at the
+     * coordinates of the DslSourceRef upstream builds for the rule, the one of its name, DSL text and the input and
+     * output types upstream's boot resolves for it.
      */
-    protected static LalExpression loadPrecompiled(final LALConfig rule) {
-        final Map<String, LalRule> rules = loadRegistry();
-        LalRule compiled = rules.get(rule.getSourcePath() + ":" + rule.getLineNo());
-        if (compiled == null) {
-            compiled = rules.get("name:" + rule.getName());
-        }
-        assertNotNull(compiled, "Pre-compiled LAL expression not found for rule: " + rule.getName());
+    protected static LalExpression loadPrecompiled(final LALConfig rule) throws Exception {
+        registerLayers();
+        final LalRule compiled = UpstreamLalBoot.compiledRule(rule);
+        assertNotNull(compiled, "Pre-compiled LAL expression not found for rule " + rule.getName() + " ("
+            + rule.getSourcePath() + ":" + rule.getLineNo() + ")");
         return compiled.getExpression().get();
     }
 
-    protected static LalExpression loadPrecompiled(final String ruleName) {
-        final LalRule compiled = loadRegistry().get("name:" + ruleName);
-        assertNotNull(compiled, "Pre-compiled LAL expression not found for rule: " + ruleName);
-        return compiled.getExpression().get();
-    }
-
-    /** Keys: {@code <sourcePath>:<line>} and {@code name:<ruleName>} (first occurrence). */
-    protected static Map<String, LalRule> loadRegistry() {
-        final Map<String, LalRule> map = new HashMap<>();
-        for (final LalRule rule : CompiledRules.lalRules()) {
-            map.put(rule.getSource() + ":" + rule.getLine(), rule);
-            map.putIfAbsent("name:" + rule.getName(), rule);
+    /**
+     * The layers the image registers, so a rule's layer resolves to its source type provider as at boot.
+     */
+    private static synchronized void registerLayers() throws Exception {
+        if (!LAYERS_REGISTERED) {
+            UpstreamLalBoot.registerLayers();
+            LAYERS_REGISTERED = true;
         }
-        return map;
     }
 }

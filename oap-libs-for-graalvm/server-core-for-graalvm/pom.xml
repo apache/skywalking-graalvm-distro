@@ -80,7 +80,6 @@
                                 <exclude>org/apache/skywalking/oap/server/core/analysis/meter/MeterSystem$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/config/HierarchyDefinitionService.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/config/HierarchyDefinitionService$*.class</exclude>
-                                <exclude>org/apache/skywalking/oap/server/core/hierarchy/HierarchyService.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/analysis/LayerExtensionLoader.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/analysis/LayerExtensionLoader$*.class</exclude>
                                 <exclude>org/apache/skywalking/oap/server/core/logging/LoggingConfigWatcher.class</exclude>

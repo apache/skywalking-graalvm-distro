@@ -127,9 +127,12 @@ The `oap-native/` directory contains:
 ```
 oap-native/
 ├── oap-server          # ~203MB native binary
-├── config/             # application.yml, alarm-settings.yml, ui-templates, etc.
-└── log4j2.xml          # Console-only logging (no RollingFile)
+├── config/             # application.yml, alarm-settings.yml, log4j2.xml (console-only), etc.
+└── compiled-rules/     # the rule files the image was compiled from (not read at runtime)
 ```
+
+The binary reads its configuration from the `config/` directory next to it, whatever the working directory, and from
+nothing else: without that directory it fails at once.
 
 ### Cross-Compiling for Linux on macOS
 

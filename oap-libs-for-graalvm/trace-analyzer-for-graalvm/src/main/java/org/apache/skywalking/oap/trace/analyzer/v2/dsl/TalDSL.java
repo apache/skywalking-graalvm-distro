@@ -26,6 +26,8 @@ import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javassist.ClassPool;
 import lombok.AccessLevel;
@@ -34,14 +36,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.core.CoreModule;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterSystem;
-import org.apache.skywalking.oap.server.core.analysis.meter.ScopeType;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
+import org.apache.skywalking.oap.server.core.source.TALFunctionProvider;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.TalMetrics;
 import org.apache.skywalking.oap.server.graalvm.rules.TalRule;
 import org.apache.skywalking.oap.server.library.module.ModuleManager;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALFunctionRegistry;
-import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricDeclaration;
 import org.apache.skywalking.oap.trace.analyzer.v2.compiler.TALMetricShapes;
 import org.apache.skywalking.oap.trace.analyzer.v2.dsl.spec.FilterSpec;
 import org.apache.skywalking.oap.trace.analyzer.v2.provider.TraceAnalyzerModuleConfig;
@@ -109,37 +111,46 @@ public class TalDSL {
             metricShapes.claim(sourceRef + "#" + ruleName, rule.getMetrics());
             final MeterSystem meterSystem =
                 moduleManager.find(CoreModule.NAME).provider().getService(MeterSystem.class);
-            for (final TALMetricDeclaration declaration : rule.getMetrics()) {
-                meterSystem.create(
-                    declaration.fullName, declaration.function, ScopeType.valueOf(declaration.scopeType));
-                if (declaration.labelLimit > 0) {
-                    meterSystem.limitLabels(declaration.fullName, declaration.labelLimit);
-                }
-            }
+            TalMetrics.create(meterSystem, rule.getMetrics());
             log.debug("Loaded pre-compiled TAL expression: {} -> {}", ruleName, expression.getClass().getName());
             return new TalDSL(ruleName, expression, new FilterSpec(moduleManager, config), inputType);
-        } catch (final ModuleStartException e) {
-            throw e;
         } catch (final Exception e) {
-            throw new ModuleStartException("Failed to load pre-compiled TAL rule " + ruleName, e);
+            // OAP does not boot without the rule: one that does not compile is never skipped.
+            throw new ModuleStartException("TAL rule " + ruleName + " (" + sourceRef.describeYaml()
+                + ") does not compile: " + e.getMessage(), e);
         }
     }
 
     static void setFunctionFields(final TalExpression expression, final TalRule rule,
-                                  final TALFunctionRegistry registry)
-        throws ReflectiveOperationException, ModuleStartException {
+                                  final TALFunctionRegistry registry) throws ReflectiveOperationException {
         for (final TalRule.Function function : rule.getFunctions()) {
             final Object owner = registry.instance(function.getKey());
             if (owner == null || !owner.getClass().getName().equals(function.getType())) {
-                throw new ModuleStartException(
-                    "TAL rule " + rule.getName() + " was compiled against " + function.getType()
-                        + " under the function key " + function.getKey() + ", but the bound function registry holds "
-                        + (owner == null ? "nothing" : owner.getClass().getName()) + " there; rebuild the distro.");
+                final String module = owner == null ? moduleOf(function.getType()) : null;
+                throw new IllegalStateException(module != null
+                    ? "it calls functions of " + function.getType() + ", which module " + module + " provides, and "
+                        + "that module is not loaded"
+                    : "it was compiled against " + function.getType() + " under the function key " + function.getKey()
+                        + ", but the bound function registry holds "
+                        + (owner == null ? "nothing" : owner.getClass().getName()) + " there; rebuild the distro");
             }
             final Field field = expression.getClass().getDeclaredField(function.getField());
             field.setAccessible(true);
             field.set(expression, owner);
         }
+    }
+
+    /**
+     * @return the module of the function provider of this class, whose functions the registry binds only while the
+     *     module is loaded; null when no provider is of this class
+     */
+    private static String moduleOf(final String type) {
+        for (final TALFunctionProvider provider : ServiceLoader.load(TALFunctionProvider.class)) {
+            if (provider.getClass().getName().equals(type)) {
+                return provider.module();
+            }
+        }
+        return null;
     }
 
     public String networkAliasAddress(final PairingFact caller) {
@@ -159,19 +170,27 @@ public class TalDSL {
      * @return the candidate compiled from these inputs, or null; the generated execute() casts the span to the
      * input type and calls the functions of the input alias it was compiled for, so a class compiled for other
      * inputs never runs
+     * @throws IllegalStateException when several are: the build records one class for rules alike in all of them
      */
     static TalRule select(final List<TalRule> candidates, final String ruleName, final String dsl,
                           final Class<?> inputType, final String inputAlias, final String metricPrefix) {
         final String dslSha256 = dsl == null ? "" : sha256(dsl);
+        final List<TalRule> matching = new ArrayList<>();
         for (final TalRule rule : candidates) {
-            if (rule.getName().equals(ruleName) && rule.getDslSha256().equals(dslSha256)
+            // A rule without a name, which upstream installs, has a null name, apart from one named "null"
+            if (Objects.equals(rule.getName(), ruleName) && rule.getDslSha256().equals(dslSha256)
                 && rule.getInputType().equals(typeName(inputType))
                 && rule.getInputAlias().equals(inputAlias == null ? "" : inputAlias)
                 && rule.getMetricPrefix().equals(metricPrefix == null ? "" : metricPrefix)) {
-                return rule;
+                matching.add(rule);
             }
         }
-        return null;
+        if (matching.size() > 1) {
+            throw new IllegalStateException("The image holds " + matching.size() + " classes compiled at "
+                + matching.get(0).getSource() + ":" + matching.get(0).getLine() + " for the TAL rule " + ruleName
+                + " from the same inputs; rebuild the distro");
+        }
+        return matching.isEmpty() ? null : matching.get(0);
     }
 
     private static String typeName(final Class<?> type) {

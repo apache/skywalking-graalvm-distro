@@ -1,6 +1,6 @@
 ---
 name: sync-submodule
-description: Checklist and steps for syncing the skywalking submodule to a new upstream tag or commit. Covers all required checks and updates.
+description: Checklist and steps for syncing the skywalking submodule to a new upstream tag or commit. Runs upstream's graalvm-distro-impact checks over the range, collects each upstream PR's GraalVM distro impact item, and covers all required checks and updates, including keeping upstream's skill in step with the distro.
 ---
 
 # Sync SkyWalking Submodule
@@ -10,10 +10,11 @@ Checklist for updating the `skywalking/` submodule to a new upstream tag/commit.
 ## 1. Update Submodule
 
 ```bash
-cd skywalking && git fetch origin --tags && git checkout <tag-or-commit>
+cd skywalking && git fetch origin --tags && git checkout <tag-or-commit> && git submodule update --init --recursive
 ```
 
-Verify the upstream `<revision>` in `skywalking/pom.xml` — the Makefile extracts it for `-Dskywalking.version`.
+The nested `query-protocol` submodule (GraphQL schema) moves with the pin. Verify the upstream `<revision>` in
+`skywalking/pom.xml` — the Makefile extracts it for `-Dskywalking.version`.
 
 ## 2. Install Upstream to Local Maven Repo
 
@@ -28,6 +29,51 @@ Compare the old and new commits to identify what changed:
 ```bash
 cd skywalking && git log --oneline <old-commit>..<new-commit>
 ```
+
+### Start from upstream's `graalvm-distro-impact` skill
+
+Upstream keeps `skywalking/.claude/skills/graalvm-distro-impact/SKILL.md` (since apache/skywalking#14256): what the
+distro depends on (the build-time API the precompiler calls, the replaced classes, what the native-image metadata
+covers by itself), the native-image concerns of any class, and a "Deciding the impact" table mapping each kind of
+change to distro work. Every upstream PR fills the template's "GraalVM distro impact" item from it. A sync is the
+other end: read the skill as of the new pin (it changes with the pin), then run its review checks over the whole range:
+
+```bash
+.claude/skills/sync-submodule/impact-scan.sh <old-commit> <new-commit>
+```
+
+The script runs the checks of the skill's "When reviewing a change" against this repo's working tree (in place of a
+clone's `origin/main`): replaced classes the range edits, deleted or renamed classes the distro still names, DSL
+engine / `server-starter` / assembly files, module, provider and config classes, and native-image hazards on added
+lines (the pattern is read from the skill at the new pin, so it tracks upstream). Last it prints the checked box of
+each PR's impact item.
+
+- **The PR items are hints.** PRs before #14256 have none, and an item can be wrong. An "Impacted" item names what to
+  adapt; start there, but the scan and the diff decide.
+- **Each hit is a question.** Judge it with the skill's "Deciding the impact" (which row applies) and "Native-image
+  concerns in any class" (what a hazard needs). Section 4 below is the distro side of those rows.
+- **The scan is heuristic.** It misses indirect inheritance, nested config classes and multi-line spellings; still
+  read the range's diff for the areas in the table below.
+- **For each replaced class the range edits,** diff the upstream change into the copy, and after `make compile` (or
+  `make test`) run the skill's `javap` member check ("Checking a branch against the distro"), which lists upstream
+  members the copy lacks (a caller of a missing one fails with `NoSuchMethodError` only at run time):
+
+  ```bash
+  members() { local out; out=$(javap -p -cp "$1" "$2") || return 1
+              printf '%s\n' "$out" | grep -E '^\s' | grep -v -E '^\s*private |static \{\}' | sort -u; }
+  C=<FQCN>
+  U=$(members skywalking/oap-server/<upstream-module-path>/target/<upstream-artifact>-<upstream-version>.jar "$C") &&
+  D=$(members oap-libs-for-graalvm/<distro-module>/target/classes "$C") &&
+  comm -23 <(printf '%s\n' "$U") <(printf '%s\n' "$D")
+  ```
+
+  The two module names differ (e.g. `otel-receiver-plugin` and `otel-receiver-for-graalvm`); a `javap` error
+  stops the check instead of comparing against nothing.
+
+  Some members are dropped on purpose (run-time Javassist and runtime-rule members such as
+  `MeterSystem#removeMetric`). For the four replacements in `oap-graalvm-server`, use its `target/classes`. MAL
+  `DSL`, `FilterExpression` and `MeterSystem` also have build-time copies the precompiler compiles with: check
+  `build-tools/precompiler/target/classes` too, or a build-time caller still meets `NoSuchMethodError`.
 
 ### Key areas to check for impact
 
@@ -54,13 +100,20 @@ cd skywalking && git log --oneline <old-commit>..<new-commit>
 - [ ] Add dependency to root `pom.xml` `<dependencyManagement>`
 - [ ] Add dependency to `oap-graalvm-server/pom.xml` `<dependencies>` (the boot finds it through the module SPI, as
       upstream; nothing to register in code)
+- [ ] Add it to `build-tools/precompiler/pom.xml` when it holds what the precompiler scans or compiles with (Armeria
+      handlers, GraphQL resolvers, JSON DTOs, LAL/TAL SPIs); `LalRuntimeTypeParityTest` fails when a LAL SPI is only on
+      the server side
+- [ ] Add it to `build-tools/config-generator/pom.xml` when `server-starter` does not pull it in (as the admin modules),
+      or its config class gets no loader branch
 - [ ] Add `(moduleName, providerName)` pair to `AcceptedModules.java`
 - [ ] Add module config section to `application.yml` (`ApplicationYmlModulesTest` requires every module on the
       classpath to have one, listing exactly its providers)
 
 ### Config handling (if new ModuleConfig classes)
 
-- [ ] Re-run config-generator to regenerate `YamlConfigLoaderUtils.java` and `module-config-classes.txt`:
+- [ ] Re-run config-generator to regenerate `YamlConfigLoaderUtils.java`, `module-config-classes.txt` and, next to
+      it, `module-config-field-set.txt` (the final and static fields the loader writes through `Field.set`, as upstream,
+      which the precompiler registers for the native image):
   ```bash
   ./mvnw -pl build-tools/build-common,build-tools/config-generator install -DskipTests -Dskywalking.version=<version>
   ./mvnw -pl build-tools/config-generator exec:java \
@@ -72,7 +125,7 @@ cd skywalking && git log --oneline <old-commit>..<new-commit>
 
 ### OAL changes (if new .oal files or scopes)
 
-- [ ] New OAL files are auto-discovered via `OALDefine` SPI — verify in precompiler output
+- [ ] A new OAL file compiles through its `OALDefine` (`INSTANCE`), found on the precompiler's class path: a staged `oal/*.oal` no define names fails the build, so add the module declaring the define to `build-tools/precompiler/pom.xml`
 - [ ] Nothing to register by hand: the precompiler generates the constructor entries of the metrics, builder and dispatcher classes into `reflect-config.json`
 - [ ] Verify with: `jar tf build-tools/precompiler/target/precompiler-*-generated.jar | grep "oal/rt"`
 
@@ -95,9 +148,11 @@ never trail upstream on bundled rules. Concretely, for each new or changed file:
 - [ ] A MAL comparison test exists for every new MAL file (auto-discovery mode:
       `generateComparisonTests("<dir>/<file>.yaml")`); LAL tests for new LAL files.
 - [ ] `docs/distro-policy.md` counts are refreshed.
-- [ ] It is browsable: the precompiler exports raw rule files to `META-INF/rule-source/` for the
-      read-only `/runtime/rule` + `/runtime/oal` catalogs — nothing to do per file, but keep
-      `BundledRuleCatalogHandlerTest` expectations current if a file is renamed.
+- [ ] It is browsable when its catalog is one the read-only `/runtime/rule` + `/runtime/oal` endpoints serve
+      (`otel-rules`, `log-mal-rules`, `telegraf-rules`, `meter-analyzer-config`, `lal`, `oal`; not
+      `envoy-metrics-rules`, `zabbix-rules` or `tal`): the precompiler exports the raw rule files to
+      `META-INF/rule-source/` — nothing to do per file, but keep `BundledRuleCatalogHandlerTest` expectations current
+      if a file is renamed.
 
 ### E2E adoption
 
@@ -149,8 +204,28 @@ When upstream adds an e2e case for a new rule set, adopt it if it is compose-onl
 
 ### Same-FQCN replacement staleness
 
-- [ ] Run `ReplacementClassStalenessTest` — if upstream changed files we replace, update replacements
+- [ ] Run `ReplacementClassStalenessTest` — if upstream changed files we replace, update replacements, then run the
+      `javap` member check (section 3) on each
 - [ ] Run `PrecompiledYamlStalenessTest` — update SHA-256 hashes for changed YAML files
+
+### Guards against a silent drop
+
+The distro runs upstream's compilers, but it re-implements what happens around them: how a compiled class is found,
+built and wired at boot, how rule data reaches the registry, how config is loaded. Each of these fails the build or
+the boot when upstream changes something the re-implementation does not handle, instead of running without it:
+
+| Guard | Fails when |
+|---|---|
+| `GeneratedInstanceCheck` (precompiler, every MAL / LAL / TAL / Hierarchy compile) | A generator sets state on the instance it returns after constructing it (deep, by `StateComparison`), outside TAL's recorded function fields; the runtime builds classes by their no-arg constructor |
+| `DSL.of` (LAL) and `TalDSL.of` | No pre-compiled class matches the rule's coordinates, name, DSL text and input/output types upstream passes at boot |
+| `LalRuntimeTypeParityTest` | Upstream's type resolution, on the server classpath, gives a compiled LAL rule other input/output types than the precompiler did (an SPI only one side ships), or a rule is compiled though upstream's boot skips it, or skipped though the boot runs it (a layer only one side registers; `UpstreamLalBoot` holds upstream's predicates) |
+| `writeConfigData` + `RegistryGenerator.requireCarried` | Rule data (`Rule`, `LALConfig`, `TALConfig`, ...) loses state on its way to the registry: through the JSON intermediate, or because no emitted getter/setter pair carries it |
+| `TalMetrics` comparison (precompiler) | Upstream `createMetrics` makes other `MeterSystem` calls than the boot replays from the recorded declarations |
+| `replacement-source-sha256.properties` | A replaced class changed, or `OALEngineV2` / `OALClassGeneratorV2`, whose registration steps (metrics then dispatchers; the disables' `isStreamRunning` guard) the OAL loader replacement replays |
+| `GeneratedConfigLoaderIsCurrentTest` (config-generator) | The committed `YamlConfigLoaderUtils` is not what the generator writes for the current config classes |
+| `ImmigrationScopeTest#everyUpstreamStarterResourceIsAccountedFor` | Upstream's server-starter resources gain an entry the distro neither compiles nor packages (a new rule kind) |
+
+A guard that fires is the sync's to-do list, not a test to relax.
 
 ## 5. Build & Test
 
@@ -175,13 +250,44 @@ Check OAP logs for reflection errors:
 docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFoundException"
 ```
 
-## 7. Common Pitfalls
+## 7. Keep Upstream's Skill in Step with the Distro
 
-- **New module = three places**: the `oap-graalvm-server` dependency plus its `application.yml` section,
+Upstream's `graalvm-distro-impact` skill describes the distro as a snapshot (its "distro `main` <sha>, <date>"
+line): the replaced classes and their counts, the build-time API the precompiler calls, what the metadata covers by
+itself, the native build arguments, the module set, and the files of upstream the distro's tests, e2e cases and
+assemblies read. Upstream developers judge every PR with it, so a stale fact misleads each PR after it. When a sync,
+or any distro PR, changes one of these, collect it for an upstream PR that updates the skill (an ordinary
+apache/skywalking PR, batched with other pending upstream fixes; the submodule is never patched):
+
+- a replacement added or retired, or the reason for one changed;
+- a new precompiler scan, protobuf root or hand-kept metadata entry, especially for a pattern upstream code could avoid;
+- a new build-time API call, private field reached by reflection, or state the distro replays after `newInstance()`;
+- a module accepted or dropped, or a native build argument changed (`oap-graalvm-native/pom.xml`);
+- an upstream file the distro's tests, e2e cases or assemblies newly read;
+- a new Common Pitfall that upstream code could have avoided: a candidate for the skill's "When changing code".
+
+Check the skill's replaced-class table and counts ("The replaced classes") against the distro's same-FQCN files:
+
+```bash
+for d in oap-libs-for-graalvm oap-graalvm-server build-tools/precompiler; do
+  git ls-files "$d" | sed -n 's#.*/src/main/java/##p' \
+    | grep -xF -f <(git -C skywalking ls-files '*/src/main/java/*.java' | sed 's#.*/src/main/java/##' | sort -u) \
+    | sed "s#^#$d #"
+done
+```
+
+Upstream's skill points to this file ("its sync checklist and Common Pitfalls") for what broke the distro on past
+syncs: keep the path and the "Common Pitfalls" heading.
+
+## 8. Common Pitfalls
+
+- **New module = three places, at least** (the full list is §4 "Module wiring", incl. the precompiler and
+  config-generator poms): the `oap-graalvm-server` dependency plus its `application.yml` section,
   `provider-inventory.properties`, AND `build-tools/build-common/.../AcceptedModules.java`. The config-generator
-  discovers providers only through
-  `AcceptedModules`, so a module missing there gets no `copyTo<Config>` branch in `YamlConfigLoaderUtils` and the
-  OAP dies at boot with `Unknown config type` — after the JVM unit tests passed.
+  discovers providers only through `AcceptedModules`, so a module missing there would get no `copyTo<Config>` branch
+  in `YamlConfigLoaderUtils` and the OAP would die at boot with `Unknown config type`;
+  `ApplicationYmlModulesTest` fails first, as it requires `AcceptedModules` to equal the inventory's ACCEPTED
+  providers, and the generator fails on an accepted provider missing from its classpath (its pom).
 - **Always `./mvnw clean install` before a native build after a submodule bump**: a resumed build
   (`-rf :precompiler`, no clean) reuses the old `oap-libs-for-graalvm/*/target/*.jar`, and
   maven-shade merges that stale shaded jar with the fresh upstream jar; the stale copy wins, JVM
@@ -202,10 +308,11 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   printing another generated type (`git grep "JsonFormat\.(parser|printer)"`), extend the root set or
   the native image answers `Generated message class ... missing method ...` (11.1: the ai-agent
   case's OTLP/JSON log posts exposed the missing OTLP roots).
-- **`LALOutputBuilder` implementations are a hand list**: the precompiler resolves `outputType` short
-  names through the SPI at build time, but their reflection entries sit in `Precompiler`'s
-  `configPojos` list. A new builder (11.1: `ConversationFile` from `ai-agent-conversation`) goes on
-  that list, and its module must be a precompiler dependency or the LAL rule fails to compile.
+- **A new `LALOutputBuilder` or `LALSourceTypeProvider` module must be a precompiler dependency**:
+  the LAL pass resolves `outputType` short names and layer types through upstream's
+  `LogFilterListener.Factory` over the SPIs on its classpath, and records the implementations it finds
+  in `lal-io-classes.txt` for reflection; a builder whose module is missing there (11.1:
+  `ConversationFile` from `ai-agent-conversation`) fails the LAL rule's compile.
 - **Explicit-input MAL tests go stale when upstream adds a rule to an existing file**: `OapTest`-style
   tests (hand-built `buildInput`) fail with "both paths returned EMPTY" on the new rule until its
   sample family is added to the input; auto-discovery tests pick new rules up by themselves.
@@ -215,16 +322,20 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   now covered by the `query-protocol/*.graphqls` glob). When upstream starts reading a new
   classpath resource (not a `config/` file), add a glob there and boot the native image.
 - **Armeria instantiates handler-referenced classes reflectively**: `@ExceptionHandler`,
-  `@RequestConverter` and `@Decorator` targets need constructor metadata. The precompiler's
-  `scanArmeriaHandlers` collects all three (11.1 added `@Decorator` for the AI agent conversation
-  view's `CompressResponse`; without it the native OAP dies at boot with "cannot inject the
-  dependency for ..."). A new Armeria annotation that names a class needs the same treatment.
+  `@RequestConverter`, `@ResponseConverter` and `@Decorator` targets need constructor metadata. The precompiler's
+  `scanArmeriaHandlers` collects the classes those annotations name and every `ExceptionHandlerFunction`
+  implementation (11.1 added `@Decorator` for the AI agent conversation view's `CompressResponse`; without it the
+  native OAP dies at boot with "cannot inject the dependency for ..."). A new Armeria annotation that names a class
+  needs the same treatment.
 - **Jackson response POJOs need reflection metadata**: Armeria `HttpResponse.ofJson(pojo)` /
   `@ProducesJson` serialize through Jackson, which finds no properties in the native image without
   metadata and answers HTTP 400 ("No serializer found for class ..."). The precompiler's
   `scanQueryEntityClasses` covers `org.apache.skywalking.oap.query.*.entity.*` and
   `org.apache.skywalking.oap.server.admin.*.response.*` (the latter added in 11.1 after the storage
-  suite's `admin inspect` cases exposed it); a POJO outside those packages must be registered by hand.
+  suite's `admin inspect` cases exposed it), and `scanHttpBodyTypes` the bodies a route's signature names (its
+  parameters and return type, and the classes their fields hold; a protobuf message gets its descriptor closure); a
+  POJO outside those packages that a route builds itself (`HttpResponse.of(...)` of an object) must be registered by
+  hand, on the `configPojos` list.
   The same holds for request bodies (`@ConsumesJson`) and for Gson-printed answers, which silently come out as
   `{}` instead of failing. 11.1 found three that no e2e case reached: `/status/cluster/nodes` (core `Address`,
   HTTP 500), `/status/alarm/*` (`core.alarm.provider.status`, `{}`) and the AWS Firehose receiver (`FirehoseReq`,
@@ -265,8 +376,8 @@ docker logs <container> 2>&1 | grep "ERROR\|NoSuchMethodException\|ClassNotFound
   source against the *reason* in its header, not only its API.
 - **Stream data registered by hand needs constructor metadata**: `IWorkerInstanceSetter.put(..., Class)`
   of a non-`@Stream` class (11.1: TAL `PairingFact`) is rebuilt by `RemoteHandleWorker` with
-  `newInstance()` on the receiving OAP node. The StorageBuilders scan misses it, and only a cluster
-  shows the failure. Add a constructor entry in `Precompiler.generateReflectConfig`.
+  `newInstance()` on the receiving OAP node, and only a cluster shows a missing entry. The precompiler's
+  `StreamData` scan registers the constructor of every concrete `StreamData` class on its class path.
 - **Jackson YAML/JSON DTOs outside `*.entity.*` / `*.response.*`**: the status module's `/debugging/*`
   bodies (`Debugging*Rsp`) are serialized by Jackson; the entity scan covers them since 11.1. A new
   handler that returns POJOs from another package must be added to `scanQueryEntityClasses`.

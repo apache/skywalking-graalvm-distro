@@ -19,19 +19,19 @@ package org.apache.skywalking.oap.server.graalvm.mal;
 
 import com.google.common.collect.ImmutableMap;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.apache.skywalking.oap.meter.analyzer.v2.MetricRuleConfig;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.FilterExpression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
-import org.apache.skywalking.oap.server.core.analysis.LayerExtensionLoader;
 import org.apache.skywalking.oap.server.graalvm.OverlayFiles;
+import org.apache.skywalking.oap.server.graalvm.lal.UpstreamLalBoot;
+import org.apache.skywalking.oap.server.graalvm.rules.ZabbixHostPatterns;
+import org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DynamicTest;
@@ -49,14 +49,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OverlayRuleTest extends MALScriptComparisonBase {
     private static final List<String> CATALOGS = List.of(
         "otel-rules", "meter-analyzer-config", "log-mal-rules", "envoy-metrics-rules", "telegraf-rules", "zabbix-rules");
-    private static final Path DISTRO = Path.of(System.getProperty("user.dir")).getParent();
     /** The filtered rule of the repository's own {@code test/rules-overlay-fixture}. */
     private static final String FIXTURE = "otel-rules/fixture/fixture-service.yaml";
 
-    /** The overlay's layers, as the image registers them at boot, so its rules resolve them. */
+    /**
+     * The layers the image registers at boot (layer-extensions.yml and every rule file's inline layerDefinitions), so the
+     * overlay's rules resolve them.
+     */
     @BeforeAll
-    static void registerCompiledLayers() {
-        LayerExtensionLoader.load();
+    static void registerCompiledLayers() throws Exception {
+        UpstreamLalBoot.registerLayers();
     }
 
     @TestFactory
@@ -69,8 +71,12 @@ class OverlayRuleTest extends MALScriptComparisonBase {
                     continue;
                 }
                 final boolean zabbix = "zabbix-rules".equals(catalog);
-                generateOverlayComparisonTests(file, zabbix ? loadZabbixRule(file) : loadRule(file))
-                    .forEach(tests::add);
+                final MetricRuleConfig config = zabbix ? loadZabbixConfig(file) : loadRule(file);
+                // The Zabbix receiver compiles a file's expressions for its host patterns: one without any compiles none
+                if (zabbix && !ZabbixHostPatterns.compiledAtBoot((ZabbixConfig) config)) {
+                    continue;
+                }
+                generateOverlayComparisonTests(file, config).forEach(tests::add);
             }
         }
         return tests.stream();
@@ -78,7 +84,7 @@ class OverlayRuleTest extends MALScriptComparisonBase {
 
     @Test
     void theFixturesFilterKeepsItsSamplesOnly() throws Exception {
-        Assumptions.assumeTrue(isTheRepositoryFixture(), "not built with test/rules-overlay-fixture");
+        Assumptions.assumeTrue(OverlayFiles.isTheRepositoryFixture(FIXTURE), "not built with test/rules-overlay-fixture");
         final FilterExpression filter = new FilterExpression(loadRule(FIXTURE).getFilter());
         final Map<String, SampleFamily> kept = filter.filter(ImmutableMap.of(
             "fixture_calls", family("fixture_calls", "fixture")));
@@ -86,16 +92,6 @@ class OverlayRuleTest extends MALScriptComparisonBase {
             "fixture_calls", family("fixture_calls", "other")));
         assertEquals(1, kept.size(), "a sample of the fixture job passes the filter");
         assertTrue(dropped.isEmpty(), "a sample of another job does not");
-    }
-
-    private static boolean isTheRepositoryFixture() throws Exception {
-        if (!OverlayFiles.under("otel-rules").contains(FIXTURE)) {
-            return false;
-        }
-        final Path staged = Path.of(System.getProperty("rules.staging.dir",
-            DISTRO.resolve("build-tools/precompiler/target/rule-resources").toString())).resolve(FIXTURE);
-        return Arrays.equals(Files.readAllBytes(staged),
-            Files.readAllBytes(DISTRO.resolve("test/rules-overlay-fixture").resolve(FIXTURE)));
     }
 
     private static boolean isEmpty(final String file) throws Exception {

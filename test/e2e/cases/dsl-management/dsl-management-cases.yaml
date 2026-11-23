@@ -15,8 +15,8 @@
 
 # DSL management on the GraalVM native distro is READ-ONLY. Asserts, with raw curl and the
 # official `swctl admin` CLI, that:
-#   * the rule catalogs work exactly like upstream: /runtime/rule/list (always an empty
-#     envelope: no runtime rules exist), /runtime/rule/bundled (every shipped MAL/LAL file),
+#   * the rule catalogs work exactly like upstream on a node with no runtime rule: /runtime/rule/list
+#     (every bundled rule upstream's boot loads, BUNDLED), /runtime/rule/bundled (every shipped MAL/LAL file),
 #     GET /runtime/rule (the YAML plus the X-Sw-* headers) and /runtime/oal/* — what Horizon's
 #     DSL catalog / editor / OAL pages and the live-debug pickers read;
 #   * every runtime-rule MUTATION (addOrUpdate / inactivate / delete / dump, /runtime/mal/*,

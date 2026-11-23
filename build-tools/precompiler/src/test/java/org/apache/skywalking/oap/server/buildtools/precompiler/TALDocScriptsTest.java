@@ -192,7 +192,7 @@ class TALDocScriptsTest {
                      .getTopLevelClassesRecursive("org.apache.skywalking.oap.server.core.analysis.meter.function")));
         MeterSystem.setOutputDirectory(OUT.toString());
         Precompiler.declareScopes();
-        Precompiler.compileTAL(OUT.toString(), new MeterSystem(null), DOCS);
+        Precompiler.compileTAL(OUT.toString(), new MeterSystem(null), DOCS, Precompiler.shippedModules());
 
         MANIFEST = new Properties();
         try (Reader reader = Files.newBufferedReader(OUT.resolve("META-INF/tal-v2-rules.txt"), StandardCharsets.UTF_8)) {

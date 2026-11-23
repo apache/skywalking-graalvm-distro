@@ -8143,15 +8143,6 @@
       ]
     },
     {
-      "type": "org.apache.skywalking.oap.query.debug.StatusQueryConfig",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
       "type": "org.apache.skywalking.oap.query.graphql.GraphQLQueryConfig",
       "methods": [
         {
@@ -8254,9 +8245,6 @@
       "type": "org.apache.skywalking.oap.query.graphql.resolver.TraceQueryV2"
     },
     {
-      "type": "org.apache.skywalking.oap.query.graphql.resolver.UIConfigurationManagement"
-    },
-    {
       "type": "org.apache.skywalking.oap.query.graphql.type.BatchMetricConditions"
     },
     {
@@ -8310,72 +8298,6 @@
         {
           "name": "<init>",
           "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        },
-        {
-          "name": "setExpPrefix",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        },
-        {
-          "name": "setExpSuffix",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        },
-        {
-          "name": "setFilter",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        },
-        {
-          "name": "setInitExp",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        },
-        {
-          "name": "setMetricPrefix",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        },
-        {
-          "name": "setMetricsRules",
-          "parameterTypes": [
-            "java.util.List"
-          ]
-        }
-      ]
-    },
-    {
-      "type": "org.apache.skywalking.oap.server.analyzer.provider.meter.config.MeterConfig$Rule",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        },
-        {
-          "name": "setExp",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        },
-        {
-          "name": "setName",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
         }
       ]
     },
@@ -9340,21 +9262,6 @@
       ]
     },
     {
-      "type": "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenu"
-    },
-    {
-      "type": "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenu$Builder",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.skywalking.oap.server.core.management.ui.menu.UIMenuManagementService"
-    },
-    {
       "type": "org.apache.skywalking.oap.server.core.management.ui.template.UITemplate"
     },
     {
@@ -10075,10 +9982,6 @@
     },
     {
       "type": "org.apache.skywalking.oap.server.core.query.type.Logs",
-      "allPublicMethods": true
-    },
-    {
-      "type": "org.apache.skywalking.oap.server.core.query.type.MenuItem",
       "allPublicMethods": true
     },
     {

@@ -2,37 +2,44 @@
 
 ## Context
 
-OAL engine generates metrics, builder, and dispatcher classes at runtime via Javassist (`ClassPool.makeClass()` → `CtClass.toClass()`). GraalVM native image doesn't support runtime bytecode generation. Additionally, Guava's `ClassPath.from()` — used by `AnnotationScan.scan()` and `SourceReceiverImpl.scan()` — doesn't work in native image (no JAR-based classpath).
+The OAL engine generates metrics, builder and dispatcher classes at runtime via Javassist (`ClassPool.makeClass()` →
+`CtClass.toClass()`). GraalVM native image doesn't support runtime bytecode generation. Additionally, Guava's
+`ClassPath.from()`, used by `AnnotationScan.scan()` and `SourceReceiverImpl.scan()`, doesn't work in native image (no
+JAR-based classpath).
 
-**Solution**: Run OAL engine at build time, export `.class` files + manifests. Replace upstream classes with same-FQCN versions that load from manifests instead of scanning or generating code.
+**Solution**: run the OAL engine at build time and export the `.class` files; record in the rule registry what each
+script generated; replace upstream classes with same-FQCN versions that register the recorded classes or read
+build-time manifests instead of generating code or scanning.
 
 ---
 
-## Build-Time OAL Class Export Tool
+## Build Time: the precompiler's OAL pass
 
-**Module**: `build-tools/precompiler` (originally `build-tools/oal-exporter`, merged into unified precompiler)
+**Module**: `build-tools/precompiler` (`Precompiler`)
 
-**Created**: `OALClassExporter.java` — main class that:
+1. Discovers every `OALDefine` subclass on the precompiler's class path and takes its `public static INSTANCE`, the
+   object providers load; a define without one fails the build. The rules overlay's excluded scripts are left out, and
+   each script it adds gets a define of its own (`core.source` sources, dispatchers named
+   `Overlay<script>_<Source>Dispatcher`). A staged `oal/*.oal` that no define names fails the build.
+2. Initializes `DefaultScopeDefine` by scanning `@ScopeDeclaration` annotations (the OAL enricher needs scope metadata).
+3. For each define: instantiates `OALEngineV2`, enables debug output (`setOpenEngineDebug(true)` +
+   `setGeneratedFilePath()`), calls `engine.start()`, which parses the script, enriches it and generates the `.class`
+   files via Javassist, then `engine.notifyAllListeners()`, which hands the metrics and dispatcher classes to recording
+   listeners (`OalListenerRecorder`), in upstream's order, with each metrics class's `@Stream` storage builder. The
+   script's disables come from upstream's `OALScriptParserV2`; together they must equal what the generators registered
+   (`DisableRegister#scriptDisablesWithoutStream`, as no stream is defined at build time).
+4. Writes the OAL build intermediates the rule registry and `reflect-config.json` are generated from (the generated jar
+   leaves them out): `oal-scripts.txt` (per script: define, file, metrics, dispatchers, disables; and the excluded
+   scripts), `oal-metrics-classes.txt`, `oal-dispatcher-classes.txt`, `oal-builder-classes.txt`,
+   `oal-disabled-sources.txt`.
+5. Runs Guava `ClassPath.from()` to write the annotation/interface manifests under `META-INF/annotation-scan/`
+   (`ScopeDeclaration`, `Stream` and `SourceDispatcher` of the hand-written classes only, `Disable`,
+   `MultipleDisable`, `ISourceDecorator`).
 
-1. Validates all 9 OAL script files are on the classpath
-2. Initializes `DefaultScopeDefine` by scanning `@ScopeDeclaration` annotations (OAL enricher needs scope metadata)
-3. For each of the 9 `OALDefine` configs: instantiates `OALEngineV2`, enables debug output (`setOpenEngineDebug(true)` + `setGeneratedFilePath()`), calls `engine.start()` which parses OAL → enriches → generates `.class` files via Javassist
-4. Scans the output directory for generated `.class` files and writes OAL manifests (build intermediates the rule
-   registry is generated from; the generated jar leaves them out):
-   - `META-INF/oal-metrics-classes.txt` — ~620 fully-qualified class names
-   - `META-INF/oal-dispatcher-classes.txt` — ~45 fully-qualified class names
-   - `META-INF/oal-disabled-sources.txt` — disabled source names from `disable.oal`
-5. Runs Guava `ClassPath.from()` scan at build time to produce 6 annotation/interface manifests under `META-INF/annotation-scan/`:
-   - `ScopeDeclaration.txt` — classes annotated with `@ScopeDeclaration`
-   - `Stream.txt` — classes annotated with `@Stream` (hardcoded only, not OAL-generated)
-   - `Disable.txt` — classes annotated with `@Disable`
-   - `MultipleDisable.txt` — classes annotated with `@MultipleDisable`
-   - `SourceDispatcher.txt` — concrete implementations of `SourceDispatcher` interface (hardcoded only)
-   - `ISourceDecorator.txt` — concrete implementations of `ISourceDecorator` interface
+The rule registry gets an `Oal_<script>` class per script (an `OalScript`: define, metrics, dispatchers, disables,
+whether the overlay added it), `CompiledRules.oalScripts()` and `CompiledRules.oalExcludedScripts()`.
 
-**Key difference from original plan**: No "collecting listeners" needed. `engine.start()` generates `.class` files directly to disk via the debug API. We scan the output directory for class files rather than hooking into engine callbacks.
-
-### 9 OAL Defines processed
+### The bundled defines
 
 | Define | Config File | Source Package | Catalog |
 |--------|-------------|----------------|---------|
@@ -45,122 +52,63 @@ OAL engine generates metrics, builder, and dispatcher classes at runtime via Jav
 | `EBPFOALDefine` | `oal/ebpf.oal` | `core.source` | — |
 | `TCPOALDefine` | `oal/tcp.oal` | `core.source` | `EnvoyTCP` |
 | `CiliumOALDefine` | `oal/cilium.oal` | `core.source` | — |
+| `GenAIOALDefine` | `oal/virtual-gen-ai.oal` | `core.source` | — |
 
 ### Generated class packages
 
 - Metrics: `org.apache.skywalking.oap.server.core.source.oal.rt.metrics.*Metrics`
 - Builders: `org.apache.skywalking.oap.server.core.source.oal.rt.metrics.builder.*MetricsBuilder`
-- Dispatchers: `org.apache.skywalking.oap.server.core.source.oal.rt.dispatcher.[catalog].*Dispatcher`
+- Dispatchers: `org.apache.skywalking.oap.server.core.source.oal.rt.dispatcher.[catalog]*Dispatcher`
+
+The OAL-internal scans (`MetricsHolder`, `DefaultMetricsFunctionRegistry`, `FilterMatchers`) run inside the engine
+during `engine.start()`, so only at build time.
 
 ---
 
-## Runtime Registration via Same-FQCN Replacement Classes
+## Runtime: same-FQCN replacements
 
-Instead of extending upstream classes or hooking via `ModuleWiringBridge`, we use **same-FQCN replacement**: create classes in `oap-graalvm-server` with the exact same fully-qualified class name as the upstream class. Maven classpath precedence ensures our version is loaded instead of the upstream version.
+All three are repackaged into `oap-libs-for-graalvm/server-core-for-graalvm` via `maven-shade-plugin`, the original
+`.class` files excluded from the shaded JAR.
 
-### 3 replacement classes created:
+| Upstream Class | What the replacement does |
+|---|---|
+| `OALEngineLoaderService` | `load(define)` registers the define's compiled script when its provider loads it, as upstream's engine does: its disables (`DisableRegister#addFromScript`, skipped with upstream's warning when the stream already runs), then the metrics classes → `StreamAnnotationListener.notify()`, then the dispatchers → `DispatcherDetectorListener.addIfAsSourceDispatcher()`. The first load also registers, after its define (`oal/disable.oal` at boot, so its disables reach them), the scripts the rules overlay added, which no provider loads. A define the overlay excluded loads nothing; one neither compiled nor excluded fails the boot. `getLoadedDefines()` is a read-only view, as upstream's. |
+| `AnnotationScan` | Reads `META-INF/annotation-scan/{AnnotationSimpleName}.txt`, written for every `AnnotationListener`'s annotation, instead of Guava `ClassPath.from()` scanning; a missing manifest or class fails the boot. |
+| `SourceReceiverImpl` | `scan()` reads `META-INF/annotation-scan/SourceDispatcher.txt` and `ISourceDecorator.txt` instead of Guava classpath scanning. |
 
-**1. `OALEngineLoaderService`** (`oap-graalvm-server/.../core/oal/rt/OALEngineLoaderService.java`)
+A turned-off module's script, or one its module loads only on a setting (`tcp.oal` with the Envoy TCP access log
+analysis, `cilium.oal` with the Cilium fetcher), stays compiled and unused, as upstream leaves it unloaded.
 
-Same FQCN as upstream `org.apache.skywalking.oap.server.core.oal.rt.OALEngineLoaderService`. On first `load()` call,
-from the generated rule registry (`CompiledRules`, see [dsl-immigration.md](dsl-immigration.md)), which the precompiler
-generates from the OAL manifests below:
-- the disabled sources → registers with `DisableRegister`
-- the metrics class literals → `StreamAnnotationListener.notify()`
-- the dispatcher class literals → `DispatcherDetectorListener.addIfAsSourceDispatcher()`
-- All subsequent `load()` calls are no-ops (all classes registered on first call regardless of which `OALDefine` triggered it)
-
-**2. `AnnotationScan`** (`oap-graalvm-server/.../core/annotation/AnnotationScan.java`)
-
-Same FQCN as upstream `org.apache.skywalking.oap.server.core.annotation.AnnotationScan`. Instead of Guava `ClassPath.from()` scanning, reads manifest files from `META-INF/annotation-scan/{AnnotationSimpleName}.txt`. Each registered `AnnotationListener` is matched against its corresponding manifest.
-
-**3. `SourceReceiverImpl`** (`oap-graalvm-server/.../core/source/SourceReceiverImpl.java`)
-
-Same FQCN as upstream `org.apache.skywalking.oap.server.core.source.SourceReceiverImpl`. `scan()` reads from `META-INF/annotation-scan/SourceDispatcher.txt` and `META-INF/annotation-scan/ISourceDecorator.txt` instead of Guava classpath scanning.
-
-### Key differences from original plan:
-- **No extending** — same-FQCN replacement instead of subclassing
-- **No `ModuleWiringBridge` changes** — classpath precedence handles the swap automatically
-- **3 replacement classes, not 1** — `AnnotationScan` and `SourceReceiverImpl` also needed replacement
-- **Classpath scanning fully eliminated** — annotation manifests replace Guava scanning
-
----
-
-## Class Loading and Remaining Scans
-
-### `Class.forName()` in native image
-`Class.forName()` is supported in GraalVM native image when classes are registered in `reflect-config.json`. Since all pre-generated classes are on the classpath at native-image build time, the GraalVM compiler includes them in the binary. The `reflect-config.json` entries enable runtime `Class.forName()` lookup.
-
-### OAL-internal scans — build-time only
-The 3 OAL-internal scans (`MetricsHolder`, `DefaultMetricsFunctionRegistry`, `FilterMatchers`) only run inside the OAL engine during `engine.start()`. They happen at **build time** in `OALClassExporter`, not at runtime. Automatically solved.
-
-### `MeterSystem` — solved in MAL immigration
-`MeterSystem` uses Guava `ClassPath.from()` to discover meter function classes at runtime. Replaced with manifest-based loading. See [mal-immigration.md](mal-immigration.md).
-
-### `reflect-config.json`
-GraalVM reflection configuration for `Class.forName()` calls on OAL-generated and manifest-listed classes is auto-generated by the precompiler from manifests.
-
----
-
-## Same-FQCN Replacements (OAL)
-
-| Upstream Class | Upstream Location | Replacement Location | What Changed |
-|---|---|---|---|
-| `OALEngineLoaderService` | `server-core/.../oal/rt/OALEngineLoaderService.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Loads pre-compiled OAL classes from build-time manifests instead of running ANTLR4 + FreeMarker + Javassist at runtime. |
-| `AnnotationScan` | `server-core/.../annotation/AnnotationScan.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Reads `META-INF/annotation-scan/{name}.txt` manifests instead of Guava `ClassPath.from()` scanning. |
-| `SourceReceiverImpl` | `server-core/.../source/SourceReceiverImpl.java` | `oap-libs-for-graalvm/server-core-for-graalvm/` | Complete rewrite. Reads dispatcher/decorator manifests instead of Guava `ClassPath.from()` scanning. |
-
-All three replacements are repackaged into `server-core-for-graalvm` via `maven-shade-plugin` — the original `.class` files are excluded from the shaded JAR.
-
----
-
-## Files Created
-
-1. **`build-tools/precompiler/src/main/java/.../Precompiler.java`** (unified, originally `oal-exporter`)
-   - Build-time tool: runs 9 OAL defines, exports `.class` files, writes OAL manifests + annotation/interface manifests + reflection metadata
-
-2. **`oap-libs-for-graalvm/server-core-for-graalvm/src/main/java/.../core/oal/rt/OALEngineLoaderService.java`**
-   - Same-FQCN replacement: loads pre-compiled OAL classes from manifests
-
-3. **`oap-libs-for-graalvm/server-core-for-graalvm/src/main/java/.../core/annotation/AnnotationScan.java`**
-   - Same-FQCN replacement: reads annotation manifests instead of Guava classpath scanning
-
-4. **`oap-libs-for-graalvm/server-core-for-graalvm/src/main/java/.../core/source/SourceReceiverImpl.java`**
-   - Same-FQCN replacement: reads dispatcher/decorator manifests instead of Guava classpath scanning
-
-5. **`oap-graalvm-server/src/test/java/.../PrecompiledRegistrationTest.java`**
-   - 12 tests: manifest vs Guava scan comparison, OAL class loading, scope registration, source→dispatcher→metrics chain consistency
+`replacement-source-sha256.properties` pins `OALEngineLoaderService`, and `OALEngineV2` and `OALClassGeneratorV2`,
+whose registration steps the replacement replays.
 
 ## Key Upstream Files (read-only)
 
-- `OALEngineV2.java` — `start()` (parse → enrich → generate), `notifyAllListeners()` (register)
-- `OALClassGeneratorV2.java` — `setOpenEngineDebug(true)`, `setGeneratedFilePath()`, `writeGeneratedFile()` exports via `ctClass.toBytecode()`
-- `OALEngineLoaderService.java` (upstream) — `load()` creates engine, sets listeners, calls `start()`+`notifyAllListeners()`
-- `StorageBuilderFactory.java:67-78` — `Default` impl uses `metrics-builder` template path
-- `StreamAnnotationListener.java` — `notify(Class)` reads `@Stream`, routes to `MetricsStreamProcessor.create()`
-- `CoreModuleProvider.java:356-357` — registers `OALEngineLoaderService` in `prepare()`
-- `CoreModuleProvider.java:417-421` — `start()` calls `load(DisableOALDefine)` then `scan()`
+- `OALEngineV2.java`: `start()` (parse → enrich → generate), `notifyAllListeners()` (register)
+- `OALClassGeneratorV2.java`: `generateClassAtRuntime()` (the disables), `setOpenEngineDebug(true)`,
+  `setGeneratedFilePath()`, `writeGeneratedFile()`
+- `OALEngineLoaderService.java`: `load()` creates the engine, sets the listeners, calls `start()` and
+  `notifyAllListeners()`
+- `StreamAnnotationListener.java`: `notify(Class)` reads `@Stream`, marks the stream defined, routes to the stream
+  processor
+- `CoreModuleProvider.java`: registers `OALEngineLoaderService` in `prepare()`; `start()` loads `DisableOALDefine`
+  before the annotation scans; `notifyAfterCompleted()` warns about script disables no stream carries
 
 ---
 
-## Verification
+## Tests
+
+- `PrecompilerTest`: discovery covers every staged script, a define without its `INSTANCE` and a script without a
+  define fail the build, the manifests list every generated class.
+- `RegistryParityTest`: the registry's scripts hold the build's defines (the very objects providers load), classes
+  and disables, and the overlay's excluded scripts.
+- `OALEngineLoaderServiceTest`: per-define registration (disables first), a define no provider loads has no effect, the
+  first load's overlay scripts, excluded and uncompiled defines.
+- `PrecompiledRegistrationTest`: the OAL classes load and carry `@Stream` / `SourceDispatcher` with declared scopes.
+- `ShippedStorageBuilderFactoryTest`: the shipped storage registers `StorageBuilderFactory.Default`, which the
+  precompiler generates the builders with.
 
 ```bash
-# 1. Build everything
 make build-distro
-
-# 2. Check generated classes exist
-ls build-tools/precompiler/target/generated-classes/org/apache/skywalking/oap/server/core/source/oal/rt/metrics/
-ls build-tools/precompiler/target/generated-classes/org/apache/skywalking/oap/server/core/source/oal/rt/dispatcher/
-
-# 3. Check the build manifests and the generated registry
-cat build-tools/precompiler/target/generated-classes/META-INF/oal-metrics-classes.txt
-cat build-tools/precompiler/target/generated-classes/META-INF/oal-dispatcher-classes.txt
-less build-tools/precompiler/target/generated-registry/org/apache/skywalking/oap/server/graalvm/rules/OalRegistry.java
-
-# 4. Check annotation scan manifests
-ls build-tools/precompiler/target/generated-classes/META-INF/annotation-scan/
-
-# 5. Verify tests pass
-make build-distro   # runs PrecompiledRegistrationTest
+less build-tools/precompiler/target/generated-registry/org/apache/skywalking/oap/server/graalvm/rules/Oal_core.java
 ```

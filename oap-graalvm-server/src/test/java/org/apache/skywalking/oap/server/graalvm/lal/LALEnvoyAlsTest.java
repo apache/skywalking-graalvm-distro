@@ -39,7 +39,7 @@ class LALEnvoyAlsTest extends LALScriptComparisonBase {
     }
 
     @Test
-    void allEnvoyAlsRulesPrecompiled() {
+    void allEnvoyAlsRulesPrecompiled() throws Exception {
         assertTrue(RULES.size() >= 1, "envoy-als.yaml should have at least 1 rule");
         for (final LALConfig rule : RULES) {
             final LalExpression expr = loadPrecompiled(rule);

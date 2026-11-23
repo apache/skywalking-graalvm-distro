@@ -1,4 +1,4 @@
-# Config Initialization — Eliminate Reflection in Config Loading
+# Config Initialization — Generated Setters Instead of Reflection in Config Loading
 
 ## Context
 
@@ -9,9 +9,11 @@ would require `reflect-config.json` entries, and `setAccessible()` is restricted
 
 Since the image ships a known module/provider set (the accepted providers, see
 distro-policy.md), we can generate hardcoded field-setting code at build time that
-eliminates field reflection in config loading. Upstream's `ModuleDefine.prepare` still
-creates each config object through its no-arg constructor reflectively; the precompiler
-registers those constructors from `module-config-classes.txt`.
+sets every non-final config field through its setter. A final field has no setter, so it
+is still written through `Field.set`, as upstream writes it; the precompiler registers
+those few fields (and the static ones, which `Field.set` refuses as upstream's does) from `module-config-field-set.txt`. Upstream's
+`ModuleDefine.prepare` still creates each config object through its no-arg constructor
+reflectively; the precompiler registers those constructors from `module-config-classes.txt`.
 
 ---
 
@@ -38,23 +40,36 @@ This requires:
 
 Generate a replacement `YamlConfigLoaderUtils.java` with the same FQCN
 (`org.apache.skywalking.oap.server.library.util.YamlConfigLoaderUtils`) that
-dispatches by config object type and sets fields directly — no
-`Field.setAccessible()`, no `getDeclaredField()` scan.
+dispatches by config object type and sets each non-final field through its Lombok setter,
+the value checked and converted as upstream's `Field.set` does (`ConfigFieldValues`) — no
+`Field.setAccessible()`, no `getDeclaredField()` scan for them. A final field goes through
+`Field.set` itself (`ConfigFieldValues.setByField`), as upstream.
 
-This is one of 23 same-FQCN replacement classes in the distro (see distro-policy.md for full list).
+This is one of the distro's same-FQCN replacement classes (see distro-policy.md for the full list).
 
 ### Field Access Strategy (per field)
 
 | Strategy | Condition | Example |
 |---|---|---|
-| **Lombok setter** | All non-final fields (class-level `@Setter` added via `-for-graalvm` modules) | `cfg.setRole((String) value)` |
-| **Getter + clear + addAll** | Final collection field | `cfg.getDownsampling().clear(); cfg.getDownsampling().addAll((List) value)` |
+| **Lombok setter** | All non-final fields (class-level `@Setter` added via `-for-graalvm` modules) | `cfg.setRole(ConfigFieldValues.referenceValue(value, String.class, "...CoreModuleConfig.role"))` |
+| **`Field.set`** | Final or static field, which no setter writes: written as upstream writes it, reflectively (registered in `reflect-config.json` from `module-config-field-set.txt`, a final instance field as writable; a static final one refused with `IllegalAccessException`, as upstream) | `ConfigFieldValues.setByField(cfg, "downsampling", value)` |
 | **Error** | Unknown config type | `throw new IllegalArgumentException("Unknown config type: ...")` |
 
-All config classes that previously lacked `@Setter` now have it added via
-same-FQCN replacement classes in the `-for-graalvm` modules. No VarHandle, no
-reflection fallback. The generator fails at build time if any non-final field
-lacks a setter.
+The values convert as upstream's `Field.set` converts them (`ConfigFieldValues.intValue(value, field)` and its kind): a primitive field
+takes its wrapper or a value of a primitive type that widens to it (an `int` field a `Short`, `Byte` or `Character`
+too; a `long` field an `Integer`; a `double` field any primitive number), never a narrowing one (an `int` field refuses a
+`Long` or a `Double`: `1.5` is not truncated); a reference field takes an instance of its type or null. A refused value
+throws `Field.set`'s `IllegalArgumentException` ("Can not set int field ... to java.lang.Double"). A final field gets
+`Field.set` itself, as upstream: a value of another type stops the boot (`envoy-metric.default.listenerMetricsAdapter:
+bad`), the field's own list given back keeps its elements, and the null a key of the properties' defaults reads is
+assigned. A key naming a static field goes through `Field.set` too, so a constant (`alarm.default.DEFAULT_HTTP_TIMEOUT_SECONDS`)
+stops the boot with `IllegalAccessException`, as upstream's does. The precompiler registers every final instance field
+of a config class with `allowWrite`, and every static one so the image finds it, from the list the config-generator writes
+(`module-config-field-set.txt`).
+
+All config classes that lack a setter upstream have class-level `@Setter` added via same-FQCN replacement classes in
+the `-for-graalvm` modules. No VarHandle, and no reflection but for the final fields. The generator reads the upstream classes; a missing
+setter fails the compile of the generated class in `oap-graalvm-server`.
 
 ### Generated Code Structure
 
@@ -62,7 +77,7 @@ lacks a setter.
 package org.apache.skywalking.oap.server.library.util;
 
 public class YamlConfigLoaderUtils {
-    // No VarHandle, no reflection. Pure setter-based.
+    // No VarHandle; setters, and Field.set for a final field only.
 
     // Type-dispatch: check instanceof, delegate to type-specific method
     public static void copyProperties(Object dest, Properties src,
@@ -79,19 +94,22 @@ public class YamlConfigLoaderUtils {
         }
     }
 
-    // Per-type: switch on property name, set via Lombok setter
+    // Per-type: switch on property name, set via Lombok setter, a final field via Field.set
     private static void copyToCoreModuleConfig(
             CoreModuleConfig cfg, Properties src,
-            String moduleName, String providerName) {
+            String moduleName, String providerName) throws IllegalAccessException {
         // iterate properties
         switch (key) {
             case "role":
-                cfg.setRole((String) value);
+                cfg.setRole(ConfigFieldValues.referenceValue(value, String.class, "...CoreModuleConfig.role"));
                 break;
             case "persistentPeriod":
-                cfg.setPersistentPeriod((int) value);
+                cfg.setPersistentPeriod(ConfigFieldValues.intValue(value, "...CoreModuleConfig.persistentPeriod"));
                 break;
-            // ... all fields via setters ...
+            case "downsampling":
+                ConfigFieldValues.setByField(cfg, "downsampling", value);
+                break;
+            // ... all fields ...
             default:
                 log.warn("{} setting is not supported in {} provider of {} module",
                     key, providerName, moduleName);
@@ -111,32 +129,38 @@ public class YamlConfigLoaderUtils {
 **Main class**: `ConfigInitializerGenerator.java`
 
 ### Input
-- Classpath with all SkyWalking module JARs (same dependencies as `oap-graalvm-server`)
-- Provider class list — the `ModuleProvider` SPI entries on the classpath that `AcceptedModules` (build-common) accepts
-- Extra config class list — BanyanDB nested configs used by `BanyanDBConfigLoader`
+- Classpath: upstream's `server-starter` (every upstream provider) and the admin-server family, the raw upstream
+  classes, not the `-for-graalvm` replacements
+- Provider class list — the `ModuleProvider` SPI entries on the classpath that `AcceptedModules` (build-common) accepts.
+  A provider that does not load, or an accepted one missing from the classpath, fails the generator;
+  `ApplicationYmlModulesTest` requires `AcceptedModules` to equal the ACCEPTED providers of
+  `provider-inventory.properties`
 
 ### Process
-1. For each provider, call `newConfigCreator().type()` to discover the config class
-2. For each config class, use Java reflection to scan all declared fields
+1. For each provider, call `newConfigCreator().type()` to discover the config class (none for a null creator or type,
+   as `ModuleDefine.prepare` copies nothing then)
+2. Add the nested classes of each config class (the BanyanDB group classes `BanyanDBConfigLoader` copies into)
+3. For each config class, use Java reflection to scan all declared fields
    (walking up to `ModuleConfig` superclass)
-3. For each field, check if a setter method exists (`set` + capitalize(name))
-4. **Fail if any non-final field lacks a setter** (all config classes must have `@Setter`)
-5. Generate `YamlConfigLoaderUtils.java` with type-dispatch + switch-based field assignment
+4. Generate `YamlConfigLoaderUtils.java` with type-dispatch (a subclass before its superclass) + switch-based field
+   assignment
 
-The generator depends on `-for-graalvm` modules (not upstream JARs) so it sees
-config classes with `@Setter` added. Original upstream JARs are forced to
-`provided` scope to prevent classpath shadowing.
+The generated class is compiled in `oap-graalvm-server` against the `-for-graalvm` replacements, so a field without a
+setter fails that compile. `GeneratedConfigLoaderIsCurrentTest` requires the committed class to be what the generator
+writes.
 
 ### Output
 - `oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java`
   (same-FQCN replacement)
 - `build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt` — the config classes, from which the
   precompiler generates their reflection metadata (`ModuleDefine.prepare` instantiates them reflectively)
+- `module-config-field-set.txt` next to it — every field the loader writes through `Field.set` (final or static, on a
+  config class or a superclass up to `ModuleConfig`; `declaringClass#field`, then `static` / `final`), which the
+  precompiler registers in `reflect-config.json`, a final instance field writable (`allowWrite`)
 
 ### Running the generator
 ```bash
-JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
-  mvn -pl build-tools/config-generator exec:java \
+./mvnw -pl build-tools/config-generator exec:java \
   -Dexec.args="oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt"
 ```
 
@@ -150,23 +174,8 @@ need no coverage.
 
 ### Provider Config Classes
 
-| Provider | Config Class | Fields | Setter Status |
-|---|---|---|---|
-| CoreModuleProvider | `CoreModuleConfig` | ~40 | `@Getter` class-level, `@Setter` on ~12 fields, rest need VarHandle |
-| BanyanDBStorageProvider | `BanyanDBStorageConfig` | ~5 | `@Getter @Setter` |
-| ClusterModuleStandaloneProvider | (empty config) | 0 | — |
-| ClusterModuleKubernetesProvider | `ClusterModuleKubernetesConfig` | 3 | `@Setter` |
-| ConfigmapConfigurationProvider | `ConfigmapConfigurationSettings` | 3 | `@Setter` |
-| PrometheusTelemetryProvider | `PrometheusConfig` | 5 | `@Setter` |
-| AnalyzerModuleProvider | `AnalyzerModuleConfig` | ~10 | `@Getter @Setter` |
-| LogAnalyzerModuleProvider | `LogAnalyzerModuleConfig` | 2 | `@Setter` |
-| SharingServerModuleProvider | `SharingServerConfig` | ~15 | Needs check |
-| EnvoyMetricReceiverProvider | `EnvoyMetricReceiverConfig` | ~15 | Needs check |
-| KafkaFetcherProvider | `KafkaFetcherConfig` | ~20 | `@Data` (all setters) |
-| ZipkinReceiverProvider | `ZipkinReceiverConfig` | ~20 | Needs check |
-| GraphQLQueryProvider | `GraphQLQueryConfig` | 4 | `@Setter` |
-| HealthCheckerProvider | `HealthCheckerConfig` | 1 | `@Setter` |
-| + others | (simple configs) | 0-5 | Various |
+The full list is `module-config-classes.txt`. The classes upstream gives no setter for every field are the
+config-only replacements below; the others carry upstream's own `@Setter` (or `@Data`).
 
 ### BanyanDB Config Loading (BanyanDBConfigLoader)
 
@@ -210,14 +219,9 @@ inherited fields (`shardNum`, `segmentInterval`, `ttl`, `replicas`,
 `additionalLifecycleStages`). `Trace` doesn't have its own `@Getter @Setter` but
 inherits all setters from `GroupResource`.
 
-**`instanceof` ordering**: Inner classes (`Global`, `RecordsNormal`, `Trace`, etc.)
-are static inner classes that do NOT extend `BanyanDBStorageConfig`, so the
-`instanceof BanyanDBStorageConfig` check matches only the top-level config. Inner
-class checks come after and work independently.
-
-Two extra inner classes (`RecordsTrace`, `RecordsZipkinTrace`) are included in
-EXTRA_CONFIG_CLASSES for completeness, even though `BanyanDBConfigLoader` doesn't
-currently call `copyProperties()` on them.
+**`instanceof` ordering**: the dispatch checks a subclass before its superclass (deeper classes first, then by name),
+so `RecordsNormal` reaches its own branch before `GroupResource`'s. Every nested class of a config class gets a branch,
+including those `BanyanDBConfigLoader` does not copy into (`RecordsTrace`, `RecordsZipkinTrace`, `TopN`, ...).
 
 ---
 
@@ -234,7 +238,6 @@ currently call `copyProperties()` on them.
 | `EBPFReceiverModuleConfig` | `server-receiver-plugin/skywalking-ebpf-receiver-plugin/.../EBPFReceiverModuleConfig.java` | `oap-libs-for-graalvm/ebpf-receiver-for-graalvm/` | Added `@Setter` at class level. |
 | `AWSFirehoseReceiverModuleConfig` | `server-receiver-plugin/aws-firehose-receiver/.../AWSFirehoseReceiverModuleConfig.java` | `oap-libs-for-graalvm/aws-firehose-receiver-for-graalvm/` | Added `@Setter` at class level. |
 | `CiliumFetcherConfig` | `server-fetcher-plugin/cilium-fetcher-plugin/.../CiliumFetcherConfig.java` | `oap-libs-for-graalvm/cilium-fetcher-for-graalvm/` | Added `@Setter` at class level. |
-| `StatusQueryConfig` | `server-query-plugin/status-query-plugin/.../StatusQueryConfig.java` | `oap-libs-for-graalvm/status-query-for-graalvm/` | Added `@Setter` at class level. |
 | `HealthCheckerConfig` | `server-health-checker/.../HealthCheckerConfig.java` | `oap-libs-for-graalvm/health-checker-for-graalvm/` | Added `@Setter` at class level. |
 
 Config replacements (except `YamlConfigLoaderUtils`) are repackaged into their respective `-for-graalvm` modules via `maven-shade-plugin`. `YamlConfigLoaderUtils` lives in `oap-graalvm-server` because it imports types from 30+ modules; the original `.class` is excluded from `library-util-for-graalvm` via shade filter.
@@ -249,10 +252,9 @@ The original `YamlConfigLoaderUtils.class` is excluded from the `library-util-fo
 
 ```bash
 # Run generator
-JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal \
-  mvn -pl build-tools/config-generator exec:java \
+./mvnw -pl build-tools/config-generator exec:java \
   -Dexec.args="oap-graalvm-server/src/main/java/org/apache/skywalking/oap/server/library/util/YamlConfigLoaderUtils.java build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt"
 
 # Full build (compile + test + package)
-JAVA_HOME=/Users/wusheng/.sdkman/candidates/java/25-graal make build-distro
+make build-distro
 ```

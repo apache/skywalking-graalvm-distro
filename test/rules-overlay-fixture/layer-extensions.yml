@@ -18,3 +18,8 @@ layers:
   - name: FIXTURE
     ordinal: 1000
     normal: true
+  # An operator layer of a name and an ordinal a test once registered for itself: the catalog parity test takes a free
+  # name and ordinal for its own late layer.
+  - name: PARITY_LATE_LAYER
+    ordinal: 9301
+    normal: true

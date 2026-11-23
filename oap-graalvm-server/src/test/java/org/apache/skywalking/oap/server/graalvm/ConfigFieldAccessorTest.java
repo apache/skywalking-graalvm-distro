@@ -17,54 +17,57 @@
 
 package org.apache.skywalking.oap.server.graalvm;
 
-import java.io.IOException;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
 import org.apache.skywalking.oap.server.library.module.ModuleConfig;
-import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Verifies that all ModuleConfig fields used by the fixed provider set have
- * setter methods. This ensures YamlConfigLoaderUtils can set all config fields
- * without reflection.
- *
- * <p>Also verifies getter/is methods exist for all fields, except for known
- * fields that use custom accessors instead of standard Lombok-generated getters.
+ * Verifies that every non-final field of the config classes the generated YamlConfigLoaderUtils loads has a setter, so
+ * it sets them without reflection, every final or static one is found (a final instance one writable) in the native
+ * image, and every field has a getter or another accessor.
  */
 class ConfigFieldAccessorTest {
 
-    private static final String PROVIDER_INVENTORY = "provider-inventory.properties";
+    private static final String REFLECT_CONFIG =
+        "META-INF/native-image/org.apache.skywalking/oap-graalvm-distro/reflect-config.json";
 
+    /** The fields the config-generator's loader writes through {@code Field.set}. */
+    private static final Path SET_BY_FIELD = Path.of(System.getProperty("user.dir")).getParent()
+        .resolve("build-tools/precompiler/src/main/resources/META-INF/module-config-field-set.txt");
+
+    /** The config classes the config-generator wrote the loader for. */
+    private static final Path CONFIG_CLASSES = Path.of(System.getProperty("user.dir")).getParent()
+        .resolve("build-tools/precompiler/src/main/resources/META-INF/module-config-classes.txt");
 
     /**
-     * Fields with custom accessors instead of standard getXxx/isXxx.
-     * These are deliberately designed without standard getters in upstream SkyWalking.
-     * - virtualPeers: derived from noUpstreamRealAddressAgents, accessed via shouldIgnorePeerIPDue2Virtual()
-     * - meterAnalyzerActiveFiles: accessed via meterAnalyzerActiveFileNames() (parsed list)
-     * - meterConfigs: lazily loaded via custom getMeterConfigs()/getLogMeterConfigs() method
-     * - serviceMetaInfoFactory: final, accessed via serviceMetaInfoFactory() method
+     * Fields upstream reads through another accessor than a getter:
+     * - virtualPeers: derived from noUpstreamRealAddressAgents, read through shouldIgnorePeerIPDue2Virtual()
+     * - meterAnalyzerActiveFiles: read through meterAnalyzerActiveFileNames() (parsed list)
+     * - meterConfigs: loaded and read through malConfigs()
+     * - serviceMetaInfoFactory: final, read through serviceMetaInfoFactory()
      */
-    /**
-     * Fields that are lazily-loaded caches or derived values, not YAML config properties.
-     * YamlConfigLoaderUtils does not need to set these.
-     */
-    private static final Set<String> SETTER_EXCLUSION_FIELDS = Set.of(
-        "LogAnalyzerModuleConfig.meterConfigs"
-    );
-
     private static final Set<String> CUSTOM_ACCESSOR_FIELDS = Set.of(
         "AnalyzerModuleConfig.virtualPeers",
         "AnalyzerModuleConfig.meterAnalyzerActiveFiles",
@@ -88,10 +91,6 @@ class ConfigFieldAccessorTest {
                     if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
                         continue;
                     }
-                    String fieldKey = configClass.getSimpleName() + "." + field.getName();
-                    if (SETTER_EXCLUSION_FIELDS.contains(fieldKey)) {
-                        continue;
-                    }
                     if (!hasSetter(configClass, field)) {
                         errors.add(configClass.getName() + "." + field.getName() + " — missing setter");
                     }
@@ -103,6 +102,66 @@ class ConfigFieldAccessorTest {
         if (!errors.isEmpty()) {
             fail("Non-final config fields missing setter (required for YamlConfigLoaderUtils):\n  "
                 + String.join("\n  ", errors));
+        }
+    }
+
+    /**
+     * The binder writes a final or static field through {@code Field.set}, as upstream: the config-generator lists every
+     * such field (on a config class or a superclass up to {@code ModuleConfig}), and the native image finds each one
+     * listed, a final instance field writable, as {@code reflect-config.json} registers it from that list.
+     */
+    @Test
+    void everyFieldSetThroughFieldSetIsInTheNativeImage() throws Exception {
+        final Map<String, Boolean> registered = new TreeMap<>();
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream(REFLECT_CONFIG)) {
+            assertNotNull(is, REFLECT_CONFIG + " not found on the test classpath");
+            for (JsonElement element : JsonParser.parseReader(new InputStreamReader(is, StandardCharsets.UTF_8))
+                                                 .getAsJsonArray()) {
+                final JsonObject entry = element.getAsJsonObject();
+                if (entry.has("fields")) {
+                    for (JsonElement field : entry.getAsJsonArray("fields")) {
+                        final JsonObject f = field.getAsJsonObject();
+                        registered.merge(entry.get("name").getAsString() + "#" + f.get("name").getAsString(),
+                            f.has("allowWrite") && f.get("allowWrite").getAsBoolean(), Boolean::logicalOr);
+                    }
+                }
+            }
+        }
+        // What each field is, from the field itself: the manifest and reflect-config.json are each checked against it
+        final Map<String, String> expected = new TreeMap<>();
+        final Map<String, Boolean> writable = new TreeMap<>();
+        for (Class<?> configClass : discoverConfigClasses().values()) {
+            // As upstream's getDeclaredField finds a key: the subclass's field of the name first
+            final Set<String> names = new HashSet<>();
+            for (Class<?> c = configClass; c != null && c != ModuleConfig.class && c != Object.class;
+                 c = c.getSuperclass()) {
+                for (Field field : c.getDeclaredFields()) {
+                    final boolean isStatic = Modifier.isStatic(field.getModifiers());
+                    final boolean isFinal = Modifier.isFinal(field.getModifiers());
+                    if (!field.isSynthetic() && names.add(field.getName()) && (isFinal || isStatic)) {
+                        final String key = c.getName() + "#" + field.getName();
+                        expected.put(key, key + (isStatic ? " static" : "") + (isFinal ? " final" : ""));
+                        writable.put(key, isFinal && !isStatic);
+                    }
+                }
+            }
+        }
+        assertEquals("org.apache.skywalking.oap.server.core.CoreModuleConfig#downsampling final",
+            expected.get("org.apache.skywalking.oap.server.core.CoreModuleConfig#downsampling"));
+        assertEquals("org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleConfig#DEFAULT_HTTP_TIMEOUT_SECONDS"
+            + " static final",
+            expected.get("org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleConfig#DEFAULT_HTTP_TIMEOUT_SECONDS"));
+        final List<String> listed = new ArrayList<>();
+        for (String line : Files.readAllLines(SET_BY_FIELD)) {
+            if (!line.isBlank()) {
+                listed.add(line.trim());
+            }
+        }
+        assertEquals(new ArrayList<>(expected.values()), listed,
+            "the fields set through Field.set, with their modifiers, the config-generator lists");
+        for (Map.Entry<String, Boolean> field : writable.entrySet()) {
+            assertTrue(registered.containsKey(field.getKey()), field.getKey() + " is not in reflect-config.json");
+            assertEquals(field.getValue(), registered.get(field.getKey()), field.getKey() + " allowWrite");
         }
     }
 
@@ -138,69 +197,14 @@ class ConfigFieldAccessorTest {
         }
     }
 
-    /**
-     * Loads ACCEPTED providers from {@code provider-inventory.properties},
-     * discovers their config classes via {@code newConfigCreator().type()},
-     * then scans inner classes of each config class for nested config types
-     * (e.g. BanyanDBStorageConfig.Global, .Trace, etc.).
-     */
-    private Map<String, Class<?>> discoverConfigClasses() throws Exception {
-        Map<String, Class<?>> configClasses = new LinkedHashMap<>();
-
-        List<String> acceptedProviders = loadAcceptedProviders();
-        assertFalse(acceptedProviders.isEmpty(),
-            PROVIDER_INVENTORY + " has no ACCEPTED providers");
-
-        for (String providerClassName : acceptedProviders) {
-            Class<?> providerClass = Class.forName(providerClassName);
-            ModuleProvider provider = (ModuleProvider) providerClass
-                .getDeclaredConstructor().newInstance();
-            ModuleProvider.ConfigCreator<?> creator = provider.newConfigCreator();
-            if (creator == null) {
-                continue;
-            }
-            Class<?> configType = creator.type();
-            if (configType != null) {
-                configClasses.putIfAbsent(configType.getName(), configType);
-                // Scan declared inner classes that have non-static mutable fields
-                for (Class<?> inner : configType.getDeclaredClasses()) {
-                    if (Modifier.isStatic(inner.getModifiers())
-                            && hasNonFinalInstanceFields(inner)) {
-                        configClasses.putIfAbsent(inner.getName(), inner);
-                    }
-                }
+    private static Map<String, Class<?>> discoverConfigClasses() throws Exception {
+        final Map<String, Class<?>> configClasses = new LinkedHashMap<>();
+        for (final String name : Files.readAllLines(CONFIG_CLASSES)) {
+            if (!name.isBlank()) {
+                configClasses.put(name, Class.forName(name.trim()));
             }
         }
-
         return configClasses;
-    }
-
-    private static boolean hasNonFinalInstanceFields(Class<?> clazz) {
-        for (Field f : clazz.getDeclaredFields()) {
-            if (!Modifier.isStatic(f.getModifiers())
-                    && !Modifier.isFinal(f.getModifiers())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private List<String> loadAcceptedProviders() throws IOException {
-        Properties props = new Properties();
-        try (InputStream is = getClass().getClassLoader()
-                .getResourceAsStream(PROVIDER_INVENTORY)) {
-            if (is != null) {
-                props.load(is);
-            }
-        }
-        List<String> accepted = new ArrayList<>();
-        for (String key : props.stringPropertyNames()) {
-            if (key.startsWith("provider.")
-                    && "ACCEPTED".equals(props.getProperty(key).trim())) {
-                accepted.add(key.substring("provider.".length()));
-            }
-        }
-        return accepted;
     }
 
     private static boolean hasSetter(Class<?> configClass, Field field) {

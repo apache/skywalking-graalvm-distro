@@ -18,8 +18,8 @@
 package org.apache.skywalking.oap.server.graalvm;
 
 import com.google.common.collect.ImmutableMap;
-import java.util.Map;
-import java.util.function.Supplier;
+import java.util.List;
+import org.apache.skywalking.oap.meter.analyzer.v2.dsl.DSL;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Expression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalExpression;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Result;
@@ -29,6 +29,7 @@ import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
 import org.apache.skywalking.oap.server.core.analysis.meter.MeterEntity;
 import org.apache.skywalking.oap.server.core.config.NamingControl;
 import org.apache.skywalking.oap.server.core.config.group.EndpointNameGrouping;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledMalExpression;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -147,13 +148,13 @@ class PrecompiledMALExecutionTest {
      */
     @Test
     void allPrecompiledExpressionsCanBeWrappedInExpression() {
-        Map<String, Supplier<MalExpression>> registry = CompiledRules.malExpressions();
+        List<CompiledMalExpression> registry = CompiledRules.malExpressions();
         assertFalse(registry.isEmpty(), "The MAL expressions of the rule registry should not be empty");
 
         int successCount = 0;
-        for (Map.Entry<String, Supplier<MalExpression>> entry : registry.entrySet()) {
-            MalExpression malExpr = entry.getValue().get();
-            Expression e = new Expression("test", entry.getKey(), malExpr);
+        for (CompiledMalExpression compiled : registry) {
+            MalExpression malExpr = compiled.getCompiled().get();
+            Expression e = new Expression(compiled.getMetricName(), compiled.getExpression(), malExpr);
             assertNotNull(e, "Expression wrapping should succeed for: " + malExpr.getClass().getName());
             successCount++;
         }
@@ -163,12 +164,11 @@ class PrecompiledMALExecutionTest {
     }
 
     /**
-     * Load a pre-compiled MalExpression from the generated rule registry using expression text lookup.
+     * The pre-compiled MalExpression the runtime DSL returns for a metric and its expression text, without
+     * coordinates.
      */
     private static Expression loadFromManifest(final String metricName,
                                                final String expression) {
-        Supplier<MalExpression> compiled = CompiledRules.malExpressions().get(expression);
-        assertNotNull(compiled, "The rule registry has no expression for metric: " + metricName);
-        return new Expression(metricName, expression, compiled.get());
+        return DSL.parse(metricName, expression);
     }
 }

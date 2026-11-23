@@ -34,14 +34,17 @@ import org.apache.skywalking.oap.server.library.module.ModuleProvider;
 
 /**
  * Build-time utility that discovers accepted {@link ModuleProvider} implementations
- * via SPI descriptor files and filters them against {@link AcceptedModules}.
+ * via SPI descriptor files and filters them against {@link AcceptedModules}. A provider
+ * that does not load, or an accepted one that is missing, fails the discovery instead of
+ * being skipped: an accepted provider left out gets no config loader branch, and the boot
+ * fails with "Unknown config type".
  */
 public final class ProviderDiscovery {
 
     /**
      * Discover all accepted providers available on the current classpath.
-     * Uses ServiceLoader to find ModuleProvider implementations, then filters
-     * by the accepted (moduleName, providerName) pairs.
+     * Reads the ModuleProvider SPI entries, then filters by the accepted
+     * (moduleName, providerName) pairs.
      *
      * @return list of accepted ModuleProvider instances found on classpath
      */
@@ -50,23 +53,15 @@ public final class ProviderDiscovery {
         List<ModuleProvider> result = new ArrayList<>();
         Set<AcceptedModules.ModuleProviderPair> found = new HashSet<>();
 
-        // Read META-INF/services file directly and load each provider class
-        // independently, so providers whose dependencies are excluded from
-        // *-for-graalvm shaded JARs are skipped without affecting the rest.
         for (String providerClassName : loadServiceNames()) {
             ModuleProvider provider;
             try {
                 Class<?> clazz = Class.forName(providerClassName);
                 provider = (ModuleProvider) clazz.getDeclaredConstructor().newInstance();
             } catch (Exception | NoClassDefFoundError e) {
-                System.err.println("  SKIP provider " + providerClassName
-                    + " (class load failed): " + e.getMessage());
-                continue;
+                throw new IllegalStateException("Cannot load the module provider " + providerClassName, e);
             }
             String moduleName = resolveModuleName(provider);
-            if (moduleName == null) {
-                continue;
-            }
             String providerName = provider.name();
             Set<String> acceptedProviders = accepted.get(moduleName);
             if (acceptedProviders != null && acceptedProviders.contains(providerName)) {
@@ -75,44 +70,17 @@ public final class ProviderDiscovery {
             }
         }
 
-        // Warn about accepted pairs not found on classpath
+        List<String> missing = new ArrayList<>();
         for (AcceptedModules.ModuleProviderPair pair : AcceptedModules.ACCEPTED) {
             if (!found.contains(pair)) {
-                System.err.println("WARNING: Accepted provider not found on classpath: "
-                    + pair.moduleName() + "/" + pair.providerName());
+                missing.add(pair.moduleName() + "/" + pair.providerName());
             }
+        }
+        if (!missing.isEmpty()) {
+            throw new IllegalStateException("Accepted providers not on the classpath: " + missing);
         }
 
         return result;
-    }
-
-    /**
-     * Discover config class FQCNs from all accepted providers on the current classpath.
-     * Providers with null ConfigCreator or null config type are skipped.
-     *
-     * @return ordered set of config class FQCNs
-     */
-    public static Set<String> discoverConfigClasses() {
-        Set<String> configClasses = new LinkedHashSet<>();
-        for (ModuleProvider provider : discoverAccepted()) {
-            try {
-                ModuleProvider.ConfigCreator<?> creator = provider.newConfigCreator();
-                if (creator == null) {
-                    System.out.println("  SKIP (null ConfigCreator): " + provider.getClass().getName());
-                    continue;
-                }
-                Class<?> configType = creator.type();
-                if (configType == null) {
-                    System.out.println("  SKIP (null config type): " + provider.getClass().getName());
-                    continue;
-                }
-                configClasses.add(configType.getName());
-            } catch (Exception e) {
-                System.err.println("  ERROR discovering config for " + provider.getClass().getName()
-                    + ": " + e.getMessage());
-            }
-        }
-        return configClasses;
     }
 
     private static String resolveModuleName(ModuleProvider provider) {
@@ -121,15 +89,12 @@ public final class ProviderDiscovery {
             ModuleDefine moduleInstance = moduleClass.getDeclaredConstructor().newInstance();
             return moduleInstance.name();
         } catch (Exception e) {
-            System.err.println("  ERROR resolving module name for " + provider.getClass().getName()
-                + ": " + e.getMessage());
-            return null;
+            throw new IllegalStateException("Cannot read the module name of " + provider.getClass().getName(), e);
         }
     }
 
     /**
      * Read provider class names from META-INF/services without loading any classes.
-     * This allows individual provider loading to fail gracefully.
      */
     private static List<String> loadServiceNames() {
         String serviceFile = "META-INF/services/" + ModuleProvider.class.getName();

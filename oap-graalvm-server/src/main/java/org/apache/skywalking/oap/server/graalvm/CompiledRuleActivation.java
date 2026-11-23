@@ -25,9 +25,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleCatalog;
 import org.apache.skywalking.oap.server.library.module.ApplicationConfiguration;
 import org.apache.skywalking.oap.server.library.util.ResourceUtils;
 import org.yaml.snakeyaml.Yaml;
@@ -40,23 +42,24 @@ import org.yaml.snakeyaml.nodes.Tag;
 
 /**
  * Every rule file compiled into this image is active. After the configuration is loaded, the settings that select rule
- * files, the original way to pick rules at boot, are set to all of them, and the rule directories to the compiled
- * catalogs, whatever was given: no rule is selected, added or dropped at runtime. A rule-selecting setting given anyway
- * (in {@code application.yml} under any provider, by environment variable or by system property) fails the boot rather
- * than being silently ignored.
+ * files, the original way to pick rules at boot, are set to all of them: no rule is selected, added or dropped at
+ * runtime. A setting that selects or locates rule files given anyway (in {@code application.yml} under any provider,
+ * by environment variable or by system property) fails the boot rather than being silently ignored.
  */
 @Slf4j
 final class CompiledRuleActivation {
-    static final List<Setting> SETTINGS = List.of(
-        new Setting("receiver-otel", "default", "enabledOtelMetricsRules", "SW_OTEL_RECEIVER_ENABLED_OTEL_METRICS_RULES"),
-        new Setting("agent-analyzer", "default", "meterAnalyzerActiveFiles", "SW_METER_ANALYZER_ACTIVE_FILES"),
-        new Setting("log-analyzer", "default", "malFiles", "SW_LOG_MAL_FILES"),
-        new Setting("log-analyzer", "default", "lalFiles", "SW_LOG_LAL_FILES"),
-        new Setting("trace-analyzer", "default", "talFiles", "SW_TRACE_TAL_FILES"),
-        new Setting("trace-analyzer", "default", "nativeTalFiles", "SW_TRACE_NATIVE_TAL_FILES"),
-        new Setting("envoy-metric", "default", "enabledEnvoyMetricsRules", "SW_ENVOY_METRIC_ENABLED_RULES"),
-        new Setting("receiver-telegraf", "default", "activeFiles", "SW_RECEIVER_TELEGRAF_ACTIVE_FILES"),
-        new Setting("receiver-zabbix", "default", "activeFiles", "SW_RECEIVER_ZABBIX_ACTIVE_FILES"));
+    static final List<Setting> SETTINGS = RuleCatalog.allSettings().stream()
+        .map(s -> new Setting(s.getModule(), s.getProvider(), s.getField(), s.getEnv()))
+        .collect(Collectors.toList());
+    /**
+     * The directories the analyzers read rule files from, and the log analyzer's cache of the MAL rules it read;
+     * upstream's {@code application.yml} gives none of them, so they have no environment variable.
+     */
+    static final List<Setting> RULE_LOCATIONS = List.of(
+        new Setting("log-analyzer", "default", "lalPath", null),
+        new Setting("log-analyzer", "default", "malPath", null),
+        new Setting("log-analyzer", "default", "meterConfigs", null),
+        new Setting("trace-analyzer", "default", "talPath", null));
 
     private CompiledRuleActivation() {
     }
@@ -75,8 +78,8 @@ final class CompiledRuleActivation {
         if (!found.isEmpty()) {
             throw new IllegalStateException(
                 "Rules are selected at compile time: every rule compiled into this image is active, and these "
-                    + "settings select rule files: " + found + ". Remove them; to change the rules, rebuild the image "
-                    + "with a rules overlay (add / override / exclude in its rules-overlay.yaml).");
+                    + "settings select or locate rule files: " + found + ". Remove them; to change the rules, rebuild "
+                    + "the image with a rules overlay (add / override / exclude in its rules-overlay.yaml).");
         }
     }
 
@@ -103,18 +106,20 @@ final class CompiledRuleActivation {
     static List<String> find(final List<String[]> yamlSettings, final Map<String, String> env,
                              final Properties systemProperties) {
         final List<String> found = new ArrayList<>();
-        for (final Setting setting : SETTINGS) {
+        final List<Setting> refused = new ArrayList<>(SETTINGS);
+        refused.addAll(RULE_LOCATIONS);
+        for (final Setting setting : refused) {
             for (final String[] given : yamlSettings) {
                 // By its parts: a provider name may hold a dot.
                 if (setting.module.equals(given[0]) && setting.field.equals(given[2])) {
                     found.add("application.yml " + String.join(".", given));
                 }
             }
-            if (env.containsKey(setting.env)) {
+            if (setting.env != null && env.containsKey(setting.env)) {
                 found.add("environment variable " + setting.env);
             }
             // Upstream resolves a ${SW_...} placeholder from the system properties first.
-            if (systemProperties.containsKey(setting.env)) {
+            if (setting.env != null && systemProperties.containsKey(setting.env)) {
                 found.add("system property " + setting.env);
             }
             // module.provider.setting overrides the provider's setting, whichever provider it names.
@@ -128,8 +133,7 @@ final class CompiledRuleActivation {
     }
 
     /**
-     * Sets every rule-selecting setting of the loaded providers to all the rule files compiled for it, and what else
-     * the analyzers load rules by to what the image compiled.
+     * Sets every rule-selecting setting of the loaded providers to all the rule files compiled for it.
      */
     static void apply(final ApplicationConfiguration configuration, final Map<String, String> activation) {
         for (final Setting setting : SETTINGS) {
@@ -142,18 +146,6 @@ final class CompiledRuleActivation {
             if (provider != null) {
                 provider.put(setting.field, files);
             }
-        }
-        // The catalogs the rules were compiled from: the log analyzer would load nothing from another one.
-        final Properties logAnalyzer = provider(configuration, "log-analyzer");
-        if (logAnalyzer != null) {
-            logAnalyzer.put("lalPath", "lal");
-            logAnalyzer.put("malPath", "log-mal-rules");
-            // Its cache of the rules it loads from malFiles: a value given for it would replace them.
-            logAnalyzer.remove("meterConfigs");
-        }
-        final Properties traceAnalyzer = provider(configuration, "trace-analyzer");
-        if (traceAnalyzer != null) {
-            traceAnalyzer.put("talPath", "tal");
         }
         log.info("Every compiled rule file is active: {}", activation);
     }

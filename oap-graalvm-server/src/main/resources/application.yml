@@ -74,7 +74,7 @@ core:
     instanceNameMaxLength: ${SW_INSTANCE_NAME_MAX_LENGTH:70}
     endpointNameMaxLength: ${SW_ENDPOINT_NAME_MAX_LENGTH:150}
     searchableTracesTags: ${SW_SEARCHABLE_TAG_KEYS:http.method,http.status_code,rpc.status_code,db.type,db.instance,mq.queue,mq.topic,mq.broker}
-    searchableLogsTags: ${SW_SEARCHABLE_LOGS_TAG_KEYS:level,http.status_code,ai_route_type}
+    searchableLogsTags: ${SW_SEARCHABLE_LOGS_TAG_KEYS:level,http.status_code}
     searchableAlarmTags: ${SW_SEARCHABLE_ALARM_TAG_KEYS:level}
     autocompleteTagKeysQueryMaxSize: ${SW_AUTOCOMPLETE_TAG_KEYS_QUERY_MAX_SIZE:100}
     autocompleteTagValuesQueryMaxSize: ${SW_AUTOCOMPLETE_TAG_VALUES_QUERY_MAX_SIZE:100}
@@ -271,6 +271,8 @@ receiver-otel:
     # zipkin: convert to Zipkin v2 and hand them to receiver-zipkin (needs receiver-zipkin and query-zipkin).
     otlpTraceStorage: ${SW_OTEL_TRACE_STORAGE:otlp}
     otlpServiceGroupKeys: ${SW_OTEL_RECEIVER_OTLP_SERVICE_GROUP:""}
+    # Searchable tag keys of OTLP logs, in place of core `searchableLogsTags` (empty uses that one).
+    otlpLogSearchableTags: ${SW_OTEL_LOG_SEARCHABLE_TAG_KEYS:level,severity,ai_route_type}
     otlpTraceSearchableTags: ${SW_OTEL_TRACE_SEARCHABLE_TAG_KEYS:resource.deployment.environment.name,resource.deployment.environment,resource.service.namespace,resource.service.version,resource.k8s.namespace.name,resource.k8s.cluster.name,span.http.request.method,span.http.response.status_code,span.url.path,span.rpc.method,span.rpc.grpc.status_code,span.db.system.name,span.db.namespace,span.messaging.system,span.messaging.destination.name,span.peer.service}
     otlpTraceSampleRate: ${SW_OTEL_TRACE_SAMPLE_RATE:10000}
     otlpTraceMaxSpansPerSecond: ${SW_OTEL_TRACE_MAX_SPANS_PER_SECOND:0}
@@ -329,6 +331,8 @@ query-server:
 query:
   selector: ${SW_QUERY:graphql}
   graphql:
+    # Not supported in the native image: the log test tool compiles the LAL rule it is given at runtime, so its API
+    # answers an error naming that; the image runs only the LAL rules compiled into it.
     enableLogTestTool: ${SW_QUERY_GRAPHQL_ENABLE_LOG_TEST_TOOL:false}
     maxQueryComplexity: ${SW_QUERY_MAX_QUERY_COMPLEXITY:3000}
     enableOnDemandPodLog: ${SW_ENABLE_ON_DEMAND_POD_LOG:false}
@@ -505,10 +509,11 @@ dsl-debugging:
   default:
     injectionEnabled: ${SW_DSL_DEBUGGING_INJECTION_ENABLED:true}
 
-# GraalVM distro only, in place of upstream's receiver-runtime-rule: answers the runtime-rule hot-update routes with
-# 501 and serves the read-only catalog of the bundled MAL / LAL rules (/runtime/rule/*). Mounts onto admin-server.
+# GraalVM distro only, in place of upstream's receiver-runtime-rule, and switched by its variable: answers the
+# runtime-rule hot-update routes with 501 and serves the read-only catalog of the bundled MAL / LAL rules
+# (/runtime/rule/*). Mounts onto admin-server.
 graalvm-unsupported-admin:
-  selector: ${SW_GRAALVM_UNSUPPORTED_ADMIN:default}
+  selector: ${SW_RECEIVER_RUNTIME_RULE:default}
   default:
 
 configuration-discovery:

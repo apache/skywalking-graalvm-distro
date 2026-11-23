@@ -39,7 +39,7 @@ class LALNginxTest extends LALScriptComparisonBase {
     }
 
     @Test
-    void allNginxRulesPrecompiled() {
+    void allNginxRulesPrecompiled() throws Exception {
         assertTrue(RULES.size() >= 1, "nginx.yaml should have at least 1 rule");
         for (final LALConfig rule : RULES) {
             final LalExpression expr = loadPrecompiled(rule);

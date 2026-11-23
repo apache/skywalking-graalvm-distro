@@ -23,15 +23,17 @@ import java.util.stream.Stream;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.Sample;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamily;
 import org.apache.skywalking.oap.meter.analyzer.v2.dsl.SampleFamilyBuilder;
-import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.Rule;
+import org.apache.skywalking.oap.server.graalvm.rules.ZabbixHostPatterns;
+import org.apache.skywalking.oap.server.receiver.zabbix.provider.config.ZabbixConfig;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
 /**
  * Comparison test for zabbix-rules/agent.yaml.
  *
- * <p>Zabbix uses 'metrics' field instead of 'metricsRules' in its YAML.
- * Uses loadZabbixRule() for custom parsing.
+ * <p>Zabbix uses 'metrics' field instead of 'metricsRules' in its YAML: loadZabbixConfig() loads it through
+ * ZabbixConfigs, as the Zabbix receiver does.
  *
  * <p>Shares metricPrefix=meter_vm with otel-rules/vm.yaml and
  * telegraf-rules/vm.yaml (combination pattern).
@@ -57,9 +59,10 @@ class ZabbixAgentTest extends MALScriptComparisonBase {
 
     @TestFactory
     Stream<DynamicTest> allMetricsGroovyVsPrecompiled() {
-        Rule rule = loadZabbixRule(YAML_PATH);
-        return generateComparisonTests(YAML_PATH, rule,
-            buildInput(100.0, TS1), buildInput(200.0, TS2));
+        final ZabbixConfig config = loadZabbixConfig(YAML_PATH);
+        // The Zabbix receiver compiles a file's expressions for its host patterns only
+        Assumptions.assumeTrue(ZabbixHostPatterns.compiledAtBoot(config), "the file has no host pattern");
+        return generateComparisonTests(config, buildInput(100.0, TS1), buildInput(200.0, TS2));
     }
 
     /**

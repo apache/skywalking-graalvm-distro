@@ -17,17 +17,26 @@
 
 package org.apache.skywalking.oap.meter.analyzer.v2.dsl;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javassist.ClassPool;
 import org.apache.skywalking.oap.server.core.dsl.DslSourceRef;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledMalExpression;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 
 /**
  * Same-FQCN replacement for upstream v2 MAL DSL.
  *
- * <p>Returns the {@link MalExpression} the precompiler compiled from the expression text, which is the key
- * {@code MetricConvert} passes, from the generated {@link CompiledRules} registry instead of compiling it with
- * MALClassGenerator at runtime. Closure fields are self-wired by the generated class's static initializer.
+ * <p>Returns the {@link MalExpression} the precompiler compiled for the rule at the coordinates {@code MetricConvert}
+ * passes, from the generated {@link CompiledRules} registry, instead of compiling it with MALClassGenerator at
+ * runtime; the metric name and expression text must be those it was compiled from. Closure fields are self-wired by
+ * the generated class's static initializer.
+ *
+ * <p>Left out on purpose: {@code extractMetadata(String)}, which only runtime-rule (not shipped) calls.
  */
 public final class DSL {
     public static Expression parse(final String metricName, final String expression) {
@@ -37,23 +46,53 @@ public final class DSL {
     public static Expression parse(final String metricName,
                                    final String expression,
                                    final DslSourceRef sourceRef) {
-        final Supplier<MalExpression> compiled = CompiledRules.malExpressions().get(expression);
-        if (compiled == null) {
-            throw new IllegalStateException(
-                "Pre-compiled MAL expression not found for metric: " + metricName
-                    + " (expression: " + expression + ")"
-                    + ". Available: " + CompiledRules.malExpressions().size() + " expressions");
-        }
-        return new Expression(metricName, expression, compiled.get());
+        // Without coordinates (no rule upstream locates), by metric name: classes compiled from one text run alike.
+        final List<CompiledMalExpression> candidates = sourceRef != null
+            ? Index.BY_SOURCE.getOrDefault(sourceRef.getYamlFile() + ":" + sourceRef.getYamlLine(), List.of())
+            : Index.BY_NAME.getOrDefault(metricName, List.of());
+        return new Expression(metricName, expression, select(candidates, metricName, expression, sourceRef).get());
     }
 
-    // Runtime-rule overload (upstream signature). We load the pre-compiled class by expression
-    // text, so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
+    /**
+     * @return the class compiled for this metric name and text among those compiled where upstream locates the rule
+     * @throws IllegalStateException when none was
+     */
+    static Supplier<MalExpression> select(final List<CompiledMalExpression> candidates, final String metricName,
+                                          final String expression, final DslSourceRef sourceRef) {
+        for (final CompiledMalExpression candidate : candidates) {
+            if (candidate.getMetricName().equals(metricName) && candidate.getExpression().equals(expression)) {
+                return candidate.getCompiled();
+            }
+        }
+        throw new IllegalStateException(
+            "No pre-compiled MAL expression for metric: " + metricName + " ("
+                + (sourceRef == null ? "no source coordinates" : sourceRef.describeYaml()) + "), expression: "
+                + expression + "; compiled there: "
+                + candidates.stream().map(c -> c.getMetricName() + ": " + c.getExpression())
+                            .collect(Collectors.toList())
+                + ". The rule files changed after the build; rebuild the distro.");
+    }
+
+    // Runtime-rule overload (upstream signature). We load the pre-compiled class by coordinates,
+    // so pool/targetClassLoader are ignored; runtime-rule hot-update is unsupported (501).
     public static Expression parse(final String metricName,
                                    final String expression,
                                    final DslSourceRef sourceRef,
                                    final ClassPool pool,
                                    final ClassLoader targetClassLoader) {
         return parse(metricName, expression, sourceRef);
+    }
+
+    private static final class Index {
+        private static final Map<String, List<CompiledMalExpression>> BY_SOURCE = new HashMap<>();
+        private static final Map<String, List<CompiledMalExpression>> BY_NAME = new HashMap<>();
+
+        static {
+            for (final CompiledMalExpression compiled : CompiledRules.malExpressions()) {
+                BY_SOURCE.computeIfAbsent(compiled.getSource() + ":" + compiled.getLine(), k -> new ArrayList<>())
+                         .add(compiled);
+                BY_NAME.computeIfAbsent(compiled.getMetricName(), k -> new ArrayList<>()).add(compiled);
+            }
+        }
     }
 }

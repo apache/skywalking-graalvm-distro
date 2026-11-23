@@ -24,7 +24,8 @@ import org.apache.skywalking.oap.log.analyzer.v2.dsl.LalExpression;
 
 /**
  * A compiled LAL rule: the source coordinates upstream passes as {@code DslSourceRef}, the rule name, the generated
- * class and the input type the compiler resolved (null when it resolved none).
+ * class and the input type the compiler resolved (null when it resolved none), plus what the class was compiled from:
+ * the SHA-256 of the DSL text and the input and output types the compiler was given (empty for none).
  */
 @Getter
 @RequiredArgsConstructor
@@ -34,4 +35,7 @@ public final class LalRule {
     private final String name;
     private final Supplier<LalExpression> expression;
     private final Class<?> inputType;
+    private final String dslSha256;
+    private final String requestedInputType;
+    private final String requestedOutputType;
 }

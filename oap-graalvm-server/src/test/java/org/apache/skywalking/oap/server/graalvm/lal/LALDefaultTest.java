@@ -18,10 +18,9 @@
 package org.apache.skywalking.oap.server.graalvm.lal;
 
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.skywalking.oap.server.graalvm.rules.LalRule;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -57,14 +56,8 @@ class LALDefaultTest extends LALScriptComparisonBase {
 
     @Test
     void registryContainsDefaultRule() {
-        final Map<String, LalRule> registry = loadRegistry();
-        boolean found = false;
-        for (final String key : registry.keySet()) {
-            if (key.contains("default")) {
-                found = true;
-                break;
-            }
-        }
-        assertTrue(found, "The rule registry should contain the 'default' rule");
+        assertTrue(CompiledRules.lalRules().stream().anyMatch(rule -> "lal/default.yaml".equals(rule.getSource())
+                && "default".equals(rule.getName())),
+            "The rule registry should contain the 'default' rule");
     }
 }

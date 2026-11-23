@@ -17,10 +17,13 @@
 
 package org.apache.skywalking.oap.server.receiver.zabbix.provider.config;
 
+import java.io.FileNotFoundException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleCatalog;
 import org.apache.skywalking.oap.server.library.module.ModuleStartException;
 import org.apache.skywalking.oap.server.library.util.CollectionUtils;
 
@@ -38,6 +41,16 @@ import org.apache.skywalking.oap.server.library.util.CollectionUtils;
 public class ZabbixConfigs {
     public static List<ZabbixConfig> loadConfigs(String path, List<String> fileNames) throws ModuleStartException {
         if (CollectionUtils.isEmpty(fileNames)) {
+            return Collections.emptyList();
+        }
+        // As upstream's ResourceUtils.getPathFiles: a null path throws, one no directory answers fails, the class path
+        // root ("") and a rule directory other than the compiled zabbix-rules/ hold no Zabbix rule file.
+        Objects.requireNonNull(path);
+        if (!RuleCatalog.exists(path)) {
+            throw new ModuleStartException("Load zabbix configs failed",
+                new FileNotFoundException("path not found: " + path));
+        }
+        if (!RuleCatalog.ZABBIX_RULES.getDirectory().equals(path)) {
             return Collections.emptyList();
         }
         return CompiledRules.zabbixConfigs().stream()

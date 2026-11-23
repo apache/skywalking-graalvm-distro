@@ -138,8 +138,9 @@ runtime-rule catalog for them; to change them, edit the files under `tal/` and r
 |-----------|--------|
 | `/dsl-debugging/*` (SWIP-13 live debugger: sessions over MAL, LAL and OAL rules) | Supported on the bundled rules |
 | `GET /runtime/oal/files`, `/runtime/oal/files/{name}`, `/runtime/oal/rules[/{source}]` | Supported (upstream handler) |
-| `GET /runtime/rule/list`, `/runtime/rule/bundled`, `GET /runtime/rule` (YAML + `X-Sw-*` headers) | Supported: every shipped rule, always `BUNDLED` |
+| `GET /runtime/rule/list`, `/runtime/rule/bundled`, `/runtime/rule/status`, `GET /runtime/rule` (YAML + `X-Sw-*` headers) | Supported: answered as upstream answers on a node with no runtime rule; every shipped rule is `BUNDLED`, no apply is ever found |
 | `POST /runtime/rule/addOrUpdate`, `/inactivate`, `/delete`, `GET /runtime/rule/dump`, `/runtime/mal/*`, `/runtime/lal/*` | **HTTP 501** (runtime-rule hot-update) |
+| GraphQL `test(requests: LogTestRequest!)`, the LAL log test tool (`SW_QUERY_GRAPHQL_ENABLE_LOG_TEST_TOOL`) | **Not supported**: it compiles the rule it is given at runtime; answers an error saying so |
 
 The Horizon UI's DSL catalog, editor, OAL and live-debug pages therefore work against this distro;
 saving or deleting a rule is refused with a structured 501. `SW_DSL_DEBUGGING_INJECTION_ENABLED`

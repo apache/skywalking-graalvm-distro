@@ -31,219 +31,307 @@ import com.linecorp.armeria.server.annotation.Default;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Header;
 import com.linecorp.armeria.server.annotation.Param;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import lombok.extern.slf4j.Slf4j;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
+import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
+import org.apache.skywalking.oap.meter.analyzer.v2.prometheus.rule.MetricsRule;
+import org.apache.skywalking.oap.server.core.analysis.Layer;
+import org.apache.skywalking.oap.server.core.dsl.Catalog;
+import org.apache.skywalking.oap.server.core.rule.ext.StaticRuleRegistry;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.LalFile;
+import org.apache.skywalking.oap.server.graalvm.rules.MalFile;
 
 /**
- * Read-only view of the bundled MAL / LAL rules, on the same routes and with the same payloads
- * as upstream's runtime-rule module, so the Horizon UI and {@code swctl admin} can list and
- * review rules. Every rule is pre-compiled at build time, so every rule is {@code BUNDLED}; the
- * mutating routes stay on {@link UnsupportedAdminFeatureHandler}. The OAL listing
+ * Read-only view of the bundled MAL / LAL rules: upstream's runtime-rule read routes, answered as its
+ * {@code RuntimeRuleService} answers them on a node whose storage holds no runtime rule, so the Horizon UI and
+ * {@code swctl admin} can list and review the rules. Every rule is compiled in at build time, so every rule is
+ * {@code BUNDLED}; the mutating routes stay on {@link UnsupportedAdminFeatureHandler}. The OAL listing
  * ({@code /runtime/oal/*}) comes from upstream's dsl-debugging module, which is wired in.
  *
- * <p>Backed by {@code META-INF/rule-source/} from the precompiler (see its
- * {@code exportRuleSources}), because upstream's {@code StaticRuleRegistry} is only filled by
- * the YAML loaders this distro replaces.
+ * <p>The rules are those the boot loaded, as upstream's read routes read them from {@link StaticRuleRegistry}, where
+ * the rule loaders record every file they load (the replacement loaders too, through {@code RuleSources}): the files of a
+ * module turned off are not there. Whether {@code /list} lists a loaded file is decided per request, from the rules
+ * compiled from it and the layers registered, as upstream's {@code StaticRuleLoader} claims a file ({@link #listed}).
  *
  * <p>Distro-only Armeria handler: needs its reflection entry in {@code oap-graalvm-native}'s
  * {@code reachability-metadata.json}, like {@link UnsupportedAdminFeatureHandler}.
  */
-@Slf4j
 public class BundledRuleCatalogHandler {
-    static final String RULE_SOURCE_ROOT = "META-INF/rule-source/";
-    private static final List<String> CATALOGS = List.of(
-        "otel-rules", "log-mal-rules", "telegraf-rules", "meter-analyzer-config", "lal");
+    /**
+     * The catalogs upstream's MAL and LAL rule engines claim: those {@code /list} and {@code GET /runtime/rule}
+     * accept.
+     */
+    private static final Set<String> ENGINE_CATALOGS = new LinkedHashSet<>(List.of(
+        "otel-rules", "log-mal-rules", "telegraf-rules", "meter-analyzer-config", "lal"));
+    private static final String LAL = "lal";
+    private static final Pattern VALID_NAME = Pattern.compile("^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$");
     private static final Gson GSON = new Gson();
     private static final MediaType YAML =
         MediaType.create("application", "x-yaml").withCharset(StandardCharsets.UTF_8);
 
-    private final ClassLoader classLoader;
-    private final Map<String, List<BundledRule>> rulesByCatalog = new LinkedHashMap<>();
-    private final Map<String, BundledRule> rulesByKey = new LinkedHashMap<>();
-
-    static final class BundledRule {
-        final String catalog;
-        final String name;
-        final String path;
-        final String contentHash;
-
-        BundledRule(final String catalog, final String name, final String path, final String contentHash) {
-            this.catalog = catalog;
-            this.name = name;
-            this.path = path;
-            this.contentHash = contentHash;
-        }
-    }
+    private final Claims claims;
 
     public BundledRuleCatalogHandler() {
-        this(BundledRuleCatalogHandler.class.getClassLoader());
+        this(Claims.compiled());
     }
 
-    BundledRuleCatalogHandler(final ClassLoader classLoader) {
-        this.classLoader = classLoader;
-        for (final String catalog : CATALOGS) {
-            rulesByCatalog.put(catalog, new ArrayList<>());
-        }
-        for (final String line : readLines(RULE_SOURCE_ROOT + "index.txt")) {
-            final String[] parts = line.split("\\|", 4);
-            if (parts.length < 4) {
-                continue;
-            }
-            final BundledRule rule = new BundledRule(parts[0], parts[1], parts[2], parts[3]);
-            rulesByCatalog.computeIfAbsent(rule.catalog, k -> new ArrayList<>()).add(rule);
-            rulesByKey.put(key(rule.catalog, rule.name), rule);
-        }
-        log.info("Bundled rule catalog: {} MAL/LAL rules", rulesByKey.size());
+    BundledRuleCatalogHandler(final Claims claims) {
+        this.claims = claims;
     }
 
-    // ---- /runtime/rule (upstream RuntimeRuleRestHandler read routes) ----
-
-    /** No runtime rules can exist here, so the envelope is always empty; Horizon merges it with /bundled. */
+    /**
+     * No runtime rule exists here, so the rows are the bundled rules upstream's runtime-rule module loads at boot, as
+     * its {@code StaticRuleLoader} records them. Upstream's order is a hash map's; here it is by catalog and name.
+     */
     @Get("/runtime/rule/list")
     public HttpResponse list(@Param("catalog") @Default("") final String catalog) {
-        final String filter = catalog.trim();
-        if (!filter.isEmpty() && !CATALOGS.contains(filter)) {
-            return invalidCatalog(filter, null);
+        final String filter = catalog == null ? "" : catalog.trim();
+        if (!filter.isEmpty() && !ENGINE_CATALOGS.contains(filter)) {
+            return badRequest("invalid_catalog", filter, null, "catalog must be one of " + ENGINE_CATALOGS);
         }
+        final JsonArray rows = new JsonArray();
+        // By catalog:name, so a catalog's rules are in name order, as upstream lists them.
+        for (final Map.Entry<String, String> rule : new TreeMap<>(StaticRuleRegistry.active().entries()).entrySet()) {
+            final String[] key = StaticRuleRegistry.splitKey(rule.getKey());
+            if (ENGINE_CATALOGS.contains(key[0]) && (filter.isEmpty() || filter.equals(key[0]))
+                && listed(key[0], key[1])) {
+                rows.add(bundledEntry(key[0], key[1], sha256Hex(rule.getValue())));
+            }
+        }
+        // Only runtime-rule mints rule class loaders (DSLClassLoaderManager), so there are none here.
         final JsonObject loaderStats = new JsonObject();
         loaderStats.addProperty("active", 0);
         loaderStats.addProperty("pending", 0);
         final JsonObject envelope = new JsonObject();
         envelope.addProperty("generatedAt", System.currentTimeMillis());
         envelope.add("loaderStats", loaderStats);
-        envelope.add("rules", new JsonArray());
-        return json(HttpStatus.OK, envelope);
+        envelope.add("rules", rows);
+        return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, GSON.toJson(envelope));
     }
 
-    @Get("/runtime/rule/bundled")
-    public HttpResponse listBundled(@Param("catalog") @Default("") final String catalog,
-                                    @Param("withContent") @Default("true") final String withContent) {
-        final String c = catalog.trim();
-        if (!CATALOGS.contains(c)) {
-            return invalidCatalog(c, null);
-        }
-        final boolean includeContent = !"false".equalsIgnoreCase(withContent.trim());
-        final JsonArray out = new JsonArray();
-        for (final BundledRule rule : rulesByCatalog.get(c)) {
-            final JsonObject row = new JsonObject();
-            row.addProperty("name", rule.name);
-            row.addProperty("kind", "bundled");
-            row.addProperty("contentHash", rule.contentHash);
-            row.addProperty("overridden", false);
-            if (includeContent) {
-                row.addProperty("content", readContent(rule));
-            }
-            out.add(row);
-        }
-        return json(HttpStatus.OK, out);
+    /** Nothing is ever applied at runtime, so there is no apply to find, whatever is asked. */
+    @Get("/runtime/rule/status")
+    public HttpResponse applyStatus() {
+        final JsonObject status = new JsonObject();
+        status.addProperty("found", false);
+        status.addProperty("phase", "UNKNOWN");
+        status.addProperty("servedBy", "self");
+        return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, GSON.toJson(status));
     }
 
     @Get("/runtime/rule")
-    public HttpResponse get(@Param("catalog") @Default("") final String catalog,
-                            @Param("name") @Default("") final String name,
+    public HttpResponse get(@Param("catalog") final String catalog,
+                            @Param("name") final String name,
                             @Param("source") @Default("") final String source,
                             @Header("Accept") @Default("") final String accept,
                             @Header("If-None-Match") @Default("") final String ifNoneMatch) {
-        final String c = catalog.trim();
-        if (!CATALOGS.contains(c)) {
-            return invalidCatalog(c, name);
+        final Catalog parsed = parseCatalogOrNull(catalog);
+        if (parsed == null) {
+            return invalidCatalog(catalog, name);
         }
-        if (name.trim().isEmpty()) {
-            return error(HttpStatus.BAD_REQUEST, "invalid_name", c, name, "name is required");
+        final String wireName = parsed.getWireName();
+        if (!ENGINE_CATALOGS.contains(wireName)) {
+            return badRequest("invalid_catalog", wireName, name, "catalog must be one of " + ENGINE_CATALOGS);
         }
-        if (!source.isEmpty() && !"runtime".equalsIgnoreCase(source) && !"bundled".equalsIgnoreCase(source)) {
-            return error(HttpStatus.BAD_REQUEST, "invalid_source", c, name,
-                "source must be 'runtime' (default) or 'bundled'");
+        if (name == null || name.isEmpty()) {
+            return badRequest("missing_name", wireName, name, "name query parameter is required");
         }
-        final BundledRule rule = rulesByKey.get(key(c, name.trim()));
-        if (rule == null) {
-            return error(HttpStatus.NOT_FOUND, "not_found", c, name,
-                "no bundled rule for this (catalog, name); this distribution has no runtime rules");
+        if (name.startsWith("/") || name.contains("..") || name.contains("\\") || name.contains("\u0000")
+            || !VALID_NAME.matcher(name).matches()) {
+            return badRequest("invalid_name", wireName, name,
+                "name must match segments [A-Za-z0-9._-]+ joined by '/' with no leading slash, "
+                    + "no '..', no empty segments, no backslash");
         }
-        final String eTag = "\"" + rule.contentHash + "\"";
-        if (eTag.equals(ifNoneMatch.trim())) {
-            return HttpResponse.of(ruleHeaders(HttpStatus.NOT_MODIFIED, rule, eTag).build());
+        final boolean forceBundled = "bundled".equalsIgnoreCase(source);
+        if (!forceBundled && source != null && !source.isEmpty() && !"runtime".equalsIgnoreCase(source)) {
+            return badRequest("invalid_source", wireName, name, "source must be 'runtime' (default) or 'bundled'");
         }
-        final String content = readContent(rule);
-        if (accept.toLowerCase(Locale.ROOT).contains("application/json")) {
+        final String content = StaticRuleRegistry.active().find(wireName, name).orElse(null);
+        if (content == null) {
+            return HttpResponse.of(HttpStatus.NOT_FOUND, MediaType.JSON_UTF_8,
+                jsonBody("not_found", wireName, name,
+                    forceBundled
+                        ? "no bundled rule for this (catalog, name); source=bundled was requested"
+                        : "no runtime rule and no bundled rule for this (catalog, name)"));
+        }
+        final String contentHash = sha256Hex(content);
+        final String eTag = "\"" + contentHash + "\"";
+        if (eTag.equals(ifNoneMatch == null ? "" : ifNoneMatch.trim())) {
+            return HttpResponse.of(ruleHeaders(HttpStatus.NOT_MODIFIED, contentHash, eTag).build());
+        }
+        if (accept != null && accept.toLowerCase(Locale.ROOT).contains("application/json")) {
             final JsonObject env = new JsonObject();
-            env.addProperty("catalog", c);
-            env.addProperty("name", rule.name);
+            env.addProperty("catalog", wireName);
+            env.addProperty("name", name);
             env.addProperty("status", "BUNDLED");
             env.addProperty("source", "bundled");
-            env.addProperty("contentHash", rule.contentHash);
+            env.addProperty("contentHash", contentHash);
             env.addProperty("updateTime", 0L);
             env.addProperty("content", content);
-            return HttpResponse.of(ruleHeaders(HttpStatus.OK, rule, eTag).contentType(MediaType.JSON_UTF_8).build(),
-                                   HttpData.ofUtf8(GSON.toJson(env)));
+            return HttpResponse.of(
+                ruleHeaders(HttpStatus.OK, contentHash, eTag).contentType(MediaType.JSON_UTF_8).build(),
+                HttpData.ofUtf8(GSON.toJson(env)));
         }
-        return HttpResponse.of(ruleHeaders(HttpStatus.OK, rule, eTag).contentType(YAML).build(),
+        return HttpResponse.of(ruleHeaders(HttpStatus.OK, contentHash, eTag).contentType(YAML).build(),
                                HttpData.ofUtf8(content));
     }
 
-    /** Nothing is ever applied at runtime, so there is never an apply to report. */
-    @Get("/runtime/rule/status")
-    public HttpResponse applyStatus(@Param("catalog") @Default("") final String catalog,
-                                    @Param("name") @Default("") final String name) {
-        return error(HttpStatus.NOT_FOUND, "not_found", catalog, name,
-            "no runtime apply exists: rules are bundled and read-only in the GraalVM native distribution");
+    @Get("/runtime/rule/bundled")
+    public HttpResponse listBundled(@Param("catalog") final String catalog,
+                                    @Param("withContent") @Default("true") final String withContent) {
+        final Catalog parsed = parseCatalogOrNull(catalog);
+        if (parsed == null) {
+            return invalidCatalog(catalog, null);
+        }
+        final boolean includeContent = parseFlag(withContent)
+            || "true".equalsIgnoreCase(withContent == null ? "true" : withContent.trim());
+        final JsonArray out = new JsonArray();
+        for (final StaticRuleRegistry.NamedRule rule : StaticRuleRegistry.active().findByCatalog(parsed.getWireName())) {
+            final JsonObject row = new JsonObject();
+            row.addProperty("name", rule.getName());
+            row.addProperty("kind", "bundled");
+            row.addProperty("contentHash", sha256Hex(rule.getContent()));
+            row.addProperty("overridden", false);
+            if (includeContent) {
+                row.addProperty("content", rule.getContent());
+            }
+            out.add(row);
+        }
+        return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, GSON.toJson(out));
     }
 
-    // ---- helpers ----
-
-    private static String key(final String catalog, final String name) {
-        return catalog + "|" + name;
+    private static JsonObject bundledEntry(final String catalog, final String name, final String contentHash) {
+        final JsonObject row = new JsonObject();
+        row.addProperty("catalog", catalog);
+        row.addProperty("name", name);
+        row.addProperty("status", "BUNDLED");
+        row.addProperty("localState", "RUNNING");
+        row.addProperty("loaderGc", "LIVE");
+        row.addProperty("loaderKind", "NONE");
+        row.addProperty("loaderName", "");
+        row.addProperty("contentHash", contentHash);
+        row.addProperty("bundled", true);
+        row.addProperty("bundledContentHash", contentHash);
+        row.addProperty("pendingUnregister", false);
+        return row;
     }
 
-    private String readContent(final BundledRule rule) {
-        final String content = readResource(RULE_SOURCE_ROOT + rule.catalog + "/" + rule.path);
-        return content == null ? "" : content;
-    }
-
-    private String readResource(final String resource) {
-        try (InputStream is = classLoader.getResourceAsStream(resource)) {
-            return is == null ? null : new String(is.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+    private static Catalog parseCatalogOrNull(final String wireValue) {
+        if (wireValue == null || wireValue.isEmpty()) {
+            return null;
+        }
+        try {
+            return Catalog.of(wireValue);
+        } catch (final IllegalArgumentException unknown) {
+            return null;
         }
     }
 
-    private List<String> readLines(final String resource) {
-        final List<String> lines = new ArrayList<>();
-        try (InputStream is = classLoader.getResourceAsStream(resource)) {
-            if (is == null) {
-                log.warn("Bundled rule catalog manifest not found: {}", resource);
-                return lines;
-            }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (!line.isEmpty() && !line.startsWith("#")) {
-                        lines.add(line);
-                    }
+    private static boolean parseFlag(final String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return false;
+        }
+        final String v = raw.trim().toLowerCase(Locale.ROOT);
+        return "true".equals(v) || "1".equals(v) || "yes".equals(v);
+    }
+
+    /** As upstream's {@code ContentHash}: SHA-256 of the UTF-8 text, in lowercase hex. */
+    /**
+     * Whether upstream's runtime-rule module lists a loaded file: its {@code StaticRuleLoader} keeps the files its
+     * engine claims, a MAL file in which {@code MalFileApplier#parseMetricNames} finds a metric rule with a name, a LAL
+     * file in which {@code LalFileApplier#parseRuleKeys} finds a rule with a name and no layer, {@code auto} or one
+     * registered now. Decided from the rules the image compiled, bound as upstream's loaders bound them; a file that
+     * yields no rule is not listed.
+     */
+    boolean listed(final String catalog, final String name) {
+        if (LAL.equals(catalog)) {
+            final List<String> layers = claims.lalLayers.get(name);
+            return layers != null && layers.stream().anyMatch(BundledRuleCatalogHandler::registeredOrAuto);
+        }
+        return claims.malClaimed.contains(catalog + ":" + name);
+    }
+
+    private static boolean registeredOrAuto(final String layer) {
+        if (layer == null || LALConfig.LAYER_AUTO.equalsIgnoreCase(layer)) {
+            return true;
+        }
+        try {
+            Layer.valueOf(layer);
+            return true;
+        } catch (final IllegalArgumentException unknown) {
+            return false;
+        }
+    }
+
+    /**
+     * What the claim of each compiled file depends on: the MAL files holding a metric rule with a name, by
+     * {@code catalog:name}, and the layers of the named rules of each LAL file, by name.
+     */
+    static final class Claims {
+        private final Set<String> malClaimed = new HashSet<>();
+        private final Map<String, List<String>> lalLayers = new HashMap<>();
+
+        /**
+         * @return the claims of the rules the image compiled
+         */
+        static Claims compiled() {
+            final Claims claims = new Claims();
+            for (final MalFile file : CompiledRules.malFiles()) {
+                final List<MetricsRule> rules = file.getRule().getMetricsRules();
+                if (rules != null && rules.stream().anyMatch(rule -> rule.getName() != null)) {
+                    claims.malClaimed.add(file.getCatalog() + ":" + file.getRule().getName());
                 }
             }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            for (final LalFile file : CompiledRules.lalFiles()) {
+                final List<String> layers = new ArrayList<>();
+                for (final LALConfig rule : file.getConfigs().getRules() == null ? List.<LALConfig>of()
+                    : file.getConfigs().getRules()) {
+                    if (rule.getName() != null && !rule.getName().isEmpty()) {
+                        layers.add(rule.getLayer());
+                    }
+                }
+                claims.lalLayers.put(file.getName().substring(0, file.getName().lastIndexOf('.')), layers);
+            }
+            return claims;
         }
-        return lines;
+
+        /**
+         * @return these claims and a compiled LAL file whose named rules are of these layers
+         */
+        Claims withLalFile(final String name, final List<String> layers) {
+            lalLayers.put(name, layers);
+            return this;
+        }
     }
 
-    private static ResponseHeadersBuilder ruleHeaders(final HttpStatus status, final BundledRule rule,
-                                                       final String eTag) {
+    private static String sha256Hex(final String content) {
+        try {
+            final StringBuilder hex = new StringBuilder(64);
+            for (final byte b : MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8))) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (final NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    private static ResponseHeadersBuilder ruleHeaders(final HttpStatus status, final String contentHash,
+                                                      final String eTag) {
         return ResponseHeaders.builder(status)
-            .add("X-Sw-Content-Hash", rule.contentHash)
+            .add("X-Sw-Content-Hash", contentHash)
             .add("X-Sw-Status", "BUNDLED")
             .add("X-Sw-Source", "bundled")
             .add("X-Sw-Update-Time", "0")
@@ -251,22 +339,23 @@ public class BundledRuleCatalogHandler {
     }
 
     private static HttpResponse invalidCatalog(final String catalog, final String name) {
-        return error(HttpStatus.BAD_REQUEST, "invalid_catalog", catalog, name,
-            "catalog must be one of " + String.join(", ", CATALOGS));
+        return badRequest("invalid_catalog", catalog, name, "catalog must be one of " + ENGINE_CATALOGS);
     }
 
-    /** Same {@code applyStatus/catalog/name/message} envelope upstream returns for rule-route errors. */
-    private static HttpResponse error(final HttpStatus status, final String applyStatus, final String catalog,
-                                      final String name, final String message) {
+    private static HttpResponse badRequest(final String applyStatus, final String catalog, final String name,
+                                           final String message) {
+        return HttpResponse.of(HttpStatus.BAD_REQUEST, MediaType.JSON_UTF_8,
+            jsonBody(applyStatus, catalog, name, message));
+    }
+
+    /** Upstream's {@code applyStatus/catalog/name/message} envelope for rule-route errors. */
+    private static String jsonBody(final String applyStatus, final String catalog, final String name,
+                                   final String message) {
         final JsonObject body = new JsonObject();
         body.addProperty("applyStatus", applyStatus);
         body.addProperty("catalog", catalog == null ? "" : catalog);
         body.addProperty("name", name == null ? "" : name);
-        body.addProperty("message", message);
-        return json(status, body);
-    }
-
-    private static HttpResponse json(final HttpStatus status, final Object body) {
-        return HttpResponse.of(status, MediaType.JSON_UTF_8, GSON.toJson(body));
+        body.addProperty("message", message == null ? "" : message);
+        return GSON.toJson(body);
     }
 }

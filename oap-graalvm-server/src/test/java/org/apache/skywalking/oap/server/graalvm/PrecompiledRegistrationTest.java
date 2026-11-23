@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.skywalking.oap.server.core.analysis.ISourceDecorator;
 import org.apache.skywalking.oap.server.core.analysis.SourceDispatcher;
@@ -44,8 +43,8 @@ import org.apache.skywalking.oap.server.core.annotation.AnnotationScan;
 import org.apache.skywalking.oap.server.core.source.DefaultScopeDefine;
 import org.apache.skywalking.oap.server.core.source.ISource;
 import org.apache.skywalking.oap.server.core.source.ScopeDeclaration;
-import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalExpression;
-import org.apache.skywalking.oap.meter.analyzer.v2.dsl.MalFilter;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledMalExpression;
+import org.apache.skywalking.oap.server.graalvm.rules.CompiledMalFilter;
 import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
 import org.apache.skywalking.oap.server.graalvm.rules.LalRule;
 import org.apache.skywalking.oap.server.graalvm.rules.MalFile;
@@ -60,7 +59,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Verifies that pre-compiled manifests produced by OALClassExporter are complete
+ * Verifies that the manifests and the rule registry the precompiler produced are complete
  * and consistent. Checks:
  * 1. Manifest contents match live Guava ClassPath scan (for hardcoded classes)
  * 2. All OAL-generated classes are loadable and properly annotated
@@ -130,36 +129,21 @@ class PrecompiledRegistrationTest {
     }
 
     // =========================================================================
-    // 1b. MeterFunction manifest vs Guava ClassPath comparison
+    // 1b. The registry's meter functions vs Guava ClassPath comparison
     // =========================================================================
 
     @Test
-    void meterFunctionManifestMatchesClasspath() throws Exception {
-        // Build expected map from Guava ClassPath scan
-        Map<String, String> scanned = guavaScanMeterFunctions();
-
-        // Read manifest
-        List<String> manifestLines = readManifest("META-INF/annotation-scan/MeterFunction.txt");
-        Map<String, String> manifest = new HashMap<>();
-        for (String line : manifestLines) {
-            String[] parts = line.split("=", 2);
-            assertEquals(2, parts.length, "Invalid MeterFunction manifest line: " + line);
-            manifest.put(parts[0], parts[1]);
-        }
-
-        assertFalse(manifest.isEmpty(), "MeterFunction manifest is empty");
-        assertEquals(scanned, manifest,
-            "MeterFunction manifest does not match classpath scan");
+    void meterFunctionsMatchClasspath() throws Exception {
+        Map<String, String> registry = new HashMap<>();
+        CompiledRules.meterFunctions().forEach((name, clazz) -> registry.put(name, clazz.getName()));
+        assertFalse(registry.isEmpty(), "The meter functions of the rule registry are empty");
+        assertEquals(guavaScanMeterFunctions(), registry,
+            "The meter functions of the rule registry do not match the classpath scan");
     }
 
     @Test
-    void meterFunctionManifestHasExpectedFunctions() throws Exception {
-        List<String> manifestLines = readManifest("META-INF/annotation-scan/MeterFunction.txt");
-        Map<String, String> manifest = new HashMap<>();
-        for (String line : manifestLines) {
-            String[] parts = line.split("=", 2);
-            manifest.put(parts[0], parts[1]);
-        }
+    void meterFunctionsHaveTheExpectedFunctions() {
+        Map<String, Class<? extends AcceptableValue>> functions = CompiledRules.meterFunctions();
 
         // Verify well-known meter functions exist
         String[] expectedFunctions = {
@@ -172,32 +156,21 @@ class PrecompiledRegistrationTest {
             "sumPerMin", "sumPerMinLabeled"
         };
         for (String fn : expectedFunctions) {
-            assertTrue(manifest.containsKey(fn),
+            assertTrue(functions.containsKey(fn),
                 "Missing expected meter function: " + fn);
         }
-        assertEquals(expectedFunctions.length, manifest.size(),
-            "MeterFunction manifest should have exactly " + expectedFunctions.length + " entries");
+        assertEquals(expectedFunctions.length, functions.size(),
+            "The rule registry should have exactly " + expectedFunctions.length + " meter functions");
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void meterFunctionManifestClassesAreLoadableAndValid() throws Exception {
-        List<String> manifestLines = readManifest("META-INF/annotation-scan/MeterFunction.txt");
-        for (String line : manifestLines) {
-            String[] parts = line.split("=", 2);
-            String functionName = parts[0];
-            String className = parts[1];
-
-            Class<?> clazz = Class.forName(className);
-            assertTrue(AcceptableValue.class.isAssignableFrom(clazz),
-                "MeterFunction class " + className + " should implement AcceptableValue");
+    void meterFunctionsAreAnnotatedWithTheirName() {
+        CompiledRules.meterFunctions().forEach((functionName, clazz) -> {
             assertTrue(clazz.isAnnotationPresent(MeterFunction.class),
-                "MeterFunction class " + className + " should have @MeterFunction annotation");
-
-            MeterFunction mf = clazz.getAnnotation(MeterFunction.class);
-            assertEquals(functionName, mf.functionName(),
-                "functionName mismatch for " + className);
-        }
+                "MeterFunction class " + clazz.getName() + " should have @MeterFunction annotation");
+            assertEquals(functionName, clazz.getAnnotation(MeterFunction.class).functionName(),
+                "functionName mismatch for " + clazz.getName());
+        });
     }
 
     // =========================================================================
@@ -206,7 +179,7 @@ class PrecompiledRegistrationTest {
 
     @Test
     void allOalMetricsClassesLoadAndHaveStreamAnnotation() throws Exception {
-        List<String> classes = classNames(CompiledRules.oalMetrics());
+        List<String> classes = classNames(oalMetrics());
         assertFalse(classes.isEmpty(), "OAL metrics manifest is empty");
         for (String className : classes) {
             Class<?> clazz = Class.forName(className);
@@ -217,7 +190,7 @@ class PrecompiledRegistrationTest {
 
     @Test
     void allOalDispatcherClassesLoadAndImplementInterface() throws Exception {
-        List<String> classes = classNames(CompiledRules.oalDispatchers());
+        List<String> classes = classNames(oalDispatchers());
         assertFalse(classes.isEmpty(), "OAL dispatcher manifest is empty");
         for (String className : classes) {
             Class<?> clazz = Class.forName(className);
@@ -268,7 +241,7 @@ class PrecompiledRegistrationTest {
         }
 
         // Check OAL-generated @Stream classes
-        List<String> oalMetrics = classNames(CompiledRules.oalMetrics());
+        List<String> oalMetrics = classNames(oalMetrics());
         for (String className : oalMetrics) {
             Class<?> clazz = Class.forName(className);
             Stream stream = clazz.getAnnotation(Stream.class);
@@ -297,7 +270,7 @@ class PrecompiledRegistrationTest {
     @Test
     @SuppressWarnings("deprecation")
     void oalDispatchersHaveDeclaredSourceScopes() throws Exception {
-        List<String> dispatchers = classNames(CompiledRules.oalDispatchers());
+        List<String> dispatchers = classNames(oalDispatchers());
         for (String className : dispatchers) {
             Class<?> clazz = Class.forName(className);
             Class<?> sourceType = extractSourceType(clazz);
@@ -352,8 +325,11 @@ class PrecompiledRegistrationTest {
     void malMeterClassManifestExistsAndIsNotEmpty() {
         Map<String, Class<?>> meters = CompiledRules.meterClasses();
         assertFalse(meters.isEmpty(), "The meter classes of the rule registry should not be empty");
+        // Keyed by the metric name; the class is named by its lowercasing in the build's locale
         for (Map.Entry<String, Class<?>> meter : meters.entrySet()) {
-            assertEquals(meter.getKey(), meter.getValue().getName(), "A meter class is keyed by its name");
+            assertTrue(meter.getValue().getName().equalsIgnoreCase(
+                "org.apache.skywalking.oap.server.core.analysis.meter.dynamic." + meter.getKey()),
+                "A meter class is keyed by its metric name: " + meter.getKey());
         }
     }
 
@@ -381,19 +357,21 @@ class PrecompiledRegistrationTest {
 
     @Test
     void malV2ExpressionsAreLoadable() {
-        Map<String, Supplier<MalExpression>> expressions = CompiledRules.malExpressions();
+        List<CompiledMalExpression> expressions = CompiledRules.malExpressions();
         assertFalse(expressions.isEmpty(), "The MAL expressions of the rule registry should not be empty");
-        for (Map.Entry<String, Supplier<MalExpression>> entry : expressions.entrySet()) {
-            assertNotNull(entry.getValue().get(), "Should be able to instantiate the expression: " + entry.getKey());
+        for (CompiledMalExpression expression : expressions) {
+            assertNotNull(expression.getCompiled().get(), "Should be able to instantiate the expression of "
+                + expression.getMetricName() + " (" + expression.getSource() + ":" + expression.getLine() + ")");
         }
     }
 
     @Test
     void malV2FiltersAreLoadable() {
-        Map<String, Supplier<MalFilter>> filters = CompiledRules.malFilters();
+        List<CompiledMalFilter> filters = CompiledRules.malFilters();
         assertFalse(filters.isEmpty(), "The MAL filters of the rule registry should not be empty");
-        for (Map.Entry<String, Supplier<MalFilter>> entry : filters.entrySet()) {
-            assertNotNull(entry.getValue().get(), "Should be able to instantiate the filter: " + entry.getKey());
+        for (CompiledMalFilter filter : filters) {
+            assertNotNull(filter.getCompiled().get(), "Should be able to instantiate the filter "
+                + filter.getLiteral() + " (" + filter.getSource() + ":" + filter.getLine() + ")");
         }
     }
 
@@ -417,6 +395,15 @@ class PrecompiledRegistrationTest {
         return classes.stream().map(Class::getName).collect(Collectors.toList());
     }
 
+    private static List<Class<?>> oalMetrics() {
+        return CompiledRules.oalScripts().stream().flatMap(s -> s.getMetrics().stream()).collect(Collectors.toList());
+    }
+
+    private static List<Class<?>> oalDispatchers() {
+        return CompiledRules.oalScripts().stream().flatMap(s -> s.getDispatchers().stream())
+                            .collect(Collectors.toList());
+    }
+
     // =========================================================================
     // Helpers
     // =========================================================================
@@ -435,7 +422,7 @@ class PrecompiledRegistrationTest {
 
         List<String> allDispatchers = new ArrayList<>();
         allDispatchers.addAll(readManifest("META-INF/annotation-scan/SourceDispatcher.txt"));
-        allDispatchers.addAll(classNames(CompiledRules.oalDispatchers()));
+        allDispatchers.addAll(classNames(oalDispatchers()));
 
         for (String className : allDispatchers) {
             Class<?> clazz = Class.forName(className);
@@ -453,7 +440,7 @@ class PrecompiledRegistrationTest {
 
         List<String> allStreams = new ArrayList<>();
         allStreams.addAll(readManifest("META-INF/annotation-scan/Stream.txt"));
-        allStreams.addAll(classNames(CompiledRules.oalMetrics()));
+        allStreams.addAll(classNames(oalMetrics()));
 
         for (String className : allStreams) {
             Class<?> clazz = Class.forName(className);

@@ -17,40 +17,33 @@
 
 package org.apache.skywalking.oap.server.graalvm;
 
+import java.io.File;
 import java.io.IOException;
-import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.skywalking.oap.server.graalvm.rules.CompiledRules;
+import org.apache.skywalking.oap.server.graalvm.rules.RuleCatalog;
+import org.apache.skywalking.oap.server.library.util.ResourceUtils;
 
 /**
- * Fails the boot when a rule file sits where upstream's loaders would read it. This image runs the rules compiled
- * into it at build time and reads no rule file, so such a file would be silently ignored. Runtime configuration
- * ({@code application.yml}, {@code alarm-settings.yml} ...) is not a rule file and stays editable.
+ * Fails the boot when a rule file sits in the directory OAP reads its configuration from, where upstream keeps its rule
+ * files. Rule files enter this image only at build time (upstream's or a rules overlay's); at runtime it reads none, so
+ * such a file would be silently ignored. Runtime configuration ({@code application.yml}, {@code alarm-settings.yml}
+ * ...) is not a rule file and stays editable.
  */
 final class CompiledRulesCheck {
-    static final List<String> RULE_DIRECTORIES = List.of(
-        "oal", "otel-rules", "meter-analyzer-config", "log-mal-rules", "envoy-metrics-rules", "telegraf-rules",
-        "zabbix-rules", "lal", "tal");
-    static final List<String> RULE_FILES = List.of("hierarchy-definition.yml", "layer-extensions.yml");
-
     private CompiledRulesCheck() {
     }
 
     static void verify() throws IOException, URISyntaxException {
         final Set<String> found = find(
-            Path.of("config"), Path.of(""), CompiledRulesCheck.class.getClassLoader(), registryJar());
+            configDirectory(ResourceUtils.configDirectory(), CompiledRulesCheck.class.getClassLoader()));
         if (!found.isEmpty()) {
             throw new IllegalStateException(
                 "The rules are compiled into this image and no rule file is read, but rule files were found where "
@@ -60,61 +53,57 @@ final class CompiledRulesCheck {
     }
 
     /**
-     * @return the jar the rule registry is in, whose {@code oal/*.oal} are the compiled scripts' display copies; null
-     * in the native image, which has no jars
+     * @param nativeConfigDir the native image's {@code config/} next to its executable, null on the JVM
+     * @return the directory OAP reads its configuration from: the native image's, or on the JVM the directory
+     *     {@code application.yml} is read from (the class loader's resource, a file); null when there is none
      */
-    private static String registryJar() {
-        final URL location = CompiledRules.class.getProtectionDomain().getCodeSource() == null
-            ? null : CompiledRules.class.getProtectionDomain().getCodeSource().getLocation();
-        return location == null ? null : location.getPath();
+    static Path configDirectory(final Path nativeConfigDir, final ClassLoader classLoader) throws URISyntaxException {
+        if (nativeConfigDir != null) {
+            return nativeConfigDir;
+        }
+        final URL applicationYml = classLoader.getResource("application.yml");
+        if (applicationYml == null || !"file".equals(applicationYml.getProtocol())) {
+            return null;
+        }
+        final Path directory = Path.of(applicationYml.toURI()).getParent();
+        return directory != null && Files.isDirectory(directory) ? directory : null;
     }
 
     /**
-     * @return every rule file the configuration lookup of the distro's ResourceUtils would resolve: under
-     * {@code configDir}, the single-file rules in {@code workingDir}, and files, directories and jar entries on the
-     * class path (the JVM distribution puts its {@code config/} there), except the entries of the rule registry's jar
-     * {@code registryJar}. Native-image resources are what the build packed.
+     * @return every rule file of the configuration directory (none without one): a file of a rule directory by the
+     *     catalog's rule ({@link RuleCatalog#isRuleFile}), so a {@code .gitkeep} or an empty directory is none, and
+     *     {@code hierarchy-definition.yml} / {@code layer-extensions.yml} at its root
      */
-    static Set<String> find(final Path configDir, final Path workingDir, final ClassLoader classLoader,
-                            final String registryJar) throws IOException, URISyntaxException {
+    static Set<String> find(final Path configDir) throws IOException {
         final Set<String> found = new TreeSet<>();
-        for (final String directory : RULE_DIRECTORIES) {
-            found.addAll(files(configDir.resolve(directory)));
+        if (configDir == null) {
+            return found;
         }
-        for (final String file : RULE_FILES) {
-            found.addAll(files(configDir.resolve(file)));
-            found.addAll(files(workingDir.resolve(file)));
+        for (final RuleCatalog catalog : RuleCatalog.values()) {
+            found.addAll(ruleFiles(configDir.resolve(catalog.getDirectory()), catalog));
         }
-        final List<String> names = new ArrayList<>(RULE_DIRECTORIES);
-        names.addAll(RULE_FILES);
-        for (final String name : names) {
-            final Enumeration<URL> urls = classLoader.getResources(name);
-            for (final URL url : Collections.list(urls)) {
-                if ("file".equals(url.getProtocol())) {
-                    found.addAll(files(Path.of(url.toURI())));
-                } else if ("jar".equals(url.getProtocol())) {
-                    final JarURLConnection jar = (JarURLConnection) url.openConnection();
-                    if (!jar.getJarFileURL().getPath().equals(registryJar)) {
-                        found.add(url.toString());
-                    }
-                }
+        for (final String file : RuleCatalog.RULE_FILES) {
+            if (Files.isRegularFile(configDir.resolve(file))) {
+                found.add(configDir.resolve(file).toAbsolutePath().normalize().toString());
             }
         }
         return found;
     }
 
-    private static List<String> files(final Path path) throws IOException {
-        if (Files.isRegularFile(path)) {
-            return List.of(path.toAbsolutePath().normalize().toString());
-        }
-        if (!Files.isDirectory(path)) {
+    /**
+     * @return the rule files of the directory, as its loader reads it: a flat loader lists the directory, following
+     * links as {@code File.listFiles} does (a mounted ConfigMap is a directory of links); the MAL loader walks it as
+     * {@code Files.walk} does, not following a link to a directory
+     */
+    private static List<String> ruleFiles(final Path directory, final RuleCatalog catalog) throws IOException {
+        if (!Files.isDirectory(directory)) {
             return List.of();
         }
-        // Following links, as File.listFiles does: a mounted ConfigMap is a directory of links.
-        try (Stream<Path> walk = Files.walk(path, FileVisitOption.FOLLOW_LINKS)) {
-            return walk.filter(Files::isRegularFile)
-                       .map(p -> p.toAbsolutePath().normalize().toString())
-                       .collect(Collectors.toList());
+        try (Stream<Path> files = catalog.isRecursive() ? Files.walk(directory) : Files.list(directory)) {
+            return files.filter(Files::isRegularFile)
+                        .filter(p -> catalog.isRuleFile(directory.relativize(p).toString().replace(File.separatorChar, '/')))
+                        .map(p -> p.toAbsolutePath().normalize().toString())
+                        .collect(Collectors.toList());
         }
     }
 }

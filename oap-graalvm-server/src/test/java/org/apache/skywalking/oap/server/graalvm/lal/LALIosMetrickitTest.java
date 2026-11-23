@@ -35,7 +35,7 @@ class LALIosMetrickitTest extends LALScriptComparisonBase {
     }
 
     @Test
-    void allRulesPrecompiled() {
+    void allRulesPrecompiled() throws Exception {
         assertTrue(RULES.size() >= 1, "ios-metrickit.yaml should have at least 1 rule");
         for (final LALConfig rule : RULES) {
             final LalExpression expr = loadPrecompiled(rule);

@@ -17,9 +17,16 @@
 
 package org.apache.skywalking.oap.log.analyzer.v2.dsl;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import javassist.ClassPool;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -39,9 +46,9 @@ import org.apache.skywalking.oap.server.library.module.ModuleStartException;
  * Same-FQCN replacement for upstream v2 LAL DSL.
  *
  * <p>Returns the {@link LalExpression} the precompiler compiled, from the generated {@link CompiledRules}
- * registry, instead of compiling via LALClassGenerator at runtime. Rules are keyed by the same source coordinates
- * ({@code lal/<file>.yaml:<line>}) upstream passes as {@link DslSourceRef}; the rule name is
- * the fallback for callers without one. The registry also carries the effective input type
+ * registry, instead of compiling via LALClassGenerator at runtime. Rules are keyed by the source coordinates
+ * ({@code lal/<file>.yaml:<line>}) upstream passes as {@link DslSourceRef}; a call without them is an ad-hoc rule
+ * (the log test tool), which the image cannot compile. The registry also carries the effective input type
  * the compiler resolved, which upstream LogFilterListener uses to route mixed-type inputs
  * (e.g. Envoy HTTP vs TCP access logs) to the right rule.
  */
@@ -94,17 +101,19 @@ public class DSL {
                          final Class<?> outputType,
                          final String ruleName,
                          final DslSourceRef sourceRef) throws ModuleStartException {
-        LalRule rule = null;
-        if (sourceRef != null && sourceRef.getYamlFile() != null) {
-            rule = Index.BY_SOURCE.get(sourceRef.getYamlFile() + ":" + sourceRef.getYamlLine());
+        if (sourceRef == null) {
+            throw new ModuleStartException("Ad-hoc LAL (the log test tool) is not supported in the native image: it "
+                + "runs only the LAL rules compiled into it, found by their source coordinates, and rule " + ruleName
+                + " has none");
         }
-        if (rule == null) {
-            rule = Index.BY_NAME.get(ruleName);
-        }
+        final List<LalRule> candidates = Index.BY_SOURCE.getOrDefault(sourceRef.describeYaml(), List.of());
+        final LalRule rule = select(candidates, ruleName, dsl, inputType, outputType);
         if (rule == null) {
             throw new ModuleStartException(
-                "Pre-compiled LAL expression not found for rule: " + ruleName
-                    + " (source: " + sourceRef + "). Available: " + Index.BY_SOURCE.keySet());
+                "No pre-compiled LAL expression matches rule " + ruleName + " (source: " + sourceRef + ", input "
+                    + typeName(inputType) + ", output " + typeName(outputType) + "); compiled there: "
+                    + candidates.size() + ". The rule files changed after the build, or upstream now compiles the "
+                    + "rule from other inputs than the precompiler did; rebuild the distro.");
         }
 
         final LalExpression expression = rule.getExpression().get();
@@ -138,14 +147,50 @@ public class DSL {
         expression.execute(filterSpec, ctx);
     }
 
+    /**
+     * @return the candidate compiled from these inputs, or null: a class compiled from another text or other types
+     * would run other logic, or cast the log to another input type
+     */
+    static LalRule select(final List<LalRule> candidates, final String ruleName, final String dsl,
+                          final Class<?> inputType, final Class<?> outputType) {
+        final String dslSha256 = dsl == null ? "" : sha256(dsl);
+        LalRule found = null;
+        for (final LalRule rule : candidates) {
+            // A rule without a name, which upstream compiles, has a null name, apart from one named "null"
+            if (Objects.equals(rule.getName(), ruleName) && rule.getDslSha256().equals(dslSha256)
+                && rule.getRequestedInputType().equals(typeName(inputType))
+                && rule.getRequestedOutputType().equals(typeName(outputType))) {
+                if (found != null) {
+                    throw new IllegalStateException("Two pre-compiled LAL rules match " + ruleName + ": "
+                        + found.getSource() + ":" + found.getLine() + " and " + rule.getSource() + ":" + rule.getLine());
+                }
+                found = rule;
+            }
+        }
+        return found;
+    }
+
+    private static String typeName(final Class<?> type) {
+        return type == null ? "" : type.getName();
+    }
+
+    static String sha256(final String text) {
+        try {
+            return HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (final NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static final class Index {
-        private static final Map<String, LalRule> BY_SOURCE = new HashMap<>();
-        private static final Map<String, LalRule> BY_NAME = new HashMap<>();
+        // By the DslSourceRef the precompiler built for the rule, as upstream's boot builds it.
+        private static final Map<String, List<LalRule>> BY_SOURCE = new HashMap<>();
 
         static {
             for (final LalRule rule : CompiledRules.lalRules()) {
-                BY_SOURCE.put(rule.getSource() + ":" + rule.getLine(), rule);
-                BY_NAME.putIfAbsent(rule.getName(), rule);
+                BY_SOURCE.computeIfAbsent(DslSourceRef.ofRule(rule.getSource(), rule.getLine()).describeYaml(),
+                    k -> new ArrayList<>()).add(rule);
             }
         }
     }

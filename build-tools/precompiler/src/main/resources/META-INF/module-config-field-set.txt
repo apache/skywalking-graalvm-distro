@@ -1,0 +1,18 @@
+org.apache.skywalking.oap.query.traceql.TraceQLConfig#OTLP_TRACES_LIST_RESULT_TAGS static final
+org.apache.skywalking.oap.query.traceql.TraceQLConfig#SKYWALKING_TRACES_LIST_RESULT_TAGS static final
+org.apache.skywalking.oap.query.traceql.TraceQLConfig#ZIPKIN_TRACES_LIST_RESULT_TAGS static final
+org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleConfig#configPath final
+org.apache.skywalking.oap.server.analyzer.provider.AnalyzerModuleConfig#log static final
+org.apache.skywalking.oap.server.core.CoreModuleConfig#DEFAULT_SEARCHABLE_TAG_KEYS static final
+org.apache.skywalking.oap.server.core.CoreModuleConfig#downsampling final
+org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleConfig#DEFAULT_GRPC_TIMEOUT_SECONDS static final
+org.apache.skywalking.oap.server.core.alarm.provider.AlarmModuleConfig#DEFAULT_HTTP_TIMEOUT_SECONDS static final
+org.apache.skywalking.oap.server.receiver.envoy.EnvoyMetricReceiverConfig#clusterManagerMetricsAdapter final
+org.apache.skywalking.oap.server.receiver.envoy.EnvoyMetricReceiverConfig#listenerMetricsAdapter final
+org.apache.skywalking.oap.server.receiver.envoy.EnvoyMetricReceiverConfig#serviceMetaInfoFactory final
+org.apache.skywalking.oap.server.receiver.otel.OtelMetricReceiverConfig#OTLP_TRACE_STORAGE_OTLP static final
+org.apache.skywalking.oap.server.receiver.otel.OtelMetricReceiverConfig#OTLP_TRACE_STORAGE_ZIPKIN static final
+org.apache.skywalking.oap.server.receiver.otel.OtelMetricReceiverConfig#log static final
+org.apache.skywalking.oap.server.receiver.telegraf.provider.TelegrafModuleConfig#CONFIG_PATH static final
+org.apache.skywalking.oap.server.receiver.zabbix.provider.ZabbixModuleConfig#CONFIG_PATH static final
+org.apache.skywalking.oap.server.receiver.zipkin.ZipkinReceiverConfig#DEFAULT_SEARCHABLE_TAG_KEYS static final

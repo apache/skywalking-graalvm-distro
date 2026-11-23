@@ -18,12 +18,14 @@
 package org.apache.skywalking.oap.server.buildtools.precompiler;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.skywalking.oap.log.analyzer.v2.provider.LALConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,31 +34,57 @@ class LalRegistrationCheckTest {
 
     @Test
     void aRuleUpstreamWouldSkipOrRefuseFailsTheBuild() {
-        final Set<String> registered = new HashSet<>();
+        final Set<List<String>> registered = new HashSet<>();
         assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("a", "GENERAL", false), registered));
         assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("a", "MESH", false), registered));
         assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("a", "auto", true), registered));
 
-        // Compiled, as upstream skips such a rule at boot with a warning, before it checks names or fallback.
-        assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("b", "NO_SUCH_LAYER", true), registered));
-        assertDoesNotThrow(() -> Precompiler.checkRegistration(rule("b", "NO_SUCH_LAYER", false), registered));
+        // Not compiled, as upstream skips such a rule at boot with a warning, before it checks names or fallback.
+        assertFalse(Precompiler.checkRegistration(rule("b", "NO_SUCH_LAYER", true), registered));
+        assertFalse(Precompiler.checkRegistration(rule("b", "NO_SUCH_LAYER", false), registered));
         assertFails(rule("b", "GENERAL", true), registered, "only a layer: auto rule may");
         assertFails(rule("a", "GENERAL", false), registered, "two rules of layer GENERAL are named a");
         assertFails(rule("a", "auto", false), registered, "two auto-layer rules are named a");
     }
 
     @Test
-    void twoRulesOnOneLineFailTheBuild() {
-        final Set<String> registered = new HashSet<>();
+    void anAutoRuleUpstreamSkipsTakesNoName() {
+        final Set<List<String>> registered = new HashSet<>();
+        // A sink without a layer statement: upstream skips it at boot with a warning, before it registers names.
+        final LALConfig skipped = rule("r", "auto", false);
+        skipped.setDsl("filter { sink { } }");
+        assertFalse(Precompiler.checkRegistration(skipped, registered), "not compiled, as upstream never compiles it");
+
+        final LALConfig claiming = rule("r", "auto", false);
+        claiming.setDsl("filter { extractor { layer \"GENERAL\" } sink { } }");
+        assertTrue(Precompiler.checkRegistration(claiming, registered));
+        assertFails(rule("r", "auto", false), registered, "two auto-layer rules are named r");
+    }
+
+    @Test
+    void twoRulesOnOneLineAreTakenAsUpstreamTakesThem() {
+        final Set<List<String>> registered = new HashSet<>();
         final LALConfig first = rule("a", "GENERAL", false);
         first.setLineNo(3);
         final LALConfig second = rule("b", "GENERAL", false);
         second.setLineNo(3);
-        assertDoesNotThrow(() -> Precompiler.checkRegistration(first, registered));
-        assertFails(second, registered, "starts on line 3 with another rule");
+        assertTrue(Precompiler.checkRegistration(first, registered));
+        assertTrue(Precompiler.checkRegistration(second, registered));
     }
 
-    private static void assertFails(final LALConfig rule, final Set<String> registered, final String message) {
+    /**
+     * Upstream keys a layer's rules by name in a map: a rule without a name is one apart from a rule named "null", and
+     * two without a name collide.
+     */
+    @Test
+    void aRuleWithoutANameIsApartFromOneNamedNull() {
+        final Set<List<String>> registered = new HashSet<>();
+        assertTrue(Precompiler.checkRegistration(rule(null, "GENERAL", false), registered));
+        assertTrue(Precompiler.checkRegistration(rule("null", "GENERAL", false), registered));
+        assertFails(rule(null, "GENERAL", false), registered, "two rules of layer GENERAL are named null");
+    }
+
+    private static void assertFails(final LALConfig rule, final Set<List<String>> registered, final String message) {
         final IllegalStateException e = assertThrows(IllegalStateException.class,
             () -> Precompiler.checkRegistration(rule, registered));
         assertTrue(e.getMessage().contains(message), e.getMessage());
