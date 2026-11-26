@@ -54,7 +54,8 @@ corresponding environment variable:
 `query`; `SW_AI_AGENT_CONVERSATION=none` turns the conversations off while GraphQL stays available.
 
 `trace-analyzer` (TAL) is on by default; `SW_TRACE_ANALYZER=-` removes it, and the OTLP trace
-receiver then stores spans without analysis.
+receiver then stores spans without analysis. The modules that require it (the native trace receiver, the Kafka
+fetcher and `trace-pairing-debugging`) must be removed with it.
 
 ### Rules are compiled in
 
@@ -206,7 +207,7 @@ Its rule files (`malFiles`, `lalFiles`) are every compiled `log-mal-rules/` and 
 ### trace-analyzer
 
 **Selector**: `SW_TRACE_ANALYZER` (default: `default`; `-` removes the module, which fails the boot while the native
-trace receiver or the Kafka fetcher is loaded, as both require it)
+trace receiver, the Kafka fetcher or `trace-pairing-debugging` is loaded, as they require it)
 
 TAL (Trace Analysis Language) rules over OTLP spans and over the segments SkyWalking agents send (the `sw-native`
 rules, since SWIP-17 the whole agent trace analysis: RPC and endpoint traffic, segments, virtual database / cache / MQ /
@@ -738,7 +739,7 @@ Set `SW_EXPORTER=default` to enable.
 
 **Selector**: `SW_ADMIN_SERVER` (default: `default`)
 
-Hosts the admin HTTP API (status, inspect, ui-management, dsl-debugging, and the read-only rule
+Hosts the admin HTTP API (status, inspect, ui-management, dsl-debugging, trace-pairing-debugging, and the read-only rule
 catalog of [graalvm-unsupported-admin](#graalvm-unsupported-admin)) on its own port.
 
 | Setting | Environment Variable | Default |
@@ -782,13 +783,23 @@ admin-server. Relocated from the 10.x `status-query` module; URIs and payloads a
 
 **Selector**: `SW_DSL_DEBUGGING` (default: `default`)
 
-SWIP-13 DSL live debugger (`/dsl-debugging/*`) and the read-only OAL listing (`/runtime/oal/*`),
-mounted on admin-server. The debug probes are compiled into every rule class at build time, so
-the flag below only gates the debug API.
+SWIP-13 DSL live debugger (`/dsl-debugging/*`) over the MAL, LAL, OAL and TAL rules, and the read-only OAL and TAL
+listings (`/runtime/oal/*`, `/runtime/tal/*`), mounted on admin-server. The debug probes are compiled into every rule
+class at build time, so the flag below only gates the debug API.
 
 | Setting | Environment Variable | Default |
 |---------|---------------------|---------|
 | injectionEnabled | `SW_DSL_DEBUGGING_INJECTION_ENABLED` | `true` |
+
+---
+
+### trace-pairing-debugging
+
+**Selector**: `SW_TRACE_PAIRING_DEBUGGING` (default: `default`)
+
+An on-demand capture of the network-alias pairing of OTLP calls (`/trace-pairing-debugging/*`), mounted on
+admin-server: the peers the node that owns a trace matched to a server, and the peers and servers whose halves went
+unmatched. Requires the trace-analyzer module; set it to `-` when trace-analyzer is removed. No settings.
 
 ---
 

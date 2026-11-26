@@ -91,7 +91,8 @@ All receivers are included:
 | Exporter | Included (disabled by default) |
 | Health Checker | Included |
 | AI Pipeline | Included (baseline prediction) |
-| DSL live debugger (SWIP-13) | Included — sampling sessions over the bundled MAL/LAL/OAL rules, probes compiled in at build time |
+| DSL live debugger (SWIP-13) | Included — sampling sessions over the bundled MAL/LAL/OAL/TAL rules, probes compiled in at build time |
+| Trace pairing debugging | Included — on-demand capture of the OTLP network-alias pairing (`/trace-pairing-debugging/*`) |
 
 ### TLS
 
@@ -121,23 +122,25 @@ These modules are disabled by default. Enable them with environment variables:
 | AI Evaluation | `SW_AI_EVALUATION=default` |
 
 The Trace Analyzer (TAL) is on by default and analyzes the SkyWalking agents' segments as well as OTLP spans, so the
-native trace receiver and the Kafka fetcher require it; `SW_TRACE_ANALYZER=-` fails the boot while either is loaded.
+native trace receiver and the Kafka fetcher require it, as does `trace-pairing-debugging`; `SW_TRACE_ANALYZER=-` fails
+the boot while any of them is loaded.
 
 ## Known Limitations
 
 ### DSL Rules Are Read-Only (Live Debugger Yes, Hot-Update No)
 
 All MAL / LAL / OAL / TAL rules are pre-compiled at build time. The precompiler compiles the SWIP-13
-debug probes into every MAL / LAL / OAL rule class (the same codegen switch the upstream OAP flips at boot), so
+debug probes into every MAL / LAL / OAL / TAL rule class (the same codegen switch the upstream OAP flips at boot), so
 the live debugger works on the bundled rules; only runtime-rule hot-update, which generates
-bytecode at runtime, is unavailable. TAL rules have no debug probes upstream either, and upstream has no
-runtime-rule catalog for them; to change them, edit the files under `tal/` and rebuild (see
-[Configuration](configuration.md#trace-analyzer)):
+bytecode at runtime, is unavailable. Upstream has no runtime rules for TAL either; to change TAL rules, edit the
+files under `tal/` and rebuild (see [Configuration](configuration.md#trace-analyzer)):
 
 | Admin API | Status |
 |-----------|--------|
-| `/dsl-debugging/*` (SWIP-13 live debugger: sessions over MAL, LAL and OAL rules) | Supported on the bundled rules |
+| `/dsl-debugging/*` (SWIP-13 live debugger: sessions over MAL, LAL, OAL and TAL rules) | Supported on the bundled rules |
 | `GET /runtime/oal/files`, `/runtime/oal/files/{name}`, `/runtime/oal/rules[/{source}]` | Supported (upstream handler) |
+| `GET /runtime/tal/files`, `/runtime/tal/files/{name}` | Supported (upstream handler) |
+| `/trace-pairing-debugging/*` (capture of the OTLP network-alias pairing) | Supported (upstream module) |
 | `GET /runtime/rule/list`, `/runtime/rule/bundled`, `/runtime/rule/status`, `GET /runtime/rule` (YAML + `X-Sw-*` headers) | Supported: answered as upstream answers on a node with no runtime rule; every shipped rule is `BUNDLED`, no apply is ever found |
 | `POST /runtime/rule/addOrUpdate`, `/inactivate`, `/delete`, `GET /runtime/rule/dump`, `/runtime/mal/*`, `/runtime/lal/*` | **HTTP 501** (runtime-rule hot-update) |
 | GraphQL `test(requests: LogTestRequest!)`, the LAL log test tool (`SW_QUERY_GRAPHQL_ENABLE_LOG_TEST_TOOL`) | **Not supported**: it compiles the rule it is given at runtime; answers an error saying so |

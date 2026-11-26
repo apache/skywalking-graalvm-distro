@@ -39,6 +39,7 @@ import org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingM
 import org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig;
 import org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig;
 import org.apache.skywalking.oap.server.admin.status.StatusModuleConfig;
+import org.apache.skywalking.oap.server.admin.trace.pairing.TracePairingDebuggingModuleConfig;
 import org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleConfig;
 import org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationConfig;
 import org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationConfig;
@@ -161,6 +162,13 @@ public class YamlConfigLoaderUtils {
             copyToAdminServerModuleConfig((AdminServerModuleConfig) dest, src, moduleName, providerName);
         } else if (dest instanceof StatusModuleConfig) {
             copyToStatusModuleConfig((StatusModuleConfig) dest, src, moduleName, providerName);
+        } else if (dest instanceof TracePairingDebuggingModuleConfig) {
+            // TracePairingDebuggingModuleConfig has no configurable fields.
+            final Enumeration<?> propertyNames = src.propertyNames();
+            while (propertyNames.hasMoreElements()) {
+                log.warn("{} setting is not supported in {} provider of {} module",
+                    propertyNames.nextElement(), providerName, moduleName);
+            }
         } else if (dest instanceof UIManagementModuleConfig) {
             // UIManagementModuleConfig has no configurable fields.
             final Enumeration<?> propertyNames = src.propertyNames();
@@ -2733,9 +2741,6 @@ public class YamlConfigLoaderUtils {
                     break;
                 case "cleanupUnusedTopNRules":
                     cfg.setCleanupUnusedTopNRules(ConfigFieldValues.booleanValue(value, "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Global.cleanupUnusedTopNRules"));
-                    break;
-                case "compatibleServerApiVersions":
-                    cfg.setCompatibleServerApiVersions(ConfigFieldValues.referenceValue(value, String.class, "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Global.compatibleServerApiVersions"));
                     break;
                 case "concurrentWriteThreads":
                     cfg.setConcurrentWriteThreads(ConfigFieldValues.intValue(value, "org.apache.skywalking.oap.server.storage.plugin.banyandb.BanyanDBStorageConfig$Global.concurrentWriteThreads"));

@@ -20,9 +20,9 @@ The image ships these modules and providers, and only these: they are the module
 | **Cluster** | ClusterModule | Standalone, Kubernetes |
 | **Configuration** | ConfigurationModule | Kubernetes ConfigMap, none |
 | **Receivers** | SharingServerModule, TraceModule, JVMModule, MeterReceiverModule, LogModule, RegisterModule, ProfileModule, BrowserModule, EventModule, OtelMetricReceiverModule, MeshReceiverModule, EnvoyMetricReceiverModule, ZipkinReceiverModule, ZabbixReceiverModule, TelegrafReceiverModule, AWSFirehoseReceiverModule, CiliumFetcherModule, EBPFReceiverModule, AsyncProfilerModule, PprofModule, CLRModule, ConfigurationDiscoveryModule, KafkaFetcherModule | default providers |
-| **Analyzers** | AnalyzerModule, LogAnalyzerModule, TraceAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule, AIEvaluationModule, AIAgentConversationModule | default providers (AIEvaluationModule disabled by default; AIAgentConversationModule also offers `none`; TraceAnalyzerModule analyzes both OTLP spans and agent segments, and the native trace receiver and Kafka fetcher require it) |
+| **Analyzers** | AnalyzerModule, LogAnalyzerModule, TraceAnalyzerModule, EventAnalyzerModule, GenAIAnalyzerModule, AIEvaluationModule, AIAgentConversationModule | default providers (AIEvaluationModule disabled by default; AIAgentConversationModule also offers `none`; TraceAnalyzerModule analyzes both OTLP spans and agent segments, and the native trace receiver, the Kafka fetcher and TracePairingDebuggingModule require it) |
 | **Query** | QueryServerModule, QueryModule (GraphQL), PromQLModule, LogQLModule, TraceQLModule, ZipkinQueryModule | default providers (QueryServerModule serves GraphQL, the AI agent conversation API and `/status/config/ttl` on the core REST port unless its `restPort` is set) |
-| **Admin** | AdminServerModule, StatusModule, InspectModule, UIManagementModule, DSLDebuggingModule, UnsupportedAdminFeatureModule (distro only) | default; runtime-rule excluded (`graalvm-unsupported-admin` answers its mutations with 501) |
+| **Admin** | AdminServerModule, StatusModule, InspectModule, UIManagementModule, DSLDebuggingModule, TracePairingDebuggingModule, UnsupportedAdminFeatureModule (distro only) | default; runtime-rule excluded (`graalvm-unsupported-admin` answers its mutations with 501) |
 | **Alarm** | AlarmModule | default |
 | **Telemetry** | TelemetryModule | Prometheus, none |
 | **Other** | ExporterModule, HealthCheckerModule, AIPipelineModule | default providers |
@@ -35,10 +35,10 @@ The image ships these modules and providers, and only these: they are the module
 > are unchanged. `InspectModule` (SWIP-14 metric catalog + entity enumeration, `/inspect/*`)
 > and `UIManagementModule` (dashboard-template REST consumed by the Horizon UI,
 > `/ui-management/*`) are hosted there as well, and so is `DSLDebuggingModule` (SWIP-13 DSL live
-> debugger, `/dsl-debugging/*` + `/runtime/oal/*`): the precompiler flips upstream's
-> `DSLDebugCodegenSwitch` before generating, so every pre-compiled OAL/MAL/LAL rule class carries
-> the debug probes and the module only flips gates at runtime (upstream's TAL compiler emits no
-> probes yet, so TAL rules are not debuggable on either distro). `RuntimeRuleModule` (MAL/LAL hot-update) is
+> debugger, `/dsl-debugging/*` + `/runtime/oal/*` + `/runtime/tal/*`): the precompiler flips upstream's
+> `DSLDebugCodegenSwitch` before generating, so every pre-compiled OAL/MAL/LAL/TAL rule class carries
+> the debug probes and the module only flips gates at runtime. `TracePairingDebuggingModule` (an on-demand
+> capture of the OTLP network-alias pairing, `/trace-pairing-debugging/*`) runs as-is. `RuntimeRuleModule` (MAL/LAL hot-update) is
 > **not supported**: it needs runtime Javassist code generation, which a closed-world native
 > image cannot do. Its mutating endpoints return a friendly HTTP 501 via a stub module provider,
 > while the read-only rule catalog (`/runtime/rule/list|bundled|status`, `GET /runtime/rule`) is served,
@@ -47,7 +47,7 @@ The image ships these modules and providers, and only these: they are the module
 > read routes do: the replacement loaders pass the files they load, the raw rule files the precompiler exports under
 > `META-INF/rule-source/`, through upstream's `RuleSetMerger`, as upstream's loaders do, so Horizon can list and
 > review every rule of upstream's runtime-rule catalogs the boot loaded (MAL and LAL; a module turned off loads no
-> rule; upstream has no TAL catalog, so TAL rules are not listed there either). A `RuntimeRuleOverrideResolver` that
+> rule; no runtime-rule engine claims the `oal` or `tal` catalog, so upstream refuses them there, and so does the distro). A `RuntimeRuleOverrideResolver` that
 > would change or drop a compiled file fails the boot: the image runs the classes compiled from those bytes.
 
 ---
@@ -313,7 +313,7 @@ All five DSL compilers (OAL/MAL/LAL/TAL/Hierarchy) use ANTLR4 + Javassist v2 eng
 - `reflect-config.json` auto-generated by precompiler from the build manifests (OAL, MAL, LAL, TAL, meter, HTTP handlers, GraphQL types)
 - `log4j2-reflect-config.json` for Log4j2 plugin classes; console-only `log4j2.xml` with `SW_LOG_LEVEL` env var
 - gRPC/Netty/Protobuf/Armeria via GraalVM reachability metadata repository
-- Auto-scanned reflection metadata: Armeria HTTP handlers (~27, incl. admin-server/status/inspect/ui-management), GraphQL resolvers (~32), GraphQL types (~182), config POJOs (8)
+- Auto-scanned reflection metadata: Armeria HTTP handlers (~36, incl. admin-server/status/inspect/ui-management/dsl-debugging/trace-pairing-debugging), GraphQL resolvers (~33), GraphQL types (~219), config POJOs (~12)
 - Native binary: ~203MB, boots to full module init with all HTTP endpoints functional
 
 ### Native Distro Packaging

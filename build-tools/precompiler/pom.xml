@@ -143,6 +143,10 @@
         </dependency>
         <dependency>
             <groupId>org.apache.skywalking</groupId>
+            <artifactId>trace-pairing-debugging</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
             <artifactId>promql-plugin</artifactId>
         </dependency>
         <dependency>

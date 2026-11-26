@@ -111,10 +111,9 @@ class BundledRuleCatalogHandlerTest {
             handler.listBundled("lal", "false").aggregate().join().contentUtf8()).getAsJsonArray();
         assertFalse(bare.get(0).getAsJsonObject().has("content"));
 
-        AggregatedHttpResponse oal = handler.listBundled("oal", "true").aggregate().join();
-        assertEquals(200, oal.status().code(), "oal is one of upstream's catalogs, with no bundled rule here");
-        assertEquals(0, JsonParser.parseString(oal.contentUtf8()).getAsJsonArray().size());
-        assertEquals(400, handler.listBundled("tal", "true").aggregate().join().status().code());
+        // No rule engine claims oal or tal, so upstream refuses them here
+        assertEquals("invalid_catalog", applyStatus(handler.listBundled("oal", "true")));
+        assertEquals("invalid_catalog", applyStatus(handler.listBundled("tal", "true")));
     }
 
     @Test

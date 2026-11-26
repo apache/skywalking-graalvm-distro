@@ -343,8 +343,9 @@
                 <version>${skywalking.version}</version>
             </dependency>
             <!-- Admin server family (11.0.0+): admin-host + native-safe feature modules.
-                 status (relocated from status-query-plugin), inspect, ui-management, and
-                 dsl-debugging (its probes are compiled in at build time by the precompiler).
+                 status (relocated from status-query-plugin), inspect, ui-management,
+                 dsl-debugging (its probes are compiled in at build time by the precompiler) and
+                 trace-pairing-debugging.
                  runtime-rule is intentionally NOT wired (runtime Javassist codegen is
                  impossible under native image); its mutating endpoints are stubbed. -->
             <dependency>
@@ -370,6 +371,11 @@
             <dependency>
                 <groupId>org.apache.skywalking</groupId>
                 <artifactId>dsl-debugging</artifactId>
+                <version>${skywalking.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>trace-pairing-debugging</artifactId>
                 <version>${skywalking.version}</version>
             </dependency>
 

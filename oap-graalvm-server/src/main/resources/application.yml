@@ -113,8 +113,8 @@ log-analyzer:
 
 trace-analyzer:
   # Analyzes OTLP spans and the segments SkyWalking agents send with every TAL file compiled into the image. `-`
-  # removes the module, which fails the boot while the native trace receiver or the Kafka fetcher is loaded, as both
-  # require it.
+  # removes the module, which fails the boot while the native trace receiver, the Kafka fetcher or
+  # trace-pairing-debugging is loaded, as they require it.
   selector: ${SW_TRACE_ANALYZER:default}
   default:
     dedupWindow: ${SW_TRACE_TAL_DEDUP_WINDOW:0}
@@ -501,13 +501,21 @@ ui-management:
   selector: ${SW_UI_MANAGEMENT:default}
   default:
 
-# DSL live debugger (SWIP-13) — sampling sessions over the bundled MAL / LAL / OAL rules
-# (/dsl-debugging/*) plus the read-only OAL listing (/runtime/oal/*). The debug probes are
-# compiled into every rule class at build time, so injectionEnabled only gates the API here.
+# DSL live debugger (SWIP-13) — sampling sessions over the bundled MAL / LAL / OAL / TAL rules
+# (/dsl-debugging/*) plus the read-only OAL and TAL listings (/runtime/oal/*, /runtime/tal/*). The debug
+# probes are compiled into every rule class at build time, so injectionEnabled only gates the API here.
 dsl-debugging:
   selector: ${SW_DSL_DEBUGGING:default}
   default:
     injectionEnabled: ${SW_DSL_DEBUGGING_INJECTION_ENABLED:true}
+
+# Trace pairing debugging — an on-demand capture of the network-alias pairing of OTLP calls: the peers the node that
+# owns a trace matched to a server, and the peers and servers whose halves went unmatched. Mounts onto admin-server
+# at /trace-pairing-debugging/. Requires the trace-analyzer module: set SW_TRACE_PAIRING_DEBUGGING=- when
+# trace-analyzer is removed.
+trace-pairing-debugging:
+  selector: ${SW_TRACE_PAIRING_DEBUGGING:default}
+  default:
 
 # GraalVM distro only, in place of upstream's receiver-runtime-rule, and switched by its variable: answers the
 # runtime-rule hot-update routes with 501 and serves the read-only catalog of the bundled MAL / LAL rules

@@ -167,11 +167,16 @@ When upstream adds an e2e case for a new rule set, adopt it if it is compose-onl
       `verify.cases.includes` so expectations track upstream automatically.
 - [ ] Add a `.github/workflows/ci.yml` e2e matrix entry.
 - [ ] Not adoptable: cases that mount rule YAML at runtime (needs runtime compile), `runtime-rule/*`,
-      `dsl-debugging/{mal,lal-*}` (seed rules via runtime-rule), ZooKeeper/etcd cluster cases.
-      `dsl-debugging/oal` IS adopted (`test/e2e/cases/dsl-debugging-oal`): it debugs a bundled OAL rule.
+      `dsl-debugging/{mal,lal-*}` (seed rules via runtime-rule). `dsl-debugging/{oal,tal-native,tal-otlp}` ARE
+      adopted (`test/e2e/cases/dsl-debugging-{oal,tal-native,tal-otlp}`): they debug bundled rules.
+- [ ] A ZooKeeper/etcd cluster case runs on kind instead when what it checks is cross-node behaviour the distro has:
+      two native replicas on the Kubernetes coordinator (`otlp-traces-cluster`, `dsl-debugging-cluster-paging`).
+      The Kubernetes coordinator names nodes by pod IP, so a flow that names them by compose hostname runs with
+      those names replaced (and fails loudly when upstream renames them).
 - [ ] DSL debugging stays live: the precompiler calls `DSLDebugCodegenSwitch.enableInjection()` before
-      generating and sets `setContent(...)` on the MAL/LAL generators; if upstream changes the probe
-      codegen or `GateHolder`, re-check the `dsl-management`, `dsl-debugging` and `dsl-debugging-oal` e2e cases.
+      generating and sets `setContent(...)` on the MAL/LAL/TAL generators; if upstream changes the probe
+      codegen or `GateHolder`, re-check the `dsl-management`, `dsl-debugging` and `dsl-debugging-{oal,tal-*}` e2e
+      cases.
 
 ### MAL/LAL changes (if new rule files)
 

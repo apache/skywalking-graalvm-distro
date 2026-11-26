@@ -195,6 +195,10 @@ public class BundledRuleCatalogHandler {
         if (parsed == null) {
             return invalidCatalog(catalog, null);
         }
+        // As upstream: a catalog no rule engine claims (oal, tal) has no runtime rules to list beside.
+        if (!ENGINE_CATALOGS.contains(parsed.getWireName())) {
+            return invalidCatalog(parsed.getWireName(), null);
+        }
         final boolean includeContent = parseFlag(withContent)
             || "true".equalsIgnoreCase(withContent == null ? "true" : withContent.trim());
         final JsonArray out = new JsonArray();

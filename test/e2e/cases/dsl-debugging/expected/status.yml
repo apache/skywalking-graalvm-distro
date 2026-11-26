@@ -17,3 +17,11 @@ module: dsl-debugging
 nodeId: {{ notEmpty .nodeId }}
 injectionEnabled: true
 activeSessions: 0
+catalogs:
+  - otel-rules
+  - log-mal-rules
+  - telegraf-rules
+  - meter-analyzer-config
+  - lal
+  - oal
+  - tal

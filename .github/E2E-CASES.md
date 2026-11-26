@@ -62,6 +62,9 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | Airflow | `airflow/` | Airflow layer OTel rules (upstream mock replay sender) |
 | BanyanDB Self Observability | `banyandb-so11y/` | BanyanDB self-observability (SWIP-15: liaison + data node, endpoint + instance-relation rules) |
 | DSL Debugging OAL | `dsl-debugging-oal/` | Upstream OAL live-debug flow (real samples on `service_relation_server_cpm`) |
+| DSL Debugging TAL native | `dsl-debugging-tal-native/` | Upstream TAL live-debug flow over agent segments: the `/runtime/tal/*` listing, statement and block sessions on the bundled native rules |
+| DSL Debugging TAL OTLP | `dsl-debugging-tal-otlp/` | Upstream TAL live-debug flow over OTLP spans (`otlp-general`, paged session records) plus the `trace-pairing-debugging` capture |
+| DSL Debugging Cluster Paging | `dsl-debugging-cluster-paging/` | kind, two OAP replicas on the Kubernetes coordinator: upstream's cluster-paging flow (a TAL session through one node collects the other's records over the admin-internal gRPC bus; pages across both nodes cover the capture), with the nodes named by pod IP |
 | AI Agent Conversations | `ai-agent/` | `ai-agent-conversation` (AI Sessionizer files via `lal/ai-agent.yaml`, `asz.view` fold), `ai-agent/*` OTel rules |
 | BanyanDB Trace Sampling | `banyandb-trace-sampling/` | `banyandb-trace-sampling` OTel rules (plugin-capable BanyanDB running the sampler chain) |
 | BanyanDB Auth Rotation | `banyandb-auth-rotation/` | BanyanDB credential hot-reload (`secretsManagementFile`) + storage suite |
