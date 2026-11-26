@@ -33,7 +33,8 @@ rules can't be selected, added or replaced at runtime:
   comments only turns its rules off. The MAL and LAL loaders record it for the read-only rule catalog; under a catalog
   `/runtime/rule` serves (`otel-rules`, `log-mal-rules`, `telegraf-rules`, `meter-analyzer-config`, `lal`), it shows
   as bundled and is not listed. `envoy-metrics-rules` goes through the MAL loader too, but `/runtime/rule` serves no
-  such catalog; the Zabbix loader skips such a file without recording it, and TAL has no HTTP catalog. A
+  such catalog; the Zabbix loader skips such a file without recording it, and `/runtime/rule` serves no `tal` catalog
+  (`/runtime/tal/files` lists only the files whose rules were loaded). A
   TAL file of `layerDefinitions` alone registers its layers; a LAL one does not, as upstream's LAL loader skips such a
   file before registering them. A MAL file of `layerDefinitions` alone fails the build, as upstream's boot fails on it.
   A bundled native TAL file overridden without rules stays in `nativeTalFiles`, as upstream lists it, so it is read

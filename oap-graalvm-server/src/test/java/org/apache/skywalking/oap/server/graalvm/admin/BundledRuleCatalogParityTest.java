@@ -84,9 +84,8 @@ class BundledRuleCatalogParityTest {
     private static final String[] HEADERS = {
         "content-type", "x-sw-content-hash", "x-sw-status", "x-sw-source", "x-sw-update-time", "etag"};
 
-    /** The catalogs upstream's runtime-rule read routes serve rule files of. */
-    private static final Set<String> SERVED = Arrays.stream(Catalog.values()).filter(c -> c != Catalog.OAL)
-                                                    .map(Catalog::getWireName).collect(Collectors.toSet());
+    /** The catalogs upstream's runtime-rule read routes serve rule files of: those its rule engines claim. */
+    private static final Set<String> SERVED = servedCatalogs();
 
     /** Two bundled rule names of each catalog, the first and the last. */
     private static final Map<String, List<String>> NAMES = new LinkedHashMap<>();
@@ -329,6 +328,14 @@ class BundledRuleCatalogParityTest {
         JsonParser.parseString(DISTRO.listBundled(catalog, "false").aggregate().join().contentUtf8()).getAsJsonArray()
                   .forEach(row -> names.add(row.getAsJsonObject().get("name").getAsString()));
         return names;
+    }
+
+    private static Set<String> servedCatalogs() {
+        final Map<String, AppliedRuleScript> rules = new ConcurrentHashMap<>();
+        final ModuleManager moduleManager = mock(ModuleManager.class);
+        final Set<String> served = new HashSet<>(new MalRuleEngine(rules, moduleManager).supportedCatalogs());
+        served.addAll(new LalRuleEngine(rules, moduleManager).supportedCatalogs());
+        return served;
     }
 
     /**

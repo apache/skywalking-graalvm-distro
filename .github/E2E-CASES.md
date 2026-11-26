@@ -62,6 +62,8 @@ Every case below is in the CI matrix (`.github/workflows/ci.yml`) and runs again
 | Airflow | `airflow/` | Airflow layer OTel rules (upstream mock replay sender) |
 | BanyanDB Self Observability | `banyandb-so11y/` | BanyanDB self-observability (SWIP-15: liaison + data node, endpoint + instance-relation rules) |
 | DSL Debugging OAL | `dsl-debugging-oal/` | Upstream OAL live-debug flow (real samples on `service_relation_server_cpm`) |
+| DSL Debugging TAL native | `dsl-debugging-tal-native/` | Upstream TAL live-debug flow over agent segments: the `/runtime/tal/*` listing, statement and block sessions on the bundled native rules |
+| DSL Debugging TAL OTLP | `dsl-debugging-tal-otlp/` | Upstream TAL live-debug flow over OTLP spans (`otlp-general`, paged session records) plus the `trace-pairing-debugging` capture |
 | AI Agent Conversations | `ai-agent/` | `ai-agent-conversation` (AI Sessionizer files via `lal/ai-agent.yaml`, `asz.view` fold), `ai-agent/*` OTel rules |
 | BanyanDB Trace Sampling | `banyandb-trace-sampling/` | `banyandb-trace-sampling` OTel rules (plugin-capable BanyanDB running the sampler chain) |
 | BanyanDB Auth Rotation | `banyandb-auth-rotation/` | BanyanDB credential hot-reload (`secretsManagementFile`) + storage suite |
@@ -201,6 +203,7 @@ These upstream cases use Elasticsearch, MySQL, or PostgreSQL and are not applica
 - `cluster/zk/banyandb/` (Zookeeper clustering, not supported in this distro)
 - `runtime-rule/*`, `dsl-debugging/{mal,lal-block,lal-statement}` (seed rules through runtime-rule hot-update, unsupported here); `inspect/*` (mounts a rule YAML at runtime)
 - `gateway/` (Zookeeper-based 2-node OAP cluster)
+- `dsl-debugging/cluster-paging/` (Zookeeper-based 2-node OAP cluster)
 - `so11y/` upstream variant (etcd-based clustering; the distro ships a standalone `so11y/` case instead)
 - `satellite/native-protocols/` (etcd-based clustering)
 

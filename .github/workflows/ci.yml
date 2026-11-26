@@ -215,7 +215,7 @@ jobs:
           restore-keys: e2e-go-mod-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Run the rules overlay E2E test
-        uses: apache/skywalking-infra-e2e@56ac8befeb5f910f2dc9339e65d07cd18953f90e
+        uses: apache/skywalking-infra-e2e@8bb8499880c9660311c501854c47452ce2ca6c00
         with:
           e2e-file: $GITHUB_WORKSPACE/test/e2e/cases/rules-overlay/e2e.yaml
 
@@ -473,6 +473,10 @@ jobs:
             case: banyandb-so11y
           - name: DSL Debugging OAL
             case: dsl-debugging-oal
+          - name: DSL Debugging TAL native
+            case: dsl-debugging-tal-native
+          - name: DSL Debugging TAL OTLP
+            case: dsl-debugging-tal-otlp
           - name: AI Agent Conversations
             case: ai-agent
           - name: BanyanDB Trace Sampling
@@ -563,7 +567,7 @@ jobs:
           restore-keys: e2e-go-mod-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Run E2E test
-        uses: apache/skywalking-infra-e2e@56ac8befeb5f910f2dc9339e65d07cd18953f90e
+        uses: apache/skywalking-infra-e2e@8bb8499880c9660311c501854c47452ce2ca6c00
         with:
           e2e-file: $GITHUB_WORKSPACE/test/e2e/cases/${{ matrix.test.case }}/e2e.yaml
 

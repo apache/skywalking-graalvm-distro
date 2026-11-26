@@ -12,6 +12,7 @@ org.apache.skywalking.oap.server.admin.dsl.debugging.module.DSLDebuggingModuleCo
 org.apache.skywalking.oap.server.admin.inspect.InspectModuleConfig
 org.apache.skywalking.oap.server.admin.server.module.AdminServerModuleConfig
 org.apache.skywalking.oap.server.admin.status.StatusModuleConfig
+org.apache.skywalking.oap.server.admin.trace.pairing.TracePairingDebuggingModuleConfig
 org.apache.skywalking.oap.server.admin.uimanagement.UIManagementModuleConfig
 org.apache.skywalking.oap.server.ai.agent.conversation.AIAgentConversationConfig
 org.apache.skywalking.oap.server.ai.evaluation.AIEvaluationConfig

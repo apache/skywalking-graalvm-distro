@@ -76,9 +76,11 @@ class OapTest extends MALScriptComparisonBase {
      *
      * # --- Trace ---
      * trace_in_latency_count{service="oap-svc",host_name="oap-host-1",protocol="grpc"} 5000.0
+     * trace_in_latency_count{...,protocol="otlp-grpc"} 3000.0, {...,protocol="otlp-http"} 1000.0
      * trace_in_latency{...le buckets...,protocol="grpc"} histogram
      * trace_analysis_error_count{service="oap-svc",host_name="oap-host-1",protocol="grpc"} 10.0
-     * spans_dropped_count{service="oap-svc",host_name="oap-host-1",protocol="grpc"} 5.0
+     * spans_dropped_count{service="oap-svc",host_name="oap-host-1",protocol="zipkin-http",reason="sampled"} 5.0
+     * spans_dropped_count{...,protocol="otlp-grpc",reason="rate_limited"} 7.0
      *
      * # --- AI Evaluation ---
      * ai_evaluation_dropped_count{service="oap-svc",host_name="oap-host-1",reason="pipeline_capacity"} 4.0
@@ -129,11 +131,9 @@ class OapTest extends MALScriptComparisonBase {
      * # --- OTel ---
      * otel_metrics_latency_count{...} 10000.0
      * otel_logs_latency_count{...} 5000.0
-     * otel_spans_latency_count{...} 8000.0
-     * otel_spans_dropped{...} 20.0
+     * otel_spans_rejected{...} 20.0
      * otel_metrics_latency{...le buckets...} histogram
      * otel_logs_latency{...le buckets...} histogram
-     * otel_spans_latency{...le buckets...} histogram
      *
      * # --- GraphQL ---
      * graphql_query_latency{...le buckets...} histogram
@@ -209,7 +209,11 @@ class OapTest extends MALScriptComparisonBase {
             .put("trace_in_latency_count",
                 SampleFamilyBuilder.newBuilder(
                     labeled("trace_in_latency_count", scope,
-                        "protocol", "grpc", 5000.0 * scale, timestamp)
+                        "protocol", "grpc", 5000.0 * scale, timestamp),
+                    labeled("trace_in_latency_count", scope,
+                        "protocol", "otlp-grpc", 3000.0 * scale, timestamp),
+                    labeled("trace_in_latency_count", scope,
+                        "protocol", "otlp-http", 1000.0 * scale, timestamp)
                 ).build())
             .put("trace_in_latency",
                 histogramSamples("trace_in_latency",
@@ -223,8 +227,8 @@ class OapTest extends MALScriptComparisonBase {
                 ).build())
             .put("spans_dropped_count",
                 SampleFamilyBuilder.newBuilder(
-                    labeled("spans_dropped_count", scope,
-                        "protocol", "grpc", 5.0 * scale, timestamp)
+                    droppedSpans(scope, "zipkin-http", "sampled", 5.0 * scale, timestamp),
+                    droppedSpans(scope, "otlp-grpc", "rate_limited", 7.0 * scale, timestamp)
                 ).build())
 
             // --- AI Evaluation ---
@@ -371,20 +375,14 @@ class OapTest extends MALScriptComparisonBase {
             .put("otel_logs_latency_count",
                 single("otel_logs_latency_count", scope,
                     5000.0 * scale, timestamp))
-            .put("otel_spans_latency_count",
-                single("otel_spans_latency_count", scope,
-                    8000.0 * scale, timestamp))
-            .put("otel_spans_dropped",
-                single("otel_spans_dropped", scope,
+            .put("otel_spans_rejected",
+                single("otel_spans_rejected", scope,
                     20.0 * scale, timestamp))
             .put("otel_metrics_latency",
                 histogramSamples("otel_metrics_latency", scope,
                     scale, timestamp))
             .put("otel_logs_latency",
                 histogramSamples("otel_logs_latency", scope,
-                    scale, timestamp))
-            .put("otel_spans_latency",
-                histogramSamples("otel_spans_latency", scope,
                     scale, timestamp))
 
             // --- GraphQL ---
@@ -544,6 +542,22 @@ class OapTest extends MALScriptComparisonBase {
                 .timestamp(timestamp)
                 .build()
         ).build();
+    }
+
+    private static Sample droppedSpans(final ImmutableMap<String, String> scope,
+                                       final String protocol, final String reason,
+                                       final double value,
+                                       final long timestamp) {
+        return Sample.builder()
+            .name("spans_dropped_count")
+            .labels(ImmutableMap.<String, String>builder()
+                .putAll(scope)
+                .put("protocol", protocol)
+                .put("reason", reason)
+                .build())
+            .value(value)
+            .timestamp(timestamp)
+            .build();
     }
 
     private static Sample labeled(final String name,

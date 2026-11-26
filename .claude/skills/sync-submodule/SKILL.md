@@ -167,11 +167,13 @@ When upstream adds an e2e case for a new rule set, adopt it if it is compose-onl
       `verify.cases.includes` so expectations track upstream automatically.
 - [ ] Add a `.github/workflows/ci.yml` e2e matrix entry.
 - [ ] Not adoptable: cases that mount rule YAML at runtime (needs runtime compile), `runtime-rule/*`,
-      `dsl-debugging/{mal,lal-*}` (seed rules via runtime-rule), ZooKeeper/etcd cluster cases.
-      `dsl-debugging/oal` IS adopted (`test/e2e/cases/dsl-debugging-oal`): it debugs a bundled OAL rule.
+      `dsl-debugging/{mal,lal-*}` (seed rules via runtime-rule), ZooKeeper/etcd cluster cases
+      (`dsl-debugging/cluster-paging`). `dsl-debugging/{oal,tal-native,tal-otlp}` ARE adopted
+      (`test/e2e/cases/dsl-debugging-{oal,tal-native,tal-otlp}`): they debug bundled rules.
 - [ ] DSL debugging stays live: the precompiler calls `DSLDebugCodegenSwitch.enableInjection()` before
-      generating and sets `setContent(...)` on the MAL/LAL generators; if upstream changes the probe
-      codegen or `GateHolder`, re-check the `dsl-management`, `dsl-debugging` and `dsl-debugging-oal` e2e cases.
+      generating and sets `setContent(...)` on the MAL/LAL/TAL generators; if upstream changes the probe
+      codegen or `GateHolder`, re-check the `dsl-management`, `dsl-debugging` and `dsl-debugging-{oal,tal-*}` e2e
+      cases.
 
 ### MAL/LAL changes (if new rule files)
 

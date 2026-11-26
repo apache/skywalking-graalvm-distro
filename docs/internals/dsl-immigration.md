@@ -166,8 +166,9 @@ theirs too, and fail the build otherwise; the runtime `TalDSL` refuses two class
 Every file is loaded through upstream's `TALConfigs.load` before any rule compiles, as upstream's `loadRules` does, so
 a layer one file declares under `layerDefinitions` serves the rules of every file. A rule that does not compile (a
 construct or function of another input included), or that names an unknown layer or input type, fails the build with
-upstream's boot-time message, as do two `talFiles` rules of one name in one layer. Upstream's TAL compiler emits
-no debug probes, so TAL rules are not live-debuggable.
+upstream's boot-time message, as do two `talFiles` rules of one name in one layer. With the debug codegen switch on,
+each class carries upstream's `debug` holder, built by its no-arg constructor, and its probes, so TAL rules are
+live-debuggable as the other DSLs' are.
 
 Nothing in the pass is specific to the shipped files: input providers and function providers come from the SPIs
 (recorded in `tal-io-classes.txt` for reflection, with the input types and every function object), every declaration shape is carried (`buckets`, `ranks`,
@@ -215,7 +216,7 @@ Generated class package: `org.apache.skywalking.oap.server.core.config.v2.compil
 ## DSL Live Debugger (SWIP-13)
 
 Upstream's debugger is a codegen-time decision: when `DSLDebugCodegenSwitch.isInjectionEnabled()`
-is true, the OAL, MAL and LAL generators emit a `GateHolder` field per rule (per metric for OAL
+is true, the OAL, MAL, LAL and TAL generators emit a `GateHolder` field per rule (per metric for OAL
 dispatchers), a `debugHolder()` accessor and `if (holder.isGateOn())` probe call sites. The
 upstream OAP flips the switch in `DSLDebuggingModuleProvider.prepare()`; this distro flips it in
 the precompiler (`DSLDebugCodegenSwitch.enableInjection()` before every generator pass) and sets
@@ -224,8 +225,10 @@ and rule text. Nothing is compiled at runtime: the wired-in upstream `dsl-debugg
 adds and removes recorders on the holders. Registration works unchanged — MAL holders are
 published by upstream's receivers through `MalStaticBindingHook`, LAL holders by
 `LogFilterListener` through `LalStaticBindingHook` (the log `DSL` replacement stamps the same
-`ruleName`/`inputClass`/`outputClass` metadata upstream does), and OAL holders are found on the
-loaded dispatchers via `DebugHolderProvider`. Idle cost is one volatile read per probe site.
+`ruleName`/`inputClass`/`outputClass` metadata upstream does), TAL holders by `SpanFilterListener`
+through `TalStaticBindingHook` (from the class `TalDSL` takes from the registry), and OAL holders are found on the
+loaded dispatchers via `DebugHolderProvider`. Idle cost is one volatile read per probe site (TAL: the runner reads
+the rule's gate once per run, and the probes test a local flag).
 
 Two details the distro supplies for the module: `OALEngineLoaderService.getLoadedDefines()` on
 the replacement loader, and the raw `oal/*.oal` scripts at their classpath paths in the

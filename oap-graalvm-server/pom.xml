@@ -162,6 +162,10 @@
             <groupId>org.apache.skywalking</groupId>
             <artifactId>dsl-debugging</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.skywalking</groupId>
+            <artifactId>trace-pairing-debugging</artifactId>
+        </dependency>
 
         <!-- Core (non-repackaged) -->
         <dependency>

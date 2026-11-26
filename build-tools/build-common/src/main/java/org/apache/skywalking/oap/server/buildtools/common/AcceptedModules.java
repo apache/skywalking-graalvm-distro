@@ -112,7 +112,8 @@ public final class AcceptedModules {
         new ModuleProviderPair("ui-management", "default"),
         // dsl-debugging: probes are compiled into every rule class by the precompiler, so the
         // module only flips gates at runtime. runtime-rule stays out (needs runtime codegen).
-        new ModuleProviderPair("dsl-debugging", "default")
+        new ModuleProviderPair("dsl-debugging", "default"),
+        new ModuleProviderPair("trace-pairing-debugging", "default")
     );
 
     /**
