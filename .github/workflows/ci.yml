@@ -491,6 +491,8 @@ jobs:
             case: server-clusters-otlp
           - name: OTLP Traces Cluster
             case: otlp-traces-cluster
+          - name: DSL Debugging Cluster Paging
+            case: dsl-debugging-cluster-paging
           - name: VM OTel Hostmetrics
             case: vm-otel-hostmetrics
           - name: OTLP Virtual GenAI
